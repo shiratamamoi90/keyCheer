@@ -1,0 +1,27 @@
+{
+  "_comment": "Scale層。チーム開発で settings.json にマージして有効化する。",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_TOOL_INPUT\" in *'rm -rf'*|*'git push --force'*) echo 'BLOCKED: 危険操作'; exit 2;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/validate.sh 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

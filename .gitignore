@@ -1,0 +1,31 @@
+node_modules/
+dist/
+out/
+build/
+release/
+release-builds/
+coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# シークレット(safeStorage に行くべきもの・誤コミット防止)
+.env
+.env.*
+*.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Electron / ビルド成果物
+*.exe
+*.nsis
+
+# 同梱・生成物(配布時に別管理)
+models/
+*.gguf
+*.safetensors
+generated-images/
