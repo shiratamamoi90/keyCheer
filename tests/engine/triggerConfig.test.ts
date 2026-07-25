@@ -97,6 +97,38 @@ describe("trigger-config / validateTriggerConfig: milestones", () => {
   });
 });
 
+// specs/data-model.md の値域シナリオ(1≦regular≦10000 / 5≦activeThresholdSec≦600 /
+// milestones は 1 以上・昇順・重複なし・最大 20)をひとまとめに縛る。
+describe("trigger-config / `triggers` 値域バリデーション [境界]", () => {
+  it("accepts the documented ranges and rejects anything outside them", () => {
+    const ok = validateTriggerConfig({ regular: 1, milestones: [], activeThresholdSec: 5 });
+    expect(ok.ok).toBe(true);
+    const ok2 = validateTriggerConfig({
+      regular: 10_000,
+      milestones: [1, 2, 3],
+      activeThresholdSec: 600,
+    });
+    expect(ok2.ok).toBe(true);
+
+    for (const bad of [
+      { regular: 0, milestones: [], activeThresholdSec: 60 },
+      { regular: 10_001, milestones: [], activeThresholdSec: 60 },
+      { regular: 50, milestones: [], activeThresholdSec: 4 },
+      { regular: 50, milestones: [], activeThresholdSec: 601 },
+      { regular: 50, milestones: [0], activeThresholdSec: 60 },
+      { regular: 50, milestones: [2, 1], activeThresholdSec: 60 },
+      { regular: 50, milestones: [1, 1], activeThresholdSec: 60 },
+      {
+        regular: 50,
+        milestones: Array.from({ length: 21 }, (_, i) => i + 1),
+        activeThresholdSec: 60,
+      },
+    ]) {
+      expect(validateTriggerConfig(bad).ok).toBe(false);
+    }
+  });
+});
+
 describe("trigger-config / validateTriggerConfig: shape", () => {
   it("rejects entirely missing or malformed input", () => {
     expect(validateTriggerConfig(null).ok).toBe(false);
@@ -160,5 +192,21 @@ describe("trigger-config / migrateLegacyDefaults", () => {
     });
     expect(result.config.regular).toBe(50);
     expect(result.migrated).toBe(false);
+  });
+
+  // specs/data-model.md「以降ユーザーが明示変更した値は尊重する(再上書きしない)」
+  it("以降ユーザーが明示変更した値は尊重する: keeps a user-set 100 once the migration already ran", () => {
+    const result = migrateLegacyDefaults(
+      { regular: 100, milestones: [1000], activeThresholdSec: 60 },
+      true, // 移行済み
+    );
+    expect(result.config.regular).toBe(100);
+    expect(result.migrated).toBe(false);
+  });
+
+  it("migrates only when it has not run before (未移行なら 1 回だけ効く)", () => {
+    const legacy = { regular: 100, milestones: [1000], activeThresholdSec: 60 };
+    expect(migrateLegacyDefaults(legacy, false).migrated).toBe(true);
+    expect(migrateLegacyDefaults(legacy, true).migrated).toBe(false);
   });
 });

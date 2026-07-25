@@ -257,6 +257,144 @@ describe("cheerSelector", () => {
     });
   });
 
+  describe("選択元バケット(sourceBucketKey)", () => {
+    // spec: changes/0006-cheer-selection-source-bucket/spec.md
+
+    it("直接ヒット時は source = target: sourceBucketKey === bucketKey", () => {
+      const pool = makePool(() => [{ id: "a", text: "alpha" }]);
+      const result = selectCheer({
+        pool,
+        zone: "fast",
+        type: "regular",
+        timeOfDay: "evening",
+        lastMessageIdByBucket: {},
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      });
+      expect(result.source).toBe("pool");
+      expect(result.bucketKey).toBe("fast_regular_evening");
+      expect(result.sourceBucketKey).toBe("fast_regular_evening");
+    });
+
+    it("ゾーンフォールバック時の選択元: sourceBucketKey は実際に選んだバケット", () => {
+      const pool = makePool((k) =>
+        k === bucketKey("normal", "regular", "evening") ? [{ id: "fb", text: "fb" }] : [],
+      );
+      const result = selectCheer({
+        pool,
+        zone: "fast",
+        type: "regular",
+        timeOfDay: "evening",
+        lastMessageIdByBucket: {},
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      });
+      expect(result.source).toBe("fallback-zone");
+      expect(result.bucketKey).toBe("fast_regular_evening"); // 照会キーは不変(後方互換)
+      expect(result.sourceBucketKey).toBe("normal_regular_evening");
+    });
+
+    it("type フォールバック時の選択元: 別 timeOfDay のバケットが選択元になる", () => {
+      const pool = makePool((k) =>
+        k === bucketKey("slow", "regular", "morning") ? [{ id: "fb2", text: "fb2" }] : [],
+      );
+      const result = selectCheer({
+        pool,
+        zone: "fast",
+        type: "regular",
+        timeOfDay: "evening",
+        lastMessageIdByBucket: {},
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      });
+      expect(result.source).toBe("fallback-type");
+      expect(result.sourceBucketKey).toBe("slow_regular_morning");
+    });
+
+    it("フォールバック先での連続回避: 除外の参照は選択元バケット基準", () => {
+      // GIVEN ターゲット (fast, regular, evening) が空、(normal, regular, evening) に m1, m2
+      const pool = makePool((k) =>
+        k === bucketKey("normal", "regular", "evening")
+          ? [
+              { id: "m1", text: "one" },
+              { id: "m2", text: "two" },
+            ]
+          : [],
+      );
+      // 呼び出し側は前回の結果を sourceBucketKey に記録している(記録契約)
+      const result = selectCheer({
+        pool,
+        zone: "fast",
+        type: "regular",
+        timeOfDay: "evening",
+        lastMessageIdByBucket: { normal_regular_evening: "m1" },
+        baseline: makeBaseline("BASE"),
+        random: () => 0, // 除外がなければ m1 を選ぶはず
+      });
+      expect(result.messageId).toBe("m2");
+      expect(result.sourceBucketKey).toBe("normal_regular_evening");
+    });
+
+    it("baseline 選択時の選択元: 実際に参照した baseline キーを返す", () => {
+      const result = selectCheer({
+        pool: null,
+        zone: "normal",
+        type: "regular",
+        timeOfDay: "morning",
+        lastMessageIdByBucket: {},
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      });
+      expect(result.source).toBe("baseline");
+      expect(result.sourceBucketKey).toBe("normal_regular_morning");
+    });
+
+    it("記録契約: sourceBucketKey に記録して次回選択すると直前の文が除外される", () => {
+      const pool = makePool((k) =>
+        k === bucketKey("normal", "regular", "evening")
+          ? [
+              { id: "m1", text: "one" },
+              { id: "m2", text: "two" },
+            ]
+          : [],
+      );
+      const args = {
+        pool,
+        zone: "fast" as const,
+        type: "regular" as const,
+        timeOfDay: "evening" as const,
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      };
+      const first = selectCheer({ ...args, lastMessageIdByBucket: {} });
+      // 呼び出し側の契約: lastMessageIdByBucket[result.sourceBucketKey] = result.messageId
+      const second = selectCheer({
+        ...args,
+        lastMessageIdByBucket: { [first.sourceBucketKey]: first.messageId },
+      });
+      expect(second.messageId).not.toBe(first.messageId);
+    });
+
+    it("既存フィールドの後方互換: bucketKey / messageId / text / source の意味は不変", () => {
+      const pool = makePool((k) =>
+        k === bucketKey("normal", "regular", "evening") ? [{ id: "fb", text: "fb-text" }] : [],
+      );
+      const result = selectCheer({
+        pool,
+        zone: "fast",
+        type: "regular",
+        timeOfDay: "evening",
+        lastMessageIdByBucket: {},
+        baseline: makeBaseline("BASE"),
+        random: () => 0,
+      });
+      expect(result.bucketKey).toBe("fast_regular_evening");
+      expect(result.messageId).toBe("fb");
+      expect(result.text).toBe("fb-text");
+      expect(result.source).toBe("fallback-zone");
+    });
+  });
+
   describe("不変条件: 決定的選択", () => {
     // spec: cheer-trigger.md / 不変条件
     it("returns the same result for the same inputs", () => {

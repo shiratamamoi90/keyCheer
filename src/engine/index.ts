@@ -8,7 +8,23 @@ export {
   type KeyCounterState,
 } from "./keyCounter.js";
 
-export { computeKpm, classifyZone, KPM_WINDOW_MS } from "./speedZone.js";
+export {
+  computeKpm,
+  classifyZone,
+  pruneTimestamps,
+  KPM_WINDOW_MS,
+  NORMAL_START_KPM,
+  FAST_START_KPM,
+} from "./speedZone.js";
+
+export {
+  onKeyPress,
+  initialRuntimeState,
+  type RuntimeState,
+  type CheerEvent,
+  type OnKeyPressInput,
+  type OnKeyPressResult,
+} from "./runtime.js";
 
 export { shouldFire } from "./trigger.js";
 

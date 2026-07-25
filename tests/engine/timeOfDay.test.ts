@@ -11,19 +11,19 @@ import {
 // spec: changes/0005-timeOfDay-classification/spec.md
 describe("timeOfDay", () => {
   describe("代表時刻", () => {
-    it("classifies hour 7 as morning", () => {
+    it("朝の代表時刻: classifies hour 7 as morning", () => {
       expect(classifyTimeOfDay(7)).toBe("morning");
     });
 
-    it("classifies hour 13 as afternoon", () => {
+    it("昼の代表時刻: classifies hour 13 as afternoon", () => {
       expect(classifyTimeOfDay(13)).toBe("afternoon");
     });
 
-    it("classifies hour 18 as evening", () => {
+    it("夕方の代表時刻: classifies hour 18 as evening", () => {
       expect(classifyTimeOfDay(18)).toBe("evening");
     });
 
-    it("classifies hour 23 as night", () => {
+    it("夜の代表時刻: classifies hour 23 as night", () => {
       expect(classifyTimeOfDay(23)).toBe("night");
     });
   });

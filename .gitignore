@@ -10,6 +10,16 @@ coverage/
 .vscode/
 .idea/
 
+# エージェント運用のフォーマット類(git に上げない)
+.claude/
+CLAUDE.md
+
+# 開発プロセスの作業フォルダ(成果物は specs/ decisions/ に反映済み)
+changes/
+experiments/
+baselines/
+scripts/validate.sh
+
 # シークレット(safeStorage に行くべきもの・誤コミット防止)
 .env
 .env.*

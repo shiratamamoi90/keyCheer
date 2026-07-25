@@ -29,7 +29,11 @@ export interface CheerSelectorInput {
 export interface CheerSelection {
   messageId: string;
   text: string;
-  bucketKey: BucketKey;
+  bucketKey: BucketKey; // 照会キー(ターゲット)
+  // 実際に選択したバケット。連続回避の記録は呼び出し側がこのキーで行う:
+  //   lastMessageIdByBucket[result.sourceBucketKey] = result.messageId
+  // spec: changes/archive/0006-cheer-selection-source-bucket/spec.md「記録契約」
+  sourceBucketKey: BucketKey;
   source: SelectionSource;
 }
 
@@ -85,12 +89,14 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
 
   if (pool !== null) {
     // 1. ターゲットバケット
+    // シナリオ: 直接ヒット時は source = target
     const direct = tryPoolBucket(pool, targetKey, lastMessageIdByBucket[targetKey], random);
     if (direct) {
       return {
         messageId: direct.id,
         text: interpolate(direct.text, type, milestone),
         bucketKey: targetKey,
+        sourceBucketKey: targetKey,
         source: "pool",
       };
     }
@@ -102,10 +108,12 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
       const k = bucketKey(z, type, timeOfDay);
       const m = tryPoolBucket(pool, k, lastMessageIdByBucket[k], random);
       if (m) {
+        // シナリオ: ゾーンフォールバック時の選択元
         return {
           messageId: m.id,
           text: interpolate(m.text, type, milestone),
           bucketKey: targetKey,
+          sourceBucketKey: k,
           source: "fallback-zone",
         };
       }
@@ -118,10 +126,12 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
         const k = bucketKey(z, type, d);
         const m = tryPoolBucket(pool, k, lastMessageIdByBucket[k], random);
         if (m) {
+          // シナリオ: type フォールバック時の選択元
           return {
             messageId: m.id,
             text: interpolate(m.text, type, milestone),
             bucketKey: targetKey,
+            sourceBucketKey: k,
             source: "fallback-type",
           };
         }
@@ -131,12 +141,14 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
 
   // 4. baseline 定型文(同梱)
   //    シナリオ: キャラ未作成時の発動 [異常系]
+  // シナリオ: baseline 選択時の選択元(実際に参照した baseline キー)
   const direct = tryBaselineBucket(baseline, targetKey, random);
   if (direct) {
     return {
       messageId: `baseline:${targetKey}:${direct.index}`,
       text: interpolate(direct.text, type, milestone),
       bucketKey: targetKey,
+      sourceBucketKey: targetKey,
       source: "baseline",
     };
   }
@@ -151,6 +163,7 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
           messageId: `baseline:${k}:${fallback.index}`,
           text: interpolate(fallback.text, type, milestone),
           bucketKey: targetKey,
+          sourceBucketKey: k,
           source: "baseline",
         };
       }
@@ -162,6 +175,7 @@ export function selectCheer(input: CheerSelectorInput): CheerSelection {
     messageId: "baseline:empty",
     text: "",
     bucketKey: targetKey,
+    sourceBucketKey: targetKey,
     source: "baseline",
   };
 }

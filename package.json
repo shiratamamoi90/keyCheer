@@ -8,10 +8,11 @@
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
+    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "dev": "npm run build && electron dist/main/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
-    "validate": "bash scripts/validate.sh",
     "eval": "tsx src/eval/index.ts"
   },
   "dependencies": {

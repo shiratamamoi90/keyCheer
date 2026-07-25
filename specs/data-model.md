@@ -61,7 +61,7 @@
   "version": 1,
   "buckets": {
     // キー = "{zone}_{type}_{timeOfDay}"、値 = メッセージ配列
-    "slow_regular_morning":  [{ "id": "m001", "text": "おはよう、ゆっくりでいいよ" }, ...],
+    "slow_regular_morning":  [{ "id": "slow_regular_morning-000", "text": "おはよう、ゆっくりでいいよ" }, ...],
     "normal_regular_morning":[ /* 20 件 */ ],
     "fast_regular_morning":  [ /* 20 件 */ ],
     "slow_milestone_morning":[ /* 20 件 */ ],
@@ -78,6 +78,9 @@
 - キーの定義域: `zone ∈ {slow, normal, fast}` × `type ∈ {regular, milestone}` × `timeOfDay ∈ {morning, afternoon, evening, night}` = **24 シナリオ**
 - 各バケットの目標サイズ: 約 20 文(`integrations.md` 参照)
 - 1 文 = 30 文字以内
+- メッセージ ID の規約: `{バケットキー}-{3桁連番}`(例 `slow_regular_morning-000`)。
+  wav ファイル名にそのまま使うため **Windows で使える文字のみ**・プール内で一意であること。
+  baseline 定型文の ID は `baseline:` 接頭辞を持ち、事前合成 wav を持たない(→ cheer-trigger.md)。
 
 ## 保存ルート
 
@@ -136,7 +139,7 @@
         "speedZone": "fast",
         "type": "regular",
         "timeOfDay": "afternoon",
-        "messageId": "m317",
+        "messageId": "fast_regular_afternoon-017",
         "message": "500回達成だよ!すごいすごい!",
       },
     ],
@@ -154,7 +157,7 @@
     "recentKeyTimestamps": [],
     "currentKpm": 240,
     "currentZone": "fast",
-    "lastMessageIdByBucket": { "fast_regular_afternoon": "m317" }, // 連続回避用
+    "lastMessageIdByBucket": { "fast_regular_afternoon": "fast_regular_afternoon-017" }, // 連続回避用
   },
 }
 ```
@@ -210,6 +213,13 @@
 
 ## 検討事項 [要確認](β 以降に確定)
 
+- **`dailyCounts` / `dailyActiveSeconds` の日付境界のタイムゾーン**。現状は **ローカル暦日**で実装
+  (`timeOfDay` がローカル時基準なので揃えた)。UTC 基準にすると JST では 09:00 に「当日」が変わる。
+- **統計をディスクへ書き戻す間隔**。「メモリ上で加算し定期的に保存」(key-counter.md 不変条件)の
+  「定期的」を現状 **10 秒 + 終了前 flush** で実装。秒未満の端数は次回へ繰り越す(累計が目減りしないため)。
+- **`pool.json` の `completion` の保存形式**。engine の `MessagePool` 型は `buckets` のみを持ち、
+  `completion` は生成オーケストレーション側(agent)の状態。本 spec の「同一ファイルに併記」を採るか、
+  別ファイルに分けるかは永続化を実装する change で確定する。
 - 統計肥大化時の保持期間・集約方針(未検討)。
 - sd.cpp バイナリ/モデル/LoRA のパスは同梱物配置で決まる内部定数とし、設定 JSON に持たない。
 - プールの version 互換戦略(将来スキーマ変更時の自動移行)。

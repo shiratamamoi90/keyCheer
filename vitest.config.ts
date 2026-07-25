@@ -9,7 +9,18 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.d.ts", "src/eval/**", "src/main/**", "src/renderer/**"],
+      // main は「electron/uiohook を import する I/O グルー」だけ除外する。
+      // store / cheerRuntime は依存注入で決定的にテストできるため計測対象に含める。
+      exclude: [
+        "src/**/*.d.ts",
+        "src/eval/**",
+        "src/renderer/**",
+        "src/main/index.ts",
+        "src/main/ipc.ts",
+        "src/main/keyHook.ts",
+        "src/main/tray.ts",
+        "src/main/windows.ts",
+      ],
     },
   },
   resolve: {

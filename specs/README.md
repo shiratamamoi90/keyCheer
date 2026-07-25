@@ -1,11 +1,11 @@
 # 確定仕様(source of truth)
 
-ここには **決定的な振る舞いの確定仕様**だけを置く。進行中は `changes/NNNN-*/spec.md` に書き、
-人間の承認 → TDD 実装が済んだらここへ反映してアーカイブする。
+ここには **決定的な振る舞いの確定仕様**だけを置く。仕様は人間が承認し、TDD 実装が済んだ時点でここへ反映する。
 
-> ステータス: KeyCheer は設計フェーズ。以下は**設計時点の意図**であり、各機能は
-> `/new-change` → spec 承認 → `/run-loop`(Red→Green→Refactor)で実装・固定していく。
-> 文言・画像の「良さ」など非決定的な事項はここに書かない(→ `experiments/`)。
+> ステータス: engine(決定的コア)は TDD 実装済み(key-counter / speed-zone / cheer-trigger /
+> time-of-day / baseline 定型文)。agent(プロバイダー I/O・プール生成・事前合成)と main の発動経路も実装済み。
+> UI(renderer / preload)は最小構成のみ、キャラ作成フロー本体は未実装 — 詳細な進捗はリポジトリ直下の `README.md`。
+> 文言・画像の「良さ」など非決定的な事項はここに書かない(指標で計測して判断する)。
 
 ## ファイル
 

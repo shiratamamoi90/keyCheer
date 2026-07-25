@@ -2,14 +2,14 @@ import { describe, it, expect } from "vitest";
 import { shouldFire } from "../../src/engine/trigger.js";
 import { DEFAULT_TRIGGER_CONFIG } from "../../src/engine/triggerConfig.js";
 
-describe("trigger / regular firing", () => {
+describe("trigger / 通常応援を N 回ごとに発動", () => {
   it("fires regular when count reaches a multiple of `regular`", () => {
     // GIVEN regular=50、カウントが 50 に到達
     expect(shouldFire(50, { regular: 50, milestones: [] })).toBe("regular");
     expect(shouldFire(100, { regular: 50, milestones: [] })).toBe("regular");
   });
 
-  it("does not fire on non-multiple counts [境界]", () => {
+  it("倍数以外では発動しない [境界]", () => {
     // GIVEN regular=50
     expect(shouldFire(49, { regular: 50, milestones: [] })).toBeNull();
     expect(shouldFire(51, { regular: 50, milestones: [] })).toBeNull();
@@ -26,7 +26,7 @@ describe("trigger / regular firing", () => {
   });
 });
 
-describe("trigger / milestone firing", () => {
+describe("trigger / マイルストーン発動", () => {
   it("fires milestone when count matches a milestone value", () => {
     // GIVEN milestones=[1000,5000,10000]、カウントが 1000
     expect(shouldFire(1000, { regular: 50, milestones: [1000, 5000, 10000] })).toBe("milestone");
@@ -44,7 +44,7 @@ describe("trigger / milestone firing", () => {
   });
 });
 
-describe("trigger / milestone 空配列(milestone OFF)[境界]", () => {
+describe("trigger / マイルストーン空配列(milestone OFF)[境界]", () => {
   it("only regular fires when milestones is empty", () => {
     expect(shouldFire(1000, { regular: 50, milestones: [] })).toBe("regular");
     expect(shouldFire(1001, { regular: 50, milestones: [] })).toBeNull();

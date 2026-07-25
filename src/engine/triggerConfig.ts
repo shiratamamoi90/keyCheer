@@ -82,11 +82,17 @@ export function mergeWithDefaults(partial: Partial<TriggerConfig>): TriggerConfi
 }
 
 // シナリオ: 既存 `triggers.regular = 100`(旧既定)→ 50 にリセット + 通知フラグ
-export function migrateLegacyDefaults(config: TriggerConfig): {
+// シナリオ: 以降ユーザーが明示変更した値は尊重する(再上書きしない)
+//   移行は **1 回だけ**効く。既に移行済み(alreadyMigrated)なら 100 はユーザーの明示設定として尊重する。
+//   移行済みかどうかの永続化は呼び出し側(main/store)の責務(engine は副作用を持たない)。
+export function migrateLegacyDefaults(
+  config: TriggerConfig,
+  alreadyMigrated = false,
+): {
   config: TriggerConfig;
   migrated: boolean;
 } {
-  if (config.regular === LEGACY_REGULAR_DEFAULT) {
+  if (!alreadyMigrated && config.regular === LEGACY_REGULAR_DEFAULT) {
     return {
       config: { ...config, regular: DEFAULT_TRIGGER_CONFIG.regular },
       migrated: true,

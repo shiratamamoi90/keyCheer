@@ -12,12 +12,12 @@ describe("key-counter / isActive", () => {
     expect(isActive(null, 1_000, 60)).toBe(false);
   });
 
-  it("treats keys within threshold as active", () => {
+  it("アクティブ判定(`activeThresholdSec` 以内): treats keys within threshold as active", () => {
     // GIVEN last=1000, threshold=60s, now=last+59s
     expect(isActive(1_000, 1_000 + 59_000, 60)).toBe(true);
   });
 
-  it("ends session at threshold boundary (strict less-than)", () => {
+  it("閾値ちょうどは非アクティブ: ends session at threshold boundary (strict less-than)", () => {
     // GIVEN 閾値ちょうど = 非アクティブ
     expect(isActive(1_000, 1_000 + 60_000, 60)).toBe(false);
   });
@@ -26,7 +26,7 @@ describe("key-counter / isActive", () => {
     expect(isActive(1_000, 1_000 + 61_000, 60)).toBe(false);
   });
 
-  it("responds to threshold changes (60 -> 120)", () => {
+  it("閾値変更後の判定: responds to threshold changes (60 -> 120)", () => {
     // GIVEN activeThresholdSec = 120
     // WHEN now = last + 90s
     expect(isActive(1_000, 1_000 + 90_000, 120)).toBe(true);
@@ -45,7 +45,7 @@ describe("key-counter / recordKeyPress", () => {
     activeMs,
   });
 
-  it("increments count on each event (first press)", () => {
+  it("キー押下でカウント加算: increments count on each event (first press)", () => {
     // GIVEN initial state
     // WHEN press at t=1000
     // THEN count=1, lastKey=1000, activeMs=0(初回はギャップなし)
@@ -53,7 +53,7 @@ describe("key-counter / recordKeyPress", () => {
     expect(next).toEqual(at(1, 1_000, 0));
   });
 
-  it("counts each event for simultaneous keys", () => {
+  it("同時押し・複数キーもそれぞれ1カウント: counts each event for simultaneous keys", () => {
     // GIVEN 同時に 2 イベント発生(同 timestamp)
     let s = recordKeyPress(initialKeyCounterState, 1_000, 60);
     s = recordKeyPress(s, 1_000, 60);
@@ -62,7 +62,7 @@ describe("key-counter / recordKeyPress", () => {
     expect(s.activeMs).toBe(0);
   });
 
-  it("counts OS auto-repeat as raw events (no debounce)", () => {
+  it("キーリピート(押しっぱなし): counts OS auto-repeat as raw events (no debounce)", () => {
     // GIVEN OS リピートが 10 件高速発火
     let s = initialKeyCounterState;
     for (let i = 0; i < 10; i++) {
@@ -71,7 +71,7 @@ describe("key-counter / recordKeyPress", () => {
     expect(s.count).toBe(10);
   });
 
-  it("accumulates active duration between consecutive in-threshold keys", () => {
+  it("アクティブ秒数の累積: accumulates active duration between consecutive in-threshold keys", () => {
     // GIVEN 1000ms 間隔で 3 連続押下、threshold=60s → 全部アクティブ継続
     let s = recordKeyPress(initialKeyCounterState, 1_000, 60); // first: +0
     s = recordKeyPress(s, 1_500, 60); // +500ms

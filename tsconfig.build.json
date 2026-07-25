@@ -1,0 +1,15 @@
+{
+  // 配布用の出力設定。src だけを dist へ出す(tests は含めない)。
+  // rootDir=src なので dist/main/index.js・dist/preload/index.js・dist/renderer/popup.js が並ぶ
+  // (package.json の main が指す位置)。バンドラは使わない(change 0007 確定事項 #1)。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests"]
+}
