@@ -20,7 +20,7 @@ function makeChild() {
   const child: ChildHandleLike & {
     fireClose: (code: number | null) => void;
     fireError: (err: Error) => void;
-    kill: ReturnType<typeof vi.fn>;
+    kill: ReturnType<typeof vi.fn<(signal?: string) => void>>;
   } = {
     on(event: string, cb: (arg: never) => void) {
       (handlers[event] ??= []).push(cb as (arg: unknown) => void);
