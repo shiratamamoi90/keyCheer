@@ -8,19 +8,55 @@
     />
     <title>KeyCheer</title>
     <style>
-      /* 見た目は仕様外(デザイン判断)。ここでは「プレースホルダーが読める」だけを満たす。 */
+      /* 見た目は仕様外(デザイン判断)。ここでは「読めて操作できる」だけを満たす。 */
       html,
       body {
         margin: 0;
         height: 100%;
-        font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+        /* Windows がターゲットのため Yu Gothic UI / Meiryo を優先する。
+           それ以外(WSL での開発時など)でも豆腐にならないよう、CJK を持つ
+           一般的なフォントへフォールバックする。CSP が default-src 'none' で
+           font-src を許可していないため、Web フォントは使わず OS のフォントのみに頼る。 */
+        font-family:
+          "Yu Gothic UI", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans",
+          "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
       }
-      .placeholder {
+      .form {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        font-size: 16px;
+        flex-direction: column;
+        gap: 12px;
+        padding: 24px;
+        font-size: 14px;
+      }
+      .form h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .form label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .form input,
+      .form textarea,
+      .form select {
+        font: inherit;
+        padding: 6px;
+      }
+      .form button {
+        align-self: flex-start;
+        font: inherit;
+        padding: 6px 20px;
+      }
+      .error {
+        margin: 0;
+        color: #c0392b;
+      }
+      .notice {
+        color: #b9770e;
+      }
+      .status {
+        margin: 0;
       }
     </style>
   </head>
