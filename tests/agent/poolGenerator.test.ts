@@ -188,3 +188,39 @@ describe("poolGenerator / 初期状態", () => {
     }
   });
 });
+
+// spec: specs/integrations.md「プール一括生成成功」(24 シナリオ × 8 文 = 192 文)
+// プロンプトで件数を指示しても LLM がそのとおり返す保証はない。多く返された場合に
+// そのまま採用すると、プール総数・生成時間・ディスク使用量の見積もりが崩れる
+// (2026-07-26 の 480 → 192 削減が無意味になる)。
+describe("poolGenerator / 要求数を超える応答は切り詰める [境界]", () => {
+  it("truncates a bucket to messagesPerBucket when the provider returns more", async () => {
+    const generator = makeGenerator(async ({ count }) =>
+      Array.from({ length: count + 7 }, (_, i) => `msg${i}`),
+    );
+    const state = await generatePool({ characterId: "c", character, generator });
+
+    for (const key of ALL_BUCKET_KEYS) {
+      expect(state.pool.buckets[key]).toHaveLength(MESSAGES_PER_BUCKET);
+    }
+    expect(isPoolComplete(state)).toBe(true);
+  });
+
+  it("keeps a short bucket as-is (少ない分は失敗にしない)", async () => {
+    const generator = makeGenerator(async () => ["ひとつだけ"]);
+    const state = await generatePool({ characterId: "c", character, generator });
+    expect(state.pool.buckets[ALL_BUCKET_KEYS[0]!]).toHaveLength(1);
+    expect(state.completion[ALL_BUCKET_KEYS[0]!]).toBe("complete");
+  });
+
+  it("honours an explicit messagesPerBucket override", async () => {
+    const generator = makeGenerator(async () => Array.from({ length: 50 }, (_, i) => `m${i}`));
+    const state = await generatePool({
+      characterId: "c",
+      character,
+      generator,
+      messagesPerBucket: 3,
+    });
+    expect(state.pool.buckets[ALL_BUCKET_KEYS[0]!]).toHaveLength(3);
+  });
+});

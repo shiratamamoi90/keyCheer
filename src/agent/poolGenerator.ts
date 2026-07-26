@@ -65,10 +65,15 @@ export function buildSystemPrompt(
 }
 
 // シナリオ: 文字数契約 [境界] — 30 文字超は切り詰め(再生成キューではなく切り詰め方式を採用)
-function sanitizeMessages(raw: string[]): string[] {
+// シナリオ: 要求数を超える応答は切り詰める [境界] — 件数はプロンプトで指示するだけでは
+// 守られない(LLM が多く返すことがある)。そのまま採用するとプール総数・生成時間・
+// ディスク使用量の見積もりが崩れるため、ここで上限を機械的に効かせる。
+// 少ない分は切り上げない(空でなければバケットとして成立するため)。
+function sanitizeMessages(raw: string[], limit: number): string[] {
   return raw
     .map((t) => t.trim())
     .filter((t) => t.length > 0)
+    .slice(0, limit)
     .map((t) => [...t].slice(0, MAX_MESSAGE_LENGTH).join(""));
 }
 
@@ -116,7 +121,7 @@ export async function generatePool(input: GeneratePoolInput): Promise<PoolGenera
         ...(seed !== undefined ? { seed } : {}),
         timeoutMs: timeoutMsPerBucket,
       });
-      const texts = sanitizeMessages(raw);
+      const texts = sanitizeMessages(raw, messagesPerBucket);
       if (texts.length === 0) {
         // 全文が空 = 実質失敗。空バケット complete にすると発動時フォールバック頼みになるため failed
         completion[key] = "failed";
