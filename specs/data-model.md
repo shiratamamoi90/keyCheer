@@ -49,8 +49,21 @@
     "excludedApps": [], // スキーマのみ用意。Phase 1 では参照しない
     "excludedKeys": [], // スキーマのみ用意。Phase 1 では参照しない
   },
+  "onboarding": {
+    "skipMainWindowAutoShow": false, // 既定 false。true ならキャラ未作成でも起動時のメインウィンドウ自動表示をしない(→ specs/main-window.md)
+  },
 }
 ```
+
+## `hasCharacter` の判定(→ specs/main-window.md)
+
+`character` が「作成済み」かどうかは、単なるキーの有無ではなく必須フィールドの充足で判定する
+(`src/engine/hasCharacter.ts`。純粋関数。main がメインウィンドウの自動表示判定に使う)。
+
+- `name` / `personality` が非空文字列であること
+- `imagePaths` / `voicevoxSpeakerId` が存在すること
+
+上記いずれか欠ける・`character` 自体が未保存の場合は「未作成」として扱う。
 
 ## メッセージプール(キャラごとに別ファイル)
 

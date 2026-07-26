@@ -7,7 +7,7 @@
 //      認識させるには拡張子が .mjs である必要がある(windows.ts はこのパスを参照している)
 //   3. preload 内の相対 import(./api.js 等)も .mjs へ付け替える
 
-import { cp, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,22 @@ async function copyRendererAssets() {
   }
 }
 
+// main.html の React プレースホルダーが読む UMD ビルド。バンドラを使わない制約上、
+// node_modules から dist/renderer/vendor へそのままコピーする(changes/0008)。
+async function copyReactVendor() {
+  const vendor = join(dist, "renderer", "vendor");
+  await mkdir(vendor, { recursive: true });
+  const files = [
+    ["react", "umd/react.production.min.js"],
+    ["react-dom", "umd/react-dom.production.min.js"],
+  ];
+  for (const [pkg, rel] of files) {
+    const from = join(root, "node_modules", pkg, rel);
+    if (!existsSync(from)) continue;
+    await cp(from, join(vendor, rel.split("/").pop()));
+  }
+}
+
 async function toMjs() {
   const preloadDir = join(dist, "preload");
   if (!existsSync(preloadDir)) return;
@@ -39,5 +55,6 @@ async function toMjs() {
 }
 
 await copyRendererAssets();
+await copyReactVendor();
 await toMjs();
 console.log("postbuild: renderer assets copied, preload emitted as .mjs");

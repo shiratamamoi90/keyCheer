@@ -3,8 +3,10 @@
 ここには **決定的な振る舞いの確定仕様**だけを置く。仕様は人間が承認し、TDD 実装が済んだ時点でここへ反映する。
 
 > ステータス: engine(決定的コア)は TDD 実装済み(key-counter / speed-zone / cheer-trigger /
-> time-of-day / baseline 定型文)。agent(プロバイダー I/O・プール生成・事前合成)と main の発動経路も実装済み。
-> UI(renderer / preload)は最小構成のみ、キャラ作成フロー本体は未実装 — 詳細な進捗はリポジトリ直下の `README.md`。
+> time-of-day / baseline 定型文 / hasCharacter)。agent(プロバイダー I/O・プール生成・事前合成)と
+> main の発動経路・メインウィンドウ開閉も実装済み。
+> UI(renderer / preload)は最小構成のみ、キャラ作成フロー本体(フォーム・同意ダイアログ)は未実装 —
+> 詳細な進捗はリポジトリ直下の `README.md`。
 > 文言・画像の「良さ」など非決定的な事項はここに書かない(指標で計測して判断する)。
 
 ## ファイル
@@ -15,6 +17,8 @@
 - `time-of-day.md` … 時(0..23 整数)→ `morning/afternoon/evening/night` の決定的分類
 - `data-model.md` … 設定 / 統計 / ランタイム状態のデータ契約
 - `integrations.md` … Ollama / VOICEVOX / sd.cpp 連携の決定的契約(失敗時フォールバック含む)
+- `popup.md` … 応援ポップアップの表示内容・表示時間・上書き・音声再生の決定的契約
+- `main-window.md` … メインウィンドウの開閉ライフサイクル(キャラ未作成時の自動表示・トレイ開閉)
 
 ## 不変条件(全 spec に共通)
 

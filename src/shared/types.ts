@@ -83,3 +83,28 @@ export const EMPTY_STATS: Stats = {
   dailyActiveSeconds: {},
   cheerHistory: [],
 };
+
+// キャラクターデータ契約(specs/data-model.md「設定データ」)。
+// キャラ作成フロー本体(プール・wav 生成)は別 change。ここは main が
+// 「作成済みか」を判定するために読む最小限の形のみ定義する。
+export interface Character {
+  name: string;
+  personality: string;
+  imagePaths: Record<string, string>;
+  voicevoxSpeakerId: number;
+  generatedBy: {
+    text: TextProviderId;
+    voice: VoiceProviderId;
+    image: ImageProviderId;
+  };
+}
+
+// オンボーディング状態(changes/0008-main-window-character-creation/spec.md)。
+// メインウィンドウの自動表示可否のみを持つ(キャラ作成の進捗そのものは character 側で判定)。
+export interface Onboarding {
+  skipMainWindowAutoShow: boolean;
+}
+
+export const DEFAULT_ONBOARDING: Onboarding = {
+  skipMainWindowAutoShow: false,
+};

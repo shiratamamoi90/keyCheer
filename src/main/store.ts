@@ -12,16 +12,22 @@ import {
 } from "../engine/index.js";
 import {
   EMPTY_STATS,
+  DEFAULT_ONBOARDING,
   type TriggerConfig,
   type Stats,
   type CheerHistoryEntry,
+  type Character,
+  type Onboarding,
 } from "../shared/types.js";
 
-// electron-store に持たせる最小スキーマ(Phase 1。character/popup/providers/system は UI 実装時に追加)。
+// electron-store に持たせる最小スキーマ(Phase 1。popup/providers/system は UI 実装時に追加)。
+// character はキャラ作成フロー本体(別 change)が書き込む想定。ここでは読み取りのみ扱う。
 interface PersistedSchema {
   triggers: TriggerConfig;
   stats: Stats;
   meta: AppMeta;
+  character?: Character;
+  onboarding?: Onboarding;
   [key: string]: unknown;
 }
 
@@ -40,6 +46,9 @@ export interface AppStore {
   appendCheerHistory(entry: CheerHistoryEntry): void;
   recordKeyCount(day: string, delta: number): void;
   addActiveSeconds(day: string, seconds: number): void;
+  loadCharacter(): Character | undefined;
+  loadOnboarding(): Onboarding;
+  saveOnboarding(onboarding: Onboarding): void;
 }
 
 // electron-store 実体を注入可能にして、main 以外(将来のテスト用フェイク)からも組み立て可能にする。
@@ -109,6 +118,19 @@ export function createAppStore(store: StoreLike): AppStore {
           [day]: (stats.dailyActiveSeconds[day] ?? 0) + seconds,
         },
       });
+    },
+
+    // 読み取りのみ(書き込みはキャラ作成フロー本体の change で実装する)。
+    loadCharacter() {
+      return store.get("character") as Character | undefined;
+    },
+
+    loadOnboarding() {
+      return (store.get("onboarding") as Onboarding | undefined) ?? DEFAULT_ONBOARDING;
+    },
+
+    saveOnboarding(onboarding) {
+      store.set("onboarding", onboarding);
     },
   };
 }

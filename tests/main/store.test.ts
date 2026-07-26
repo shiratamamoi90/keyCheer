@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createAppStore, type StoreLike } from "../../src/main/store.js";
-import { DEFAULT_TRIGGER_CONFIG, EMPTY_STATS } from "../../src/shared/types.js";
+import { DEFAULT_TRIGGER_CONFIG, EMPTY_STATS, DEFAULT_ONBOARDING } from "../../src/shared/types.js";
 
 function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
   raw: Record<string, unknown>;
@@ -103,5 +103,38 @@ describe("store / 統計の追記", () => {
     expect(stats.cheerHistory[1]?.count).toBe(100);
     // 入力内容は履歴に含めない(プライバシー方針)
     expect(Object.keys(stats.cheerHistory[0]!)).not.toContain("keys");
+  });
+});
+
+describe("store / character の読み込み(changes/0008)", () => {
+  it("returns undefined when no character has been saved yet", () => {
+    const store = createAppStore(fakeStore());
+    expect(store.loadCharacter()).toBeUndefined();
+  });
+
+  it("returns the saved character as-is", () => {
+    const character = {
+      name: "チア",
+      personality: "元気いっぱい",
+      imagePaths: { normal: "n.png" },
+      voicevoxSpeakerId: 3,
+      generatedBy: { text: "local-ollama", voice: "local-voicevox", image: "local-sdcpp" },
+    };
+    const store = createAppStore(fakeStore({ character }));
+    expect(store.loadCharacter()).toEqual(character);
+  });
+});
+
+describe("store / onboarding の読み書き(changes/0008)", () => {
+  it("defaults skipMainWindowAutoShow to false when unset", () => {
+    const store = createAppStore(fakeStore());
+    expect(store.loadOnboarding()).toEqual(DEFAULT_ONBOARDING);
+  });
+
+  it("persists an updated onboarding value", () => {
+    const fake = fakeStore();
+    const store = createAppStore(fake);
+    store.saveOnboarding({ skipMainWindowAutoShow: true });
+    expect(createAppStore(fake).loadOnboarding()).toEqual({ skipMainWindowAutoShow: true });
   });
 });

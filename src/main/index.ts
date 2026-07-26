@@ -10,6 +10,7 @@ import { createStore, createAppStore } from "./store.js";
 import { createKeyHook } from "./keyHook.js";
 import { createCheerRuntime } from "./cheerRuntime.js";
 import { createPopupWindow } from "./windows.js";
+import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
 import { registerAudioProtocol } from "./audioProtocol.js";
@@ -32,6 +33,15 @@ function bootstrap(): void {
 
   registerAudioProtocol(app.getPath("userData"));
   const popupWindow = createPopupWindow();
+
+  // メインウィンドウ(将来キャラ作成 UI を載せる場所)。キャラ未作成 かつ 自動表示未スキップなら
+  // 起動時に自動表示する(changes/0008-main-window-character-creation/spec.md)。
+  const mainWindow = createMainWindow({
+    getCharacter: () => store.loadCharacter(),
+    getOnboarding: () => store.loadOnboarding(),
+    saveOnboarding: (onboarding) => store.saveOnboarding(onboarding),
+  });
+  mainWindow.showIfNeeded();
   // 表示中に次の発動が来たら上書き + 表示時間リセット(spec 0007 確定事項 #3)。
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -77,13 +87,15 @@ function bootstrap(): void {
     onConfigUpdated: (next) => cheerRuntime.setConfig(next),
   });
 
-  createTray({ onQuit: () => app.quit() });
+  createTray({ onQuit: () => app.quit(), onShowMain: () => mainWindow.toggle() });
 
   // 旧既定(regular=100)からの移行通知(specs/data-model.md)。
   // 表示先の設定ウィンドウは本スライスに無いため、今はログに残すだけ。
   // 設定 UI の change で IpcChannel.ConfigMigrated を使って画面に出す。
   if (migrated) {
-    console.info(`[keycheer] triggers.regular を既定値 ${config.regular} にリセットしました(旧既定 100)`);
+    console.info(
+      `[keycheer] triggers.regular を既定値 ${config.regular} にリセットしました(旧既定 100)`,
+    );
   }
 
   // 常駐アプリ:全ウィンドウを閉じても終了しない(トレイに残る)。

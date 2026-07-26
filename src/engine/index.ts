@@ -62,3 +62,5 @@ export {
   EVENING_START,
   NIGHT_START,
 } from "./timeOfDay.js";
+
+export { hasCharacter } from "./hasCharacter.js";

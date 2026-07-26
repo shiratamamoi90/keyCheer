@@ -166,7 +166,8 @@ export default tseslint.config(
   {
     // renderer / preload:表示に必要な型は src/shared からのみ。engine 実装・providers・Node には触れない。
     // preload だけは electron(contextBridge / ipcRenderer)の import を許す。
-    files: ["src/renderer/**/*.ts", "src/preload/**/*.ts"],
+    // .tsx も対象に含める(changes/0008 で main window の renderer に React を導入したため)。
+    files: ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "src/preload/**/*.ts"],
     rules: {
       "no-restricted-imports": ["error", { patterns: rendererRestrictedPatterns }],
     },
