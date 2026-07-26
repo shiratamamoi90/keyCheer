@@ -187,3 +187,58 @@ describe("store / 保存に失敗した場合 [異常系]", () => {
     ).toThrow();
   });
 });
+
+// spec: changes/0011-pool-generation-and-playback/spec.md
+//   「characterId はキャラ保存時に決まる」「characterId は名前を変えても変わらない [不変条件]」
+describe("store / characterId はキャラ保存時に決まる", () => {
+  it("assigns an id on the first save", () => {
+    const store = createAppStore(fakeStore());
+    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
+    const saved = store.loadCharacter();
+    expect(typeof saved?.id).toBe("string");
+    expect(saved?.id.length).toBeGreaterThan(0);
+  });
+
+  it("uses an id that is safe as a directory name", () => {
+    const store = createAppStore(fakeStore());
+    store.saveCharacter({ name: "チア / 危険\\名前", personality: "元気", voicevoxSpeakerId: 3 });
+    // パス区切り・Windows で使えない文字を含まない(pool.json / voices/ のディレクトリ名になる)
+    expect(store.loadCharacter()?.id).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe("store / characterId は名前を変えても変わらない [不変条件]", () => {
+  it("keeps the id across profile updates", () => {
+    const store = createAppStore(fakeStore());
+    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
+    const first = store.loadCharacter()?.id;
+
+    store.saveCharacter({ name: "別の名前", personality: "冷静", voicevoxSpeakerId: 8 });
+    expect(store.loadCharacter()?.id).toBe(first);
+    expect(store.loadCharacter()?.name).toBe("別の名前");
+  });
+});
+
+describe("store / system 設定の読み込みと既定値補完", () => {
+  it("fills defaults when system is absent", () => {
+    const store = createAppStore(fakeStore());
+    const system = store.loadSystem();
+    expect(system.ollamaEndpoint).toBe("http://localhost:11434");
+    expect(system.voicevoxEndpoint).toBe("http://localhost:50021");
+    expect(system.ollamaModel).toBe("gemma2:2b");
+  });
+
+  it("keeps values already present and fills only the missing ones", () => {
+    const store = createAppStore(fakeStore({ system: { ollamaModel: "llama3" } }));
+    const system = store.loadSystem();
+    expect(system.ollamaModel).toBe("llama3");
+    expect(system.voicevoxEndpoint).toBe("http://localhost:50021");
+  });
+
+  it("only ever points at localhost by default [不変条件]", () => {
+    const system = createAppStore(fakeStore()).loadSystem();
+    for (const url of [system.ollamaEndpoint, system.voicevoxEndpoint]) {
+      expect(["localhost", "127.0.0.1", "[::1]"]).toContain(new URL(url).hostname);
+    }
+  });
+});

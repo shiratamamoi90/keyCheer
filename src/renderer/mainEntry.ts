@@ -19,6 +19,12 @@ import {
   CHARACTER_PERSONALITY_MAX,
   type CharacterFormError,
 } from "./characterForm.js";
+import {
+  initialGenerationState,
+  applyGenerationEvent,
+  canStartGeneration,
+  progressLabel,
+} from "./generationView.js";
 import type { SpeakerOption } from "../shared/ipc.js";
 // window.keycheer の型は preload の公開 API がそのまま正本(popup.ts と同じ宣言を共有する)。
 // 型だけの import なので renderer → preload の実行時依存は生まれない。
@@ -53,6 +59,9 @@ function App(): ReactNS.ReactElement {
   const [speakersUnavailable, setSpeakersUnavailable] = React.useState(false);
   const [errors, setErrors] = React.useState<CharacterFormError[]>([]);
   const [status, setStatus] = React.useState<string | null>(null);
+  // 生成(changes/0011)。状態遷移は generationView(純粋関数)に委譲する。
+  const [saved, setSaved] = React.useState(false);
+  const [generation, setGeneration] = React.useState(initialGenerationState());
 
   // シナリオ: 話者一覧を VOICEVOX から取得する / VOICEVOX 未起動でも画面は壊れない [異常系]
   React.useEffect(() => {
@@ -65,6 +74,33 @@ function App(): ReactNS.ReactElement {
     });
   }, []);
 
+  // 確定事項「保存だけして後で生成できる」— 再起動後も現在のキャラを読み出して
+  // フォームへ復元し、生成ボタンを押せる状態にする。
+  React.useEffect(() => {
+    void window.keycheer.getCharacter().then((character) => {
+      if (character === null) return;
+      setName(character.name);
+      setPersonality(character.personality);
+      setSpeakerId(character.voicevoxSpeakerId);
+      setSaved(true);
+    });
+  }, []);
+
+  // シナリオ: 生成の進捗が通知される
+  React.useEffect(() => {
+    return window.keycheer.onGenerationProgress((payload) => {
+      setGeneration((prev) => applyGenerationEvent(prev, payload));
+    });
+  }, []);
+
+  const startGeneration = (): void => {
+    void window.keycheer.startGeneration().then((result) => {
+      if (!result.ok) {
+        setGeneration((prev) => applyGenerationEvent(prev, { type: "failed", reason: result.reason }));
+      }
+    });
+  };
+
   const submit = (): void => {
     const input = { name, personality, speakerId };
     const validation = validateCharacterForm(input);
@@ -75,6 +111,7 @@ function App(): ReactNS.ReactElement {
     void window.keycheer.saveCharacter(toCharacterProfile(input)).then((result) => {
       // シナリオ: 保存に失敗した場合 [異常系] — 失敗を伝えるだけで画面は壊さない
       setStatus(result.ok ? "保存しました" : "保存できませんでした");
+      if (result.ok) setSaved(true);
     });
   };
 
@@ -133,6 +170,20 @@ function App(): ReactNS.ReactElement {
     ),
 
     React.createElement("button", { type: "button", onClick: submit }, "保存"),
+
+    // 生成(changes/0011)。キャラ保存後にのみ押せる。生成中は押せない。
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: startGeneration,
+        disabled: !canStartGeneration(generation, saved),
+      },
+      "応援メッセージと音声を生成",
+    ),
+    progressLabel(generation) !== ""
+      ? React.createElement("p", { className: "progress" }, progressLabel(generation))
+      : null,
 
     ...errors.map((e) =>
       React.createElement("p", { key: `${e.field}:${e.reason}`, className: "error" }, errorText(e)),

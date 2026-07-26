@@ -194,3 +194,84 @@ describe("cheerRuntime / 設定変更の即時反映", () => {
     expect(emitted[0]?.count).toBe(10);
   });
 });
+
+// spec: specs/pool-generation.md
+//   「起動時にプールを読み込んで応援に使う」「キャラ未作成なら baseline で応援する」
+//   「生成直後は再起動なしで応援に反映される」
+// setActiveCharacter に渡す実データが揃ったのが changes/0011。ここでは
+// 「プールを渡すと発動内容が baseline から切り替わる」ことを固定する。
+import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/engine/messagePool.js";
+
+function poolWith(text: string): MessagePool {
+  const buckets = Object.fromEntries(
+    ALL_BUCKET_KEYS.map((k) => [k, [{ id: `${k}-000`, text }]]),
+  ) as MessagePool["buckets"];
+  return { characterId: "char-1", version: 1, buckets };
+}
+
+function fireOnce(runtime: ReturnType<typeof createCheerRuntime>): void {
+  let now = T0;
+  for (let i = 0; i < CONFIG.regular; i += 1) {
+    runtime.handleKeyPress(now);
+    now += 100;
+  }
+}
+
+describe("cheerRuntime / キャラ未作成なら baseline で応援する", () => {
+  it("emits a baseline message with no wav", () => {
+    const h = harness();
+    const runtime = createCheerRuntime(h.deps, CONFIG);
+    runtime.setActiveCharacter(null, null);
+
+    fireOnce(runtime);
+
+    expect(h.emitted).toHaveLength(1);
+    expect(h.emitted[0]!.wavPath).toBeNull();
+    // baseline 定型文の ID は "baseline:" 接頭辞を持つ(specs/data-model.md)
+    expect(h.history[0]!.messageId).toMatch(/^baseline:/);
+  });
+});
+
+describe("cheerRuntime / 起動時にプールを読み込んで応援に使う", () => {
+  it("emits the pool text and resolves a wav path", () => {
+    const h = harness();
+    const runtime = createCheerRuntime(h.deps, CONFIG);
+    runtime.setActiveCharacter("char-1", poolWith("プールの文言"));
+
+    fireOnce(runtime);
+
+    expect(h.emitted[0]!.message).toBe("プールの文言");
+    expect(h.emitted[0]!.wavPath).toContain("/userData/characters/char-1/voices/");
+    expect(h.history[0]!.messageId).not.toMatch(/^baseline:/);
+  });
+
+  it("falls back to text only when the wav is missing", () => {
+    const h = harness({ wavExists: () => false });
+    const runtime = createCheerRuntime(h.deps, CONFIG);
+    runtime.setActiveCharacter("char-1", poolWith("プールの文言"));
+
+    fireOnce(runtime);
+
+    expect(h.emitted[0]!.message).toBe("プールの文言");
+    expect(h.emitted[0]!.wavPath).toBeNull();
+  });
+});
+
+describe("cheerRuntime / 生成直後は再起動なしで応援に反映される", () => {
+  it("switches from baseline to the pool without recreating the runtime", () => {
+    const h = harness();
+    const runtime = createCheerRuntime(h.deps, CONFIG);
+    runtime.setActiveCharacter(null, null);
+    fireOnce(runtime);
+    const baselineMessage = h.emitted[0]!.message;
+
+    // 生成完了 → onPoolReady 相当
+    runtime.setActiveCharacter("char-1", poolWith("生成された文言"));
+    fireOnce(runtime);
+
+    expect(h.emitted).toHaveLength(2);
+    expect(h.emitted[1]!.message).toBe("生成された文言");
+    expect(h.emitted[1]!.message).not.toBe(baselineMessage);
+    expect(h.emitted[1]!.wavPath).not.toBeNull();
+  });
+});

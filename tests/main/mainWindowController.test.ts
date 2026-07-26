@@ -13,6 +13,7 @@ import {
 import type { Character, Onboarding } from "../../src/shared/types.js";
 
 const COMPLETE: Character = {
+  id: "char-test",
   name: "チア",
   personality: "元気いっぱい",
   imagePaths: { normal: "n.png" },

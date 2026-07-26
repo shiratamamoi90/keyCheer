@@ -8,10 +8,13 @@
 import { IpcChannel } from "../shared/ipc.js";
 import type {
   CheerFiredPayload,
+  CharacterSummaryPayload,
   ConfigMigratedPayload,
+  GenerationProgressPayload,
   GetSpeakersResult,
   SaveCharacterRequest,
   SaveCharacterResult,
+  StartGenerationResult,
   StatsSnapshot,
   UpdateTriggerConfigRequest,
 } from "../shared/ipc.js";
@@ -38,6 +41,11 @@ export interface KeyCheerApi {
   // キャラ作成フォーム(changes/0010)。生成は含まない。
   saveCharacter(profile: SaveCharacterRequest): Promise<SaveCharacterResult>;
   getSpeakers(): Promise<GetSpeakersResult>;
+  getCharacter(): Promise<CharacterSummaryPayload | null>;
+  // プール・wav の生成(changes/0011)。進捗は onGenerationProgress で流れてくる。
+  startGeneration(): Promise<StartGenerationResult>;
+  cancelGeneration(): Promise<void>;
+  onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
 }
 
 function subscribe<T>(ipc: IpcLike, channel: string, listener: (payload: T) => void): () => void {
@@ -58,5 +66,11 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
     saveCharacter: (profile) =>
       ipc.invoke(IpcChannel.SaveCharacter, profile) as Promise<SaveCharacterResult>,
     getSpeakers: () => ipc.invoke(IpcChannel.GetSpeakers) as Promise<GetSpeakersResult>,
+    getCharacter: () =>
+      ipc.invoke(IpcChannel.GetCharacter) as Promise<CharacterSummaryPayload | null>,
+    startGeneration: () => ipc.invoke(IpcChannel.StartGeneration) as Promise<StartGenerationResult>,
+    cancelGeneration: () => ipc.invoke(IpcChannel.CancelGeneration) as Promise<void>,
+    onGenerationProgress: (listener) =>
+      subscribe(ipc, IpcChannel.GenerationProgress, listener),
   };
 }

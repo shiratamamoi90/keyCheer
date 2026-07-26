@@ -12,6 +12,11 @@ export const IpcChannel = {
   // キャラ作成フォーム(changes/0010)。生成は含まず、プロフィールの保存と話者一覧のみ。
   SaveCharacter: "keycheer:save-character",
   GetSpeakers: "keycheer:get-speakers",
+  GetCharacter: "keycheer:get-character",
+  // プール・wav の生成(changes/0011)。生成はローカルのみ(Ollama / VOICEVOX)。
+  StartGeneration: "keycheer:start-generation",
+  CancelGeneration: "keycheer:cancel-generation",
+  GenerationProgress: "keycheer:generation-progress",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   ConfigMigrated: "keycheer:config-migrated",
@@ -66,3 +71,24 @@ export interface SpeakerOption {
 export type GetSpeakersResult =
   | { ok: true; speakers: SpeakerOption[] }
   | { ok: false; reason: "unavailable" };
+
+// main → renderer: 生成の進捗・完了・失敗(changes/0011)。
+// 応援発動経路とは無関係のチャンネル。プロバイダー実装の型は載せない。
+export type GenerationProgressPayload =
+  | { type: "progress"; phase: "text" | "voice"; done: number; total: number }
+  | { type: "done"; synthesized: number; missing: number }
+  | { type: "failed"; reason: string };
+
+// renderer ← main: 保存済みキャラの要約(未保存なら null)。
+// 表示と生成に要る値だけ。imagePaths / generatedBy は渡さない。
+export interface CharacterSummaryPayload {
+  id: string;
+  name: string;
+  personality: string;
+  voicevoxSpeakerId: number;
+}
+
+// renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
+export type StartGenerationResult =
+  | { ok: true }
+  | { ok: false; reason: "already-running" | "no-character" };

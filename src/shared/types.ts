@@ -88,6 +88,9 @@ export const EMPTY_STATS: Stats = {
 // キャラ作成フロー本体(プール・wav 生成)は別 change。ここは main が
 // 「作成済みか」を判定するために読む最小限の形のみ定義する。
 export interface Character {
+  // 保存時に採番される不変 ID(changes/0011)。pool.json と voices/ のディレクトリ名になるため
+  // 名前には依存させない — 名前を変えるたびに生成済みの wav が迷子になるのを防ぐ。
+  id: string;
   name: string;
   personality: string;
   imagePaths: Record<string, string>;
@@ -107,4 +110,19 @@ export interface Onboarding {
 
 export const DEFAULT_ONBOARDING: Onboarding = {
   skipMainWindowAutoShow: false,
+};
+
+// システム設定(specs/data-model.md「system」)。キャラ作成時の生成先を決める。
+// 既定はすべて localhost — 応援発動経路はここを参照しないが、生成経路も既定では
+// 外部に出ない(プライバシー方針)。
+export interface SystemConfig {
+  ollamaModel: string;
+  ollamaEndpoint: string;
+  voicevoxEndpoint: string;
+}
+
+export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
+  ollamaModel: "gemma2:2b",
+  ollamaEndpoint: "http://localhost:11434",
+  voicevoxEndpoint: "http://localhost:50021",
 };

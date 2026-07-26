@@ -79,3 +79,31 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
     expect(Object.keys(result.value).sort()).toEqual(["name", "personality", "voicevoxSpeakerId"]);
   });
 });
+
+// spec: changes/0011-pool-generation-and-playback/spec.md
+//   確定事項「保存だけして後で生成できる」— 再起動後もフォームが保存済みキャラを
+//   読み出せないと、生成ボタンへ到達できない。読み出しは公開する値を限定する。
+describe("characterInput / 保存済みキャラの読み出しは公開する値を限定する", () => {
+  it("exposes only id / name / personality / voicevoxSpeakerId", async () => {
+    const { toCharacterSummary } = await import("../../src/main/characterInput.js");
+    const summary = toCharacterSummary({
+      id: "char-1",
+      name: "チア",
+      personality: "元気",
+      voicevoxSpeakerId: 3,
+      imagePaths: { normal: "/abs/path.png" },
+      generatedBy: { text: "local-ollama", voice: "local-voicevox", image: "local-sdcpp" },
+    });
+    expect(Object.keys(summary!).sort()).toEqual([
+      "id",
+      "name",
+      "personality",
+      "voicevoxSpeakerId",
+    ]);
+  });
+
+  it("returns null when no character is saved", async () => {
+    const { toCharacterSummary } = await import("../../src/main/characterInput.js");
+    expect(toCharacterSummary(undefined)).toBeNull();
+  });
+});

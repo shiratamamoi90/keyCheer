@@ -39,3 +39,23 @@ export function validateCharacterProfile(raw: unknown): ValidateCharacterProfile
   // 既知の 3 フィールドだけを取り出す。imagePaths / pool 等を renderer から注入させない。
   return { ok: true, value: { name, personality, voicevoxSpeakerId: speakerId as number } };
 }
+
+// renderer へ返す保存済みキャラの要約(changes/0011)。
+// 確定事項「保存だけして後で生成できる」を満たすため、再起動後もフォームが
+// 現在のキャラを読み出せる必要がある。ただし renderer へ渡すのは表示と生成に要る値だけに絞る
+// (imagePaths のような絶対パスや generatedBy を UI へ流さない)。
+export interface CharacterSummary {
+  id: string;
+  name: string;
+  personality: string;
+  voicevoxSpeakerId: number;
+}
+
+export function toCharacterSummary(character: unknown): CharacterSummary | null {
+  if (!isPlainObject(character)) return null;
+  const { id, name, personality, voicevoxSpeakerId } = character;
+  if (typeof id !== "string" || id.length === 0) return null;
+  if (typeof name !== "string" || typeof personality !== "string") return null;
+  if (typeof voicevoxSpeakerId !== "number") return null;
+  return { id, name, personality, voicevoxSpeakerId };
+}

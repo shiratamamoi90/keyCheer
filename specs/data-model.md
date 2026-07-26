@@ -98,6 +98,11 @@
 - キーの定義域: `zone ∈ {slow, normal, fast}` × `type ∈ {regular, milestone}` × `timeOfDay ∈ {morning, afternoon, evening, night}` = **24 シナリオ**
 - 各バケットの目標サイズ: 8 文(`integrations.md` 参照。2026-07-26 に 20 文から引き下げ)
 - 1 文 = 30 文字以内
+- **中身が空のプールは無効**として扱う(構造が妥当でも 1 文も無ければ読み込み時に破棄し
+  baseline 定型文へ落とす)。生成失敗時も部分結果は再開のために保存するため、
+  全バケットが空の `pool.json` が残りうる。1 文でもあれば中断の途中経過として活かす。
+- **プロバイダーが要求数より多く返した場合はバケット単位で切り詰める**。件数はプロンプトで
+  指示するだけでは守られないため、総数・生成時間・ディスク使用量の見積もりを機械的に保つ。
 - メッセージ ID の規約: `{バケットキー}-{3桁連番}`(例 `slow_regular_morning-000`)。
   wav ファイル名にそのまま使うため **Windows で使える文字のみ**・プール内で一意であること。
   baseline 定型文の ID は `baseline:` 接頭辞を持ち、事前合成 wav を持たない(→ cheer-trigger.md)。
@@ -106,6 +111,9 @@
 
 - ベース: Electron `app.getPath('userData')`(OS 差を吸収、Windows: `%APPDATA%/keyCheer/`)
 - キャラ別: `{userData}/characters/{characterId}/`
+- `characterId` は**キャラ保存時に採番される不変 ID**(changes/0011)。名前から導出しない
+  — 名前を変えるたびに生成済みの wav ディレクトリが迷子になるため。ディレクトリ名になるので
+  パス区切りや Windows で使えない文字を含まない文字種のみを使う。
 - ユーザーが触る場面なし(設定 JSON のみ「設定>データ位置を開く」で参照可能、内部物の編集は非推奨)
 
 ## 音声ファイル

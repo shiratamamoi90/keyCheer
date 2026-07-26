@@ -1,6 +1,7 @@
 // index: Electron メインプロセスのエントリ。各 I/O アダプタを配線するライフサイクル層。
-// ここは「発動経路の配線」に徹する。キャラ作成フロー(providers を使う)は別モジュール(未実装)に分離し、
-// この経路に providers を混ぜない(privacy 不変条件:発動経路は外部依存ゼロ)。
+// ここは「発動経路の配線」に徹する。キャラ作成フロー(providers を使う)は
+// characterCreationIpc.ts に分離してあり、この経路に providers を混ぜない
+// (privacy 不変条件:発動経路は外部依存ゼロ。eslint.config.js で import レベルで強制)。
 //
 // テスト対象外(electron/uiohook を import する I/O グルー)。検証は typecheck / lint。
 
@@ -14,6 +15,9 @@ import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
 import { registerAudioProtocol } from "./audioProtocol.js";
+import { createNodeCharacterFs } from "./nodeCharacterFs.js";
+import { loadPool } from "./characterStore.js";
+import { registerCharacterCreation } from "./characterCreationIpc.js";
 import { IpcChannel } from "../shared/ipc.js";
 
 // 単一インスタンス化(キーフックの多重登録・トレイ重複を防ぐ)。
@@ -72,8 +76,15 @@ function bootstrap(): void {
     { initialCount: stats.totalKeyCount },
   );
 
-  // TODO: 起動時に既存キャラのプールを読み込み setActiveCharacter で紐付ける(未実装 = baseline で応援)。
-  cheerRuntime.setActiveCharacter(null, null);
+  // 起動時に既存キャラのプールを読み込んで発動経路へ紐付ける(changes/0011)。
+  // プールが無い / 壊れている場合は null のまま = baseline 定型文で応援する。
+  const characterFs = createNodeCharacterFs();
+  const savedCharacter = store.loadCharacter();
+  const savedPool =
+    savedCharacter?.id !== undefined
+      ? loadPool(characterFs, app.getPath("userData"), savedCharacter.id)
+      : null;
+  cheerRuntime.setActiveCharacter(savedCharacter?.id ?? null, savedPool);
 
   // キーフック:押下ごとにカウント記録 + 発動判定。keycode は読まない(privacy)。
   // カウンタはメモリ上で加算し、ディスクへは定期 flush する(specs/key-counter.md 不変条件)。
@@ -85,6 +96,17 @@ function bootstrap(): void {
   registerIpcHandlers({
     store,
     onConfigUpdated: (next) => cheerRuntime.setConfig(next),
+  });
+
+  // キャラ作成(プール・wav 生成)の配線。providers を使うのはこのモジュールの中だけで、
+  // 発動経路(上の cheerRuntime 配線)には混ざらない。
+  registerCharacterCreation({
+    store,
+    fs: characterFs,
+    userDataDir: app.getPath("userData"),
+    // シナリオ: 生成直後は再起動なしで応援に反映される
+    onPoolReady: (characterId, pool) => cheerRuntime.setActiveCharacter(characterId, pool),
+    getWindow: () => mainWindow.win,
   });
 
   createTray({ onQuit: () => app.quit(), onShowMain: () => mainWindow.toggle() });

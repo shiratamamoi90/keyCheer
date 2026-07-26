@@ -10,7 +10,7 @@ import type { TriggerConfig } from "../shared/types.js";
 import type { GetSpeakersResult, SaveCharacterResult } from "../shared/ipc.js";
 import { fetchSpeakers } from "./speakerCatalog.js";
 // 信頼境界の検証は electron 非依存の別モジュールに置く(テストで縛るため)。
-import { validateCharacterProfile } from "./characterInput.js";
+import { validateCharacterProfile, toCharacterSummary } from "./characterInput.js";
 
 export interface IpcDeps {
   store: AppStore;
@@ -47,6 +47,9 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return { ok: false, errors: ["failed to persist the character"] };
     }
   });
+
+  // changes/0011: 保存済みキャラの読み出し(「保存だけして後で生成できる」を成立させる)。
+  ipcMain.handle(IpcChannel.GetCharacter, () => toCharacterSummary(deps.store.loadCharacter()));
 
   // changes/0010: 話者一覧。VOICEVOX 未起動でも unavailable を返すだけで落ちない。
   ipcMain.handle(

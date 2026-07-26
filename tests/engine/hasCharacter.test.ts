@@ -8,6 +8,7 @@ import { hasCharacter } from "../../src/engine/hasCharacter.js";
 import type { Character } from "../../src/shared/types.js";
 
 const COMPLETE: Character = {
+  id: "char-test",
   name: "チア",
   personality: "元気いっぱい",
   imagePaths: { normal: "n.png" },

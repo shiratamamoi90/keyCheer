@@ -13,21 +13,23 @@ import {
 import {
   EMPTY_STATS,
   DEFAULT_ONBOARDING,
+  DEFAULT_SYSTEM_CONFIG,
   type TriggerConfig,
   type Stats,
   type CheerHistoryEntry,
   type Character,
   type Onboarding,
+  type SystemConfig,
 } from "../shared/types.js";
 
-// electron-store に持たせる最小スキーマ(Phase 1。popup/providers/system は UI 実装時に追加)。
-// character はキャラ作成フロー本体(別 change)が書き込む想定。ここでは読み取りのみ扱う。
+// electron-store に持たせる最小スキーマ(Phase 1。popup/providers は UI 実装時に追加)。
 interface PersistedSchema {
   triggers: TriggerConfig;
   stats: Stats;
   meta: AppMeta;
   character?: Character;
   onboarding?: Onboarding;
+  system?: Partial<SystemConfig>;
   [key: string]: unknown;
 }
 
@@ -47,14 +49,25 @@ export interface AppStore {
   recordKeyCount(day: string, delta: number): void;
   addActiveSeconds(day: string, seconds: number): void;
   loadCharacter(): Character | undefined;
-  // changes/0010: フォームが保存するのはプロフィールのみ(プール・wav・画像は別 change)
+  // changes/0010: フォームが保存するのはプロフィールのみ(プール・wav・画像は別 change)。
+  // changes/0011: 初回保存時に不変の characterId を採番する。
   saveCharacter(profile: Pick<Character, "name" | "personality" | "voicevoxSpeakerId">): void;
+  loadSystem(): SystemConfig;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
 }
 
 // electron-store 実体を注入可能にして、main 以外(将来のテスト用フェイク)からも組み立て可能にする。
 export type StoreLike = Pick<Store<PersistedSchema>, "get" | "set">;
+
+// characterId の採番(changes/0011)。
+// `{userData}/characters/{characterId}/` のディレクトリ名になるため、
+// パス区切りや Windows で使えない文字が混ざらない文字種だけを使う。
+// 名前からは導出しない — 名前を変えるたびに生成済みの wav が迷子になるため。
+export function newCharacterId(): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `char-${Date.now().toString(36)}-${random}`;
+}
 
 export function createStore(): StoreLike {
   return new Store<PersistedSchema>({
@@ -132,10 +145,20 @@ export function createAppStore(store: StoreLike): AppStore {
       const current = store.get("character") as Character | undefined;
       store.set("character", {
         ...current,
+        // シナリオ: characterId は名前を変えても変わらない [不変条件]
+        // 既存 ID があれば必ず引き継ぐ。名前から導出しないのは、名前変更で
+        // 生成済みの wav ディレクトリが迷子になるのを防ぐため。
+        id: current?.id ?? newCharacterId(),
         name: profile.name,
         personality: profile.personality,
         voicevoxSpeakerId: profile.voicevoxSpeakerId,
       });
+    },
+
+    // シナリオ: system 設定の読み込みと既定値補完
+    loadSystem() {
+      const stored = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
+      return { ...DEFAULT_SYSTEM_CONFIG, ...stored };
     },
 
     loadOnboarding() {
