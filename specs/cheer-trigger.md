@@ -34,7 +34,7 @@
 
 ## シナリオ: プールからの 1 文選択 + 対応 wav 再生
 
-- GIVEN プールがシナリオキー `(fast, regular, evening)` に 20 文を持つ
+- GIVEN プールがシナリオキー `(fast, regular, evening)` に 8 文を持つ
 - WHEN 応援が発動する
 - THEN そのバケットから 1 文だけ取り出し、対応する事前合成 wav を再生する(LLM/TTS の呼び出しは発生しない)
 

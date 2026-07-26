@@ -4,6 +4,7 @@ import {
   emptyPoolState,
   isPoolComplete,
   MAX_MESSAGE_LENGTH,
+  MESSAGES_PER_BUCKET,
 } from "../../src/agent/poolGenerator.js";
 import { ALL_BUCKET_KEYS } from "../../src/engine/messagePool.js";
 import type { TextGenerator, TextGenerationRequest } from "../../src/engine/providers/types.js";
@@ -29,7 +30,7 @@ function makeGenerator(
 }
 
 describe("poolGenerator / プール一括生成成功", () => {
-  it("generates 24 buckets x 20 messages, addressable by scenario key", async () => {
+  it("generates 24 buckets x MESSAGES_PER_BUCKET messages, addressable by scenario key", async () => {
     const generator = makeGenerator(async ({ count }) =>
       Array.from({ length: count }, (_, i) => `msg${i}`),
     );
@@ -46,10 +47,13 @@ describe("poolGenerator / プール一括生成成功", () => {
     let total = 0;
     for (const key of ALL_BUCKET_KEYS) {
       expect(state.completion[key]).toBe("complete");
-      expect(state.pool.buckets[key]).toHaveLength(20);
+      expect(state.pool.buckets[key]).toHaveLength(MESSAGES_PER_BUCKET);
       total += state.pool.buckets[key].length;
     }
-    expect(total).toBe(480);
+    expect(total).toBe(24 * MESSAGES_PER_BUCKET);
+    // 既定値は 8(= 192 文)。20(= 480 文)から引き下げた根拠は
+    // decisions/0007 と changes/0011 を参照(作成時間とディスク使用量)。
+    expect(MESSAGES_PER_BUCKET).toBe(8);
     // シナリオごとに 1 回ずつ呼ばれ、scenarioKey が渡る
     expect(generator.calls).toHaveLength(24);
     expect(new Set(generator.calls.map((c) => c.scenarioKey))).toEqual(new Set(ALL_BUCKET_KEYS));

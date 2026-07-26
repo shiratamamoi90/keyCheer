@@ -96,7 +96,7 @@
 ```
 
 - キーの定義域: `zone ∈ {slow, normal, fast}` × `type ∈ {regular, milestone}` × `timeOfDay ∈ {morning, afternoon, evening, night}` = **24 シナリオ**
-- 各バケットの目標サイズ: 約 20 文(`integrations.md` 参照)
+- 各バケットの目標サイズ: 8 文(`integrations.md` 参照。2026-07-26 に 20 文から引き下げ)
 - 1 文 = 30 文字以内
 - メッセージ ID の規約: `{バケットキー}-{3桁連番}`(例 `slow_regular_morning-000`)。
   wav ファイル名にそのまま使うため **Windows で使える文字のみ**・プール内で一意であること。

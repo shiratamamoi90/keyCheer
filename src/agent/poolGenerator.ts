@@ -26,7 +26,13 @@ export interface CharacterProfile {
 
 // 1 文 = 30 文字以内(コードポイント基準。specs/data-model.md)
 export const MAX_MESSAGE_LENGTH = 30;
-export const MESSAGES_PER_BUCKET = 20;
+// バケットあたりの生成文数。24 バケット × 8 = 192 文。
+// 2026-07-26 に 20(= 480 文)から引き下げた。理由はキャラ作成の所要時間と wav の
+// ディスク使用量(480 文だと 16〜32 分 / 約 80MB、192 文なら 7〜13 分 / 約 33MB)。
+// 20 という数字は decisions/0007 で [要確認] のまま置かれた未検証の見積もりだった。
+// 引き下げにより同じ文を聞く頻度は上がる(1 時間の打鍵で 3〜4 回 → 9 回程度)。
+// 「何文なら飽きないか」は指標でしか測れないため、実使用で調整する前提の初期値。
+export const MESSAGES_PER_BUCKET = 8;
 const DEFAULT_TIMEOUT_MS_PER_BUCKET = 60_000;
 
 export function emptyPoolState(characterId: string): PoolGenerationState {
