@@ -32,11 +32,15 @@ function fakeIpc(): IpcLike & {
 describe("preload / preload が公開する API は最小 [不変条件]", () => {
   it("exposes exactly the documented functions and nothing else", () => {
     const api = createKeyCheerApi(fakeIpc());
+    // 0010 で saveCharacter / getSpeakers を追加(キャラ作成フォーム用)。
+    // 追加してもなお Node / Electron のオブジェクトは露出させない。
     expect(Object.keys(api).sort()).toEqual([
+      "getSpeakers",
       "getStats",
       "getTriggerConfig",
       "onCheerFired",
       "onConfigMigrated",
+      "saveCharacter",
       "updateTriggerConfig",
     ]);
     for (const value of Object.values(api)) {

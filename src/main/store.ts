@@ -47,6 +47,8 @@ export interface AppStore {
   recordKeyCount(day: string, delta: number): void;
   addActiveSeconds(day: string, seconds: number): void;
   loadCharacter(): Character | undefined;
+  // changes/0010: フォームが保存するのはプロフィールのみ(プール・wav・画像は別 change)
+  saveCharacter(profile: Pick<Character, "name" | "personality" | "voicevoxSpeakerId">): void;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
 }
@@ -120,9 +122,20 @@ export function createAppStore(store: StoreLike): AppStore {
       });
     },
 
-    // 読み取りのみ(書き込みはキャラ作成フロー本体の change で実装する)。
     loadCharacter() {
       return store.get("character") as Character | undefined;
+    },
+
+    // changes/0010: プロフィールのみを書く。既存のキャラは上書きする(1 キャラのみ)。
+    // プール・wav・画像・generatedBy は生成フローの change が埋める。
+    saveCharacter(profile) {
+      const current = store.get("character") as Character | undefined;
+      store.set("character", {
+        ...current,
+        name: profile.name,
+        personality: profile.personality,
+        voicevoxSpeakerId: profile.voicevoxSpeakerId,
+      });
     },
 
     loadOnboarding() {

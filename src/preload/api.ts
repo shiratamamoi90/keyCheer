@@ -9,6 +9,9 @@ import { IpcChannel } from "../shared/ipc.js";
 import type {
   CheerFiredPayload,
   ConfigMigratedPayload,
+  GetSpeakersResult,
+  SaveCharacterRequest,
+  SaveCharacterResult,
   StatsSnapshot,
   UpdateTriggerConfigRequest,
 } from "../shared/ipc.js";
@@ -32,6 +35,9 @@ export interface KeyCheerApi {
   getTriggerConfig(): Promise<TriggerConfig>;
   updateTriggerConfig(config: UpdateTriggerConfigRequest): Promise<UpdateTriggerConfigResult>;
   getStats(): Promise<StatsSnapshot>;
+  // キャラ作成フォーム(changes/0010)。生成は含まない。
+  saveCharacter(profile: SaveCharacterRequest): Promise<SaveCharacterResult>;
+  getSpeakers(): Promise<GetSpeakersResult>;
 }
 
 function subscribe<T>(ipc: IpcLike, channel: string, listener: (payload: T) => void): () => void {
@@ -49,5 +55,8 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
     updateTriggerConfig: (config) =>
       ipc.invoke(IpcChannel.UpdateTriggerConfig, config) as Promise<UpdateTriggerConfigResult>,
     getStats: () => ipc.invoke(IpcChannel.GetStats) as Promise<StatsSnapshot>,
+    saveCharacter: (profile) =>
+      ipc.invoke(IpcChannel.SaveCharacter, profile) as Promise<SaveCharacterResult>,
+    getSpeakers: () => ipc.invoke(IpcChannel.GetSpeakers) as Promise<GetSpeakersResult>,
   };
 }

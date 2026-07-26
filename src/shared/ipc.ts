@@ -9,6 +9,9 @@ export const IpcChannel = {
   GetTriggerConfig: "keycheer:get-trigger-config",
   UpdateTriggerConfig: "keycheer:update-trigger-config",
   GetStats: "keycheer:get-stats",
+  // キャラ作成フォーム(changes/0010)。生成は含まず、プロフィールの保存と話者一覧のみ。
+  SaveCharacter: "keycheer:save-character",
+  GetSpeakers: "keycheer:get-speakers",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   ConfigMigrated: "keycheer:config-migrated",
@@ -42,3 +45,24 @@ export type UpdateTriggerConfigRequest = TriggerConfig;
 
 // renderer ← main の統計スナップショット(表示用)
 export type StatsSnapshot = Stats;
+
+// renderer → main: キャラ作成フォームが保存するプロフィール(changes/0010)。
+// プール・wav・画像は含まない(生成は別 change)。
+export interface SaveCharacterRequest {
+  name: string;
+  personality: string;
+  voicevoxSpeakerId: number;
+}
+
+export type SaveCharacterResult = { ok: true } | { ok: false; errors: string[] };
+
+// renderer ← main: 話者一覧(VOICEVOX から取得。未起動なら unavailable)
+export interface SpeakerOption {
+  id: number;
+  name: string;
+  styleName: string;
+}
+
+export type GetSpeakersResult =
+  | { ok: true; speakers: SpeakerOption[] }
+  | { ok: false; reason: "unavailable" };

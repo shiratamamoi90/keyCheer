@@ -7,6 +7,10 @@ import { validateTriggerConfig } from "../engine/index.js";
 import { IpcChannel } from "../shared/ipc.js";
 import type { AppStore } from "./store.js";
 import type { TriggerConfig } from "../shared/types.js";
+import type { GetSpeakersResult, SaveCharacterResult } from "../shared/ipc.js";
+import { fetchSpeakers } from "./speakerCatalog.js";
+// 信頼境界の検証は electron 非依存の別モジュールに置く(テストで縛るため)。
+import { validateCharacterProfile } from "./characterInput.js";
 
 export interface IpcDeps {
   store: AppStore;
@@ -29,4 +33,24 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
 
   ipcMain.handle(IpcChannel.GetStats, () => deps.store.loadStats());
+
+  // changes/0010: キャラ作成フォームの保存。生成は行わない(別 change)。
+  ipcMain.handle(IpcChannel.SaveCharacter, (_event, raw: unknown): SaveCharacterResult => {
+    const validated = validateCharacterProfile(raw);
+    if (!validated.ok) return { ok: false, errors: validated.errors };
+    try {
+      deps.store.saveCharacter(validated.value);
+      return { ok: true };
+    } catch (error) {
+      // シナリオ: 保存に失敗した場合 [異常系] — クラッシュせず失敗を返す
+      console.error("saveCharacter failed", error);
+      return { ok: false, errors: ["failed to persist the character"] };
+    }
+  });
+
+  // changes/0010: 話者一覧。VOICEVOX 未起動でも unavailable を返すだけで落ちない。
+  ipcMain.handle(
+    IpcChannel.GetSpeakers,
+    async (): Promise<GetSpeakersResult> => await fetchSpeakers(),
+  );
 }

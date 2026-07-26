@@ -138,3 +138,52 @@ describe("store / onboarding の読み書き(changes/0008)", () => {
     expect(createAppStore(fake).loadOnboarding()).toEqual({ skipMainWindowAutoShow: true });
   });
 });
+
+// spec: changes/0010-character-creation-local/spec.md
+//   「保存するとプロフィールが永続化される」「保存に失敗した場合 [異常系]」
+describe("store / 保存するとプロフィールが永続化される", () => {
+  it("persists the profile so the next load reads it back", () => {
+    const backing = fakeStore();
+    const store = createAppStore(backing);
+
+    store.saveCharacter({ name: "チア", personality: "元気いっぱい", voicevoxSpeakerId: 3 });
+
+    expect(store.loadCharacter()).toMatchObject({
+      name: "チア",
+      personality: "元気いっぱい",
+      voicevoxSpeakerId: 3,
+    });
+  });
+
+  it("overwrites the previous character (1 キャラのみ)", () => {
+    const store = createAppStore(fakeStore());
+
+    store.saveCharacter({ name: "A", personality: "p1", voicevoxSpeakerId: 1 });
+    store.saveCharacter({ name: "B", personality: "p2", voicevoxSpeakerId: 2 });
+
+    expect(store.loadCharacter()).toMatchObject({ name: "B", voicevoxSpeakerId: 2 });
+  });
+
+  it("does not invent image paths (画像は別 change)", () => {
+    const store = createAppStore(fakeStore());
+
+    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
+
+    const saved = store.loadCharacter();
+    expect(saved?.imagePaths ?? {}).toEqual({});
+  });
+});
+
+describe("store / 保存に失敗した場合 [異常系]", () => {
+  it("propagates the write failure instead of reporting success", () => {
+    const backing = fakeStore();
+    backing.set = (() => {
+      throw new Error("EACCES");
+    }) as StoreLike["set"];
+    const store = createAppStore(backing);
+
+    expect(() =>
+      store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 }),
+    ).toThrow();
+  });
+});
