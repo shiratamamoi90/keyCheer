@@ -145,3 +145,28 @@ describe("providerRouter / プロバイダー未登録 [境界]", () => {
     expect(result).toEqual({ ok: false, reason: "provider-unavailable" });
   });
 });
+
+// spec: changes/0009-additional-external-providers/spec.md
+// 回帰ガード:providerRouter はプロバイダーごとの分岐を持たない汎用実装であり、
+// 新しい外部プロバイダーを足しても router 側の変更を要さないことを固定する。
+// (実装より後に書いたテスト。Red は経ていない — router は最初からこの性質を満たしていた)
+describe("providerRouter / 新しい外部プロバイダーは router を変えずに通る", () => {
+  it("routes anthropic through the same generic path as openai", async () => {
+    const gen = fakeGenerator("anthropic", async () => ["がんばれ!"]);
+    const { logger, entries } = noopAudit();
+
+    const result = await routeTextGeneration({
+      providerId: "anthropic",
+      providers: { anthropic: gen },
+      request,
+      consent: grantConsent(emptyConsentState(), "anthropic"),
+      hasApiKey: true,
+      audit: logger,
+      auditSummary: "20 messages",
+    });
+
+    expect(result).toEqual({ ok: true, messages: ["がんばれ!"] });
+    // 外部プロバイダーなので監査ログに残る
+    expect(entries).toHaveLength(1);
+  });
+});
