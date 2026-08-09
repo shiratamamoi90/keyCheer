@@ -12,13 +12,17 @@
 
 ### MVP 実装セット(確定)
 
-Phase 1 では各種別**ローカル 1 + 外部 1** の最小セットを実装する:
+union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stability-ai` は changes/0009 で追加):
 
-- text: `local-ollama` + `openai`
-- voice: `local-voicevox` + `openai-tts`
-- image: `local-sdcpp` + `openai-dalle`
+- text: `local-ollama` + `openai` + `anthropic`
+- voice: `local-voicevox` + `openai-tts` + `elevenlabs`
+- image: `local-sdcpp` + `openai-dalle` + `stability-ai`
 
-`anthropic` / `elevenlabs` / `stability-ai` は同じインターフェース上で後の change で追加する(抽象は最初から union に含めて将来の追加を阻まない)。
+3 種別とも同一インターフェース(`TextGenerator` / `VoiceSynthesizer` / `ImageGenerator`)上に実装され、
+プロバイダーを増やしてもインターフェースは変えない。
+
+> **UI 未接続**:外部プロバイダーを選ぶ画面と同意ダイアログは未実装のため、
+> 現時点で外部プロバイダーへ到達する経路はアプリ上に存在しない(changes/0003 の残タスク)。
 
 ## 共通: プライバシー境界
 
@@ -76,6 +80,35 @@ Phase 1 では各種別**ローカル 1 + 外部 1** の最小セットを実装
 - WHEN 応援が発動する
 - THEN providers 設定は参照されず、localhost を含めて一切のサーバー通信が発生しない(→ cheer-trigger.md)
 
+## 共通: 外部プロバイダー呼び出しの契約
+
+種別(text / voice / image)を問わず、すべての外部プロバイダー実装が満たす。
+
+### シナリオ: API キーは認証ヘッダにのみ乗る [不変条件]
+
+- GIVEN 任意の外部プロバイダー実装に API キーを渡す
+- WHEN リクエストを組み立てる
+- THEN キーは認証ヘッダにのみ現れ、URL クエリ・リクエストボディ・ログには現れない
+
+### シナリオ: タイムアウト予算を超えたら中断する [境界]
+
+- GIVEN `timeoutMs` を指定したリクエスト
+- WHEN 応答が `timeoutMs` を超えても返らない
+- THEN `AbortController` でリクエストを中断し、タイマーは `finally` で必ず解除される
+
+### シナリオ: HTTP エラーは throw する [異常系]
+
+- GIVEN API が 4xx / 5xx を返す
+- WHEN 生成を実行する
+- THEN 自動リトライせず、ステータスコードと本文を含むエラーを throw する
+  (呼び出し側の `providerRouter` が `generation-failed` に変換する)
+
+### シナリオ: 実 API を叩かずにテストできる [不変条件]
+
+- GIVEN テストコード
+- WHEN プロバイダー実装を生成する
+- THEN `fetchFn` を注入でき、テストは実際の外部通信を一切発生させない
+
 ## テキスト(セリフ生成 — キャラ作成時のみ)
 
 キャラ作成時に **(zone × type × timeOfDay) = 3 × 2 × 4 = 24 シナリオ × 8 文 = 192 文**を一括生成し、メッセージプールとして保存する。
@@ -121,6 +154,36 @@ Phase 1 では各種別**ローカル 1 + 外部 1** の最小セットを実装
 - WHEN プール生成を要求
 - THEN エラーを表示し、キャラ作成は完了させない(クラッシュもしない)。**自動で別プロバイダーには切り替えない**
 
+### シナリオ: Anthropic (外部) の呼び出し契約
+
+- GIVEN `TextGenerationRequest`(`systemPrompt` / `scenarioKey` / `count` / `timeoutMs`)
+- WHEN `generateMessages` を呼ぶ
+- THEN `POST https://api.anthropic.com/v1/messages` へ送信し、応答本文を 1 行 1 文に分割して返す
+  - ヘッダは `content-type: application/json` / `anthropic-version: 2023-06-01` / `x-api-key`
+  - `systemPrompt` は**トップレベルの `system` パラメータ**に置く(`messages` 内の system ロールではない。OpenAI 実装と構造が異なる)
+  - `messages` には最低 1 件の `user` ロールが必要なため、生成指示(`scenarioKey` と `count` を含む文)を user メッセージとして送る
+  - 応答本文は `content[]` のうち `type === "text"` の要素の `text` を連結して取る
+  - 行頭の箇条書き記号・番号は `openaiText` と同じ規則で除去し、空行は除去する
+
+### シナリオ: Anthropic の max_tokens を要求量から決める [境界]
+
+- GIVEN `count` 文の生成要求
+- WHEN リクエストボディを組み立てる
+- THEN Anthropic API が**必須とする** `max_tokens` を `count` から決定的に算出して渡す
+  - 算出式は `count * TOKENS_PER_MESSAGE + MARGIN`。係数は定数として 1 箇所に定義する
+  - 初期値は `TOKENS_PER_MESSAGE = 64` / `MARGIN = 256`(`count = 20` なら `1536`)
+  - 根拠は 1 文 30 字以内という上記「文字数契約」。日本語は 1 文字あたり複数トークンになり得るため係数に余裕を持たせる
+  - 定数は実疎通での実測後に調整しうる(調整しても本契約は変わらない)
+
+### シナリオ: Anthropic はシードを受け付けない [境界]
+
+- GIVEN `seed` を指定した `TextGenerationRequest`
+- WHEN リクエストを組み立てる
+- THEN シードは**送らない**(Messages API に `seed` パラメータが存在しないため)。
+  このプロバイダーは「同一シードで同一出力」を満たさない
+  - テキスト生成の再現性はベストエフォート(既存の `openai` 実装も同様)。
+    再現性の不変条件は画像生成(`local-sdcpp` / `stability-ai`)で担保する
+
 ## 音声(TTS — キャラ作成時のみ)
 
 プール 192 文を全文事前合成して wav 保存。発動時はこの wav を再生するだけ。
@@ -149,6 +212,24 @@ Phase 1 では各種別**ローカル 1 + 外部 1** の最小セットを実装
 - WHEN 完了処理に入る
 - THEN 失敗 5 文は「wav 欠損」フラグで残り、キャラ作成は完了する(発動時のフォールバックで吸収 → cheer-trigger.md)
 
+### シナリオ: ElevenLabs (外部) の呼び出し契約
+
+- GIVEN `VoiceSynthesisRequest`(`text` / `speakerId` / `timeoutMs`)
+- WHEN `synthesize` を呼ぶ
+- THEN `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}` へ送信し、音声バイト列を返す
+  - 認証ヘッダは `xi-api-key`(Bearer ではない)
+  - 必須ボディは `text` のみ。`model_id` 未指定時はプロバイダー既定に任せる
+  - `voice_id` は**パスパラメータ**。数値の `speakerId` を注入された写像テーブル(`Record<number, string>`)で voice ID 文字列へ変換する
+  - `speakerId` 未指定、またはテーブルに該当が無い場合は既定 voice ID を使う
+
+### シナリオ: ElevenLabs も wav を返す [不変条件]
+
+- GIVEN `VoiceSynthesizer` の戻り値契約(wav バイト列)
+- WHEN ElevenLabs から音声を受け取る
+- THEN `output_format` に `wav_*` を指定して **wav** バイト列を直接受け取る(既定は mp3 のため明示指定が必須)
+  - **`wav_44100` は使わない**(Pro 以上のプラン契約が必要)。既定は `wav_22050`
+  - wav を直接要求できるため、変換用の依存追加は不要で `voiceSynth` と再生側への波及もない
+
 ## 画像 (sd.cpp / 外部 — キャラ作成時のみ)
 
 キャラ設定画面の「AIで生成」押下**だけ**で起動(常駐しない)。SD1.5 アニメ系 + LCM LoRA(ローカル時)、4 ステップ、Vulkan iGPU 加速→失敗時 CPU。通常/喜び/激励の 3 枚を**同一シード+表情タグ差し替え**で生成。
@@ -163,7 +244,34 @@ Phase 1 では各種別**ローカル 1 + 外部 1** の最小セットを実装
 
 - GIVEN 同じシード・プロンプト・プロバイダー
 - WHEN 2 回生成
-- THEN 同じ画像が得られる(プロバイダー側の決定性に依存。外部 API でシード対応がない場合は [要確認])
+- THEN 同じ画像が得られる(プロバイダー側の決定性に依存)
+  - `local-sdcpp` / `stability-ai` は `seed` を受け付けるため再現性を満たせる
+  - `openai-dalle` は seed 非対応のため満たさない([要確認] — 再現性が要る用途では選ばせない)
+
+### シナリオ: Stability AI (外部) の呼び出し契約
+
+- GIVEN `ImageGenerationRequest`(`prompt` / `seed` / `count` / `width` / `height` / `timeoutMs`)
+- WHEN `generateImages` を呼ぶ
+- THEN `POST https://api.stability.ai/v2beta/stable-image/generate/core` へ送信し、`count` 枚の画像バイト列を返す
+  - 認証は `Authorization: Bearer`、`accept: image/*` で生バイト列を受け取る(`application/json` にすると base64 JSON になるため使わない)
+  - リクエストは `multipart/form-data`。`prompt` / `seed` / `aspect_ratio` / `output_format` を送る
+  - **1 リクエスト 1 枚**しか返らないため、`openai-dalle` と同じく `count` 回呼ぶ
+  - 表情差分は同一 `seed` + プロンプトのタグ差し替えで作る(sd.cpp と同じ方式)
+
+### シナリオ: Stability AI は width/height をアスペクト比へ写像する [境界]
+
+- GIVEN `ImageGenerationRequest` の `width` / `height`(既定は 512x768)
+- WHEN リクエストを組み立てる
+- THEN 任意の width/height は受け付けられず `aspect_ratio` のみを取るため、`width:height` の比を決定的な規則で許容値へ写像する
+  - 許容値は `21:9` / `16:9` / `3:2` / `5:4` / `1:1` / `4:5` / `2:3` / `9:16` / `9:21`。一覧はコード内の 1 箇所にまとめる
+  - 512x768 は `2:3` に完全一致する
+  - 完全一致しない比は**数値として最も近い許容値**を選ぶ(決定的な規則)
+
+### シナリオ: 解決できないサイズはエラーにする [異常系]
+
+- GIVEN `width` または `height` が 0 以下、あるいは比が写像規則で解決できない
+- WHEN 生成を実行する
+- THEN 黙って別サイズで生成せず、エラーを throw する
 
 ### シナリオ: タイムアウト/失敗時 [異常系]
 

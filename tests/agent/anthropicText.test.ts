@@ -31,7 +31,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("anthropic-text / メッセージ生成の呼び出し契約", () => {
+describe("anthropic-text / Anthropic (外部) の呼び出し契約", () => {
   it("POSTs /v1/messages with the documented headers and body shape", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({
@@ -86,7 +86,7 @@ describe("anthropic-text / メッセージ生成の呼び出し契約", () => {
   });
 });
 
-describe("anthropic-text / max_tokens を要求量から決める [境界]", () => {
+describe("anthropic-text / Anthropic の max_tokens を要求量から決める [境界]", () => {
   it("computes max_tokens deterministically from count", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
@@ -124,7 +124,7 @@ describe("anthropic-text / Anthropic はシードを受け付けない [境界]"
   });
 });
 
-describe("anthropic-text / API キーはヘッダにのみ乗る [不変条件]", () => {
+describe("anthropic-text / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
   it("puts the key in x-api-key only, never in the url or body", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({ apiKey: "sk-ant-secret", model: "m", fetchFn });
@@ -175,7 +175,7 @@ describe("anthropic-text / タイムアウト予算を超えたら中断する [
     });
 
     const pending = gen.generateMessages({ ...baseRequest, timeoutMs: 5_000 });
-    const assertion = expect(pending).rejects.toThrow();
+    const assertion = expect(pending).rejects.toThrow(/aborted/);
     await vi.advanceTimersByTimeAsync(5_000);
     await assertion;
   });

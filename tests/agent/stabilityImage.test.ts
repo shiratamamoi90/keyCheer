@@ -29,7 +29,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("stability-image / 画像生成の呼び出し契約", () => {
+describe("stability-image / Stability AI (外部) の呼び出し契約", () => {
   it("POSTs multipart/form-data to the core endpoint with bearer auth and accept image/*", async () => {
     const fetchFn = vi.fn(async () => okImage([137, 80, 78, 71]));
     const gen = createStabilityImageGenerator({ apiKey: "sk-stab", fetchFn });
@@ -80,7 +80,7 @@ describe("stability-image / 同一シードで再現する", () => {
   });
 });
 
-describe("stability-image / width/height をアスペクト比へ写像する [境界]", () => {
+describe("stability-image / Stability AI は width/height をアスペクト比へ写像する [境界]", () => {
   it("maps the default 512x768 to 2:3 exactly", () => {
     expect(resolveAspectRatio(512, 768)).toBe("2:3");
   });
@@ -134,7 +134,7 @@ describe("stability-image / 解決できないサイズはエラーにする [�
   });
 });
 
-describe("stability-image / API キーはヘッダにのみ乗る [不変条件]", () => {
+describe("stability-image / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
   it("never puts the key in the url or the form body", async () => {
     const fetchFn = vi.fn(async () => okImage([1]));
     const gen = createStabilityImageGenerator({ apiKey: "sk-secret", fetchFn });
@@ -176,7 +176,7 @@ describe("stability-image / タイムアウト予算を超えたら中断する 
     });
 
     const pending = gen.generateImages({ ...baseRequest, count: 1, timeoutMs: 30_000 });
-    const assertion = expect(pending).rejects.toThrow();
+    const assertion = expect(pending).rejects.toThrow(/aborted/);
     await vi.advanceTimersByTimeAsync(30_000);
     await assertion;
   });

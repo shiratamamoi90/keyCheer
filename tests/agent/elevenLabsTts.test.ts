@@ -21,7 +21,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("elevenlabs-tts / 音声合成の呼び出し契約", () => {
+describe("elevenlabs-tts / ElevenLabs (外部) の呼び出し契約", () => {
   it("POSTs to /v1/text-to-speech/{voice_id} with xi-api-key and the text body", async () => {
     const fetchFn = vi.fn(async () => okAudio([1, 2, 3]));
     const synth = createElevenLabsSynthesizer({
@@ -79,7 +79,7 @@ describe("elevenlabs-tts / 音声合成の呼び出し契約", () => {
   });
 });
 
-describe("elevenlabs-tts / 返る音声は wav である [不変条件]", () => {
+describe("elevenlabs-tts / ElevenLabs も wav を返す [不変条件]", () => {
   it("requests a wav output format explicitly (既定の mp3 に任せない)", async () => {
     const fetchFn = vi.fn(async () => okAudio([1]));
     const synth = createElevenLabsSynthesizer({
@@ -110,7 +110,7 @@ describe("elevenlabs-tts / 返る音声は wav である [不変条件]", () => 
   });
 });
 
-describe("elevenlabs-tts / API キーはヘッダにのみ乗る [不変条件]", () => {
+describe("elevenlabs-tts / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
   it("never puts the key in the url or the body", async () => {
     const fetchFn = vi.fn(async () => okAudio([1]));
     const synth = createElevenLabsSynthesizer({
@@ -153,7 +153,7 @@ describe("elevenlabs-tts / タイムアウト予算を超えたら中断する [
     });
 
     const pending = synth.synthesize({ ...baseRequest, timeoutMs: 3_000 });
-    const assertion = expect(pending).rejects.toThrow();
+    const assertion = expect(pending).rejects.toThrow(/aborted/);
     await vi.advanceTimersByTimeAsync(3_000);
     await assertion;
   });

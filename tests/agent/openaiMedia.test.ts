@@ -1,13 +1,44 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createOpenAITTSSynthesizer } from "../../src/agent/providers/openaiTts.js";
 import { createOpenAIDalleGenerator } from "../../src/agent/providers/openaiDalle.js";
 
 // spec: changes/0003-external-api-providers/spec.md / specs/integrations.md(外部音声・画像)
 //   OpenAI TTS (/v1/audio/speech) と DALL-E (/v1/images/generations)。
 //   バイナリ返却、bearer 認証、自動リトライしない(C6)。
+// specs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
 
 const WAV = new Uint8Array([82, 73, 70, 70, 1, 2]);
 const IMG = new Uint8Array([137, 80, 78, 71]); // PNG magic
+
+function okAudio(): Response {
+  return new Response(WAV.buffer.slice(0), {
+    status: 200,
+    headers: { "content-type": "audio/wav" },
+  });
+}
+
+function okImage(): Response {
+  return new Response(
+    JSON.stringify({ data: [{ b64_json: Buffer.from(IMG).toString("base64") }] }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
+const imageRequest = {
+  prompt: "anime girl",
+  seed: 42,
+  count: 1,
+  width: 512,
+  height: 512,
+  timeoutMs: 60_000,
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("openai-tts / 呼び出し契約", () => {
   it("POSTs /v1/audio/speech with bearer auth and returns audio bytes", async () => {
@@ -36,7 +67,9 @@ describe("openai-tts / 呼び出し契約", () => {
     expect(body.input).toBe("おはよう");
     expect([...bytes.slice(0, 4)]).toEqual([82, 73, 70, 70]);
   });
+});
 
+describe("openai-tts / HTTP エラーは throw する [異常系]", () => {
   it("rejects on failure without retrying", async () => {
     const fetchFn = vi.fn(async () => new Response("err", { status: 500 }));
     const synth = createOpenAITTSSynthesizer({
@@ -47,6 +80,49 @@ describe("openai-tts / 呼び出し契約", () => {
     });
     await expect(synth.synthesize({ text: "x", timeoutMs: 10_000 })).rejects.toThrow(/500/);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("openai-tts / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
+  it("puts the key in Authorization only, never in the url or body", async () => {
+    const fetchFn = vi.fn(async () => okAudio());
+    const synth = createOpenAITTSSynthesizer({
+      apiKey: "sk-tts-secret",
+      model: "tts-1",
+      voice: "alloy",
+      fetchFn,
+    });
+
+    await synth.synthesize({ text: "おはよう", timeoutMs: 10_000 });
+
+    const [url, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer sk-tts-secret");
+    expect(url).not.toContain("sk-tts-secret");
+    expect(init.body as string).not.toContain("sk-tts-secret");
+  });
+});
+
+describe("openai-tts / タイムアウト予算を超えたら中断する [境界]", () => {
+  it("aborts the in-flight request once timeoutMs elapses", async () => {
+    vi.useFakeTimers();
+    const fetchFn = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const synth = createOpenAITTSSynthesizer({
+      apiKey: "sk",
+      model: "tts-1",
+      voice: "alloy",
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const pending = synth.synthesize({ text: "x", timeoutMs: 5_000 });
+    const assertion = expect(pending).rejects.toThrow(/aborted/);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
   });
 });
 
@@ -113,20 +189,55 @@ describe("openai-dalle / 呼び出し契約", () => {
     }
     expect(images).toHaveLength(3);
   });
+});
 
+describe("openai-dalle / HTTP エラーは throw する [異常系]", () => {
   it("rejects on failure without retrying", async () => {
     const fetchFn = vi.fn(async () => new Response("bad", { status: 400 }));
     const gen = createOpenAIDalleGenerator({ apiKey: "sk", model: "dall-e-3", fetchFn });
-    await expect(
-      gen.generateImages({
-        prompt: "x",
-        seed: 1,
-        count: 1,
-        width: 512,
-        height: 512,
-        timeoutMs: 60_000,
-      }),
-    ).rejects.toThrow(/400/);
+    await expect(gen.generateImages(imageRequest)).rejects.toThrow(/400/);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("openai-dalle / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
+  it("puts the key in Authorization only, never in the url or body", async () => {
+    const fetchFn = vi.fn(async () => okImage());
+    const gen = createOpenAIDalleGenerator({
+      apiKey: "sk-dalle-secret",
+      model: "dall-e-3",
+      fetchFn,
+    });
+
+    await gen.generateImages(imageRequest);
+
+    const [url, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer sk-dalle-secret");
+    expect(url).not.toContain("sk-dalle-secret");
+    expect(init.body as string).not.toContain("sk-dalle-secret");
+  });
+});
+
+describe("openai-dalle / タイムアウト予算を超えたら中断する [境界]", () => {
+  // 予算は 3 枚全体に掛かる(openaiDalle.ts:35)。1 枚目が返らないまま超過したら中断する。
+  it("aborts the in-flight request once timeoutMs elapses", async () => {
+    vi.useFakeTimers();
+    const fetchFn = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const gen = createOpenAIDalleGenerator({
+      apiKey: "sk",
+      model: "dall-e-3",
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const pending = gen.generateImages({ ...imageRequest, count: 3, timeoutMs: 5_000 });
+    const assertion = expect(pending).rejects.toThrow(/aborted/);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
   });
 });
