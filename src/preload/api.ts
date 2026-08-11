@@ -17,8 +17,13 @@ import type {
   StartGenerationResult,
   StatsSnapshot,
   UpdateTriggerConfigRequest,
+  ConsentSnapshot,
 } from "../shared/ipc.js";
-import type { TriggerConfig } from "../shared/types.js";
+import type { TriggerConfig, ProviderId, ProviderSelection } from "../shared/types.js";
+
+// 保存結果の型は providerStore が正本。preload は形だけ再宣言せず構造で受ける
+// (main の実装を preload から import しないため — 発動経路/プロセス境界を跨がせない)。
+export type SaveProvidersResult = { ok: true } | { ok: false; errors: string[] };
 
 // Electron `ipcRenderer` のうち本 API が使う部分だけを型で表す(依存を薄く保つ・テストで差し替える)
 export interface IpcLike {
@@ -46,6 +51,12 @@ export interface KeyCheerApi {
   startGeneration(): Promise<StartGenerationResult>;
   cancelGeneration(): Promise<void>;
   onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
+  // 外部プロバイダーの同意(changes/0003)。grantConsent は同意ダイアログを
+  // 通過した時にだけ呼ぶ — ダイアログの表示・チェック操作では呼ばない。
+  getProviders(): Promise<ProviderSelection>;
+  setProviders(selection: ProviderSelection): Promise<SaveProvidersResult>;
+  getConsent(): Promise<ConsentSnapshot>;
+  grantConsent(id: ProviderId): Promise<ConsentSnapshot>;
 }
 
 function subscribe<T>(ipc: IpcLike, channel: string, listener: (payload: T) => void): () => void {
@@ -70,7 +81,11 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       ipc.invoke(IpcChannel.GetCharacter) as Promise<CharacterSummaryPayload | null>,
     startGeneration: () => ipc.invoke(IpcChannel.StartGeneration) as Promise<StartGenerationResult>,
     cancelGeneration: () => ipc.invoke(IpcChannel.CancelGeneration) as Promise<void>,
-    onGenerationProgress: (listener) =>
-      subscribe(ipc, IpcChannel.GenerationProgress, listener),
+    onGenerationProgress: (listener) => subscribe(ipc, IpcChannel.GenerationProgress, listener),
+    getProviders: () => ipc.invoke(IpcChannel.GetProviders) as Promise<ProviderSelection>,
+    setProviders: (selection) =>
+      ipc.invoke(IpcChannel.SetProviders, selection) as Promise<SaveProvidersResult>,
+    getConsent: () => ipc.invoke(IpcChannel.GetConsent) as Promise<ConsentSnapshot>,
+    grantConsent: (id) => ipc.invoke(IpcChannel.GrantConsent, id) as Promise<ConsentSnapshot>,
   };
 }

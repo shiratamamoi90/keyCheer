@@ -37,13 +37,17 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
     expect(Object.keys(api).sort()).toEqual([
       "cancelGeneration",
       "getCharacter",
+      "getConsent",
+      "getProviders",
       "getSpeakers",
       "getStats",
       "getTriggerConfig",
+      "grantConsent",
       "onCheerFired",
       "onConfigMigrated",
       "onGenerationProgress",
       "saveCharacter",
+      "setProviders",
       "startGeneration",
       "updateTriggerConfig",
     ]);
@@ -104,5 +108,25 @@ describe("preload / IPC の橋渡し", () => {
       l({}, { field: "regular", from: 100, to: 50 });
     }
     expect(seen).toEqual([]);
+  });
+});
+
+describe("preload / 同意ダイアログに ToS リンクと必須チェック", () => {
+  it("bridges grantConsent to its own channel with the provider id", async () => {
+    const ipc = fakeIpc();
+    await createKeyCheerApi(ipc).grantConsent("openai");
+    expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GrantConsent, "openai");
+  });
+
+  it("bridges getConsent without arguments", async () => {
+    const ipc = fakeIpc();
+    await createKeyCheerApi(ipc).getConsent();
+    expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GetConsent);
+  });
+
+  it("keeps consent off the cheer channels [不変条件]", () => {
+    // 同意は生成側の関心。発動経路のチャンネルに相乗りさせない。
+    expect(IpcChannel.GrantConsent).not.toBe(IpcChannel.CheerFired);
+    expect(IpcChannel.GetConsent).not.toBe(IpcChannel.CheerFired);
   });
 });

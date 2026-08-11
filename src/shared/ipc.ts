@@ -2,7 +2,7 @@
 // engine の共有型のみ参照し、providers・agent 実装には触れない(発動経路の境界を型レベルでも保つ)。
 // チャンネル名は文字列定数で一元管理し、main/preload/renderer が同じ値を参照する。
 
-import type { SpeedZone, CheerType, TimeOfDay, TriggerConfig, Stats } from "./types.js";
+import type { SpeedZone, CheerType, TimeOfDay, TriggerConfig, Stats, ProviderId } from "./types.js";
 
 export const IpcChannel = {
   // renderer → main(invoke:双方向)
@@ -17,6 +17,11 @@ export const IpcChannel = {
   StartGeneration: "keycheer:start-generation",
   CancelGeneration: "keycheer:cancel-generation",
   GenerationProgress: "keycheer:generation-progress",
+  // 外部プロバイダーの同意(changes/0003)。キャラ作成側の関心で、発動経路とは無関係。
+  GetProviders: "keycheer:get-providers",
+  SetProviders: "keycheer:set-providers",
+  GetConsent: "keycheer:get-consent",
+  GrantConsent: "keycheer:grant-consent",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   ConfigMigrated: "keycheer:config-migrated",
@@ -92,3 +97,7 @@ export interface CharacterSummaryPayload {
 export type StartGenerationResult =
   | { ok: true }
   | { ok: false; reason: "already-running" | "no-character" };
+
+// renderer ⇄ main: 外部プロバイダーの同意状態(changes/0003)。
+// true のものだけが載る。未同意は「キーが無い」で表す(false を持ち回らない)。
+export type ConsentSnapshot = Readonly<Partial<Record<ProviderId, true>>>;

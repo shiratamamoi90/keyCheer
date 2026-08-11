@@ -6,14 +6,19 @@ import { ipcMain } from "electron";
 import { validateTriggerConfig } from "../engine/index.js";
 import { IpcChannel } from "../shared/ipc.js";
 import type { AppStore } from "./store.js";
-import type { TriggerConfig } from "../shared/types.js";
-import type { GetSpeakersResult, SaveCharacterResult } from "../shared/ipc.js";
+import type { ProviderStore, SaveProvidersResult } from "./providerStore.js";
+import type { TriggerConfig, ProviderSelection } from "../shared/types.js";
+import type { GetSpeakersResult, SaveCharacterResult, ConsentSnapshot } from "../shared/ipc.js";
+import { isConsentableProviderId } from "../shared/providerDisclosure.js";
 import { fetchSpeakers } from "./speakerCatalog.js";
 // 信頼境界の検証は electron 非依存の別モジュールに置く(テストで縛るため)。
 import { validateCharacterProfile, toCharacterSummary } from "./characterInput.js";
 
 export interface IpcDeps {
   store: AppStore;
+  // プロバイダー選択・同意はキャラ作成側の関心。store とは別モジュールに分ける
+  // (発動経路が読む store.ts に providers を集めない。CLAUDE.md の不変条件)。
+  providers: ProviderStore;
   // 更新された設定を発動経路へ即時反映する(store 永続化とは別に RuntimeState 側へ)
   onConfigUpdated: (config: TriggerConfig) => void;
 }
@@ -56,4 +61,24 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     IpcChannel.GetSpeakers,
     async (): Promise<GetSpeakersResult> => await fetchSpeakers(),
   );
+
+  // changes/0003: 外部プロバイダーの選択と同意。発動経路とは無関係のチャンネル。
+  ipcMain.handle(IpcChannel.GetProviders, (): ProviderSelection => deps.providers.loadProviders());
+
+  // 信頼境界:renderer から来た選択は providerStore 側で再検証される。
+  ipcMain.handle(
+    IpcChannel.SetProviders,
+    (_event, raw: unknown): SaveProvidersResult =>
+      deps.providers.saveProviders(raw as ProviderSelection),
+  );
+
+  ipcMain.handle(IpcChannel.GetConsent, (): ConsentSnapshot => deps.providers.loadConsent());
+
+  // シナリオ: 同意ダイアログに ToS リンクと必須チェック(通過した時だけここへ来る)
+  // 信頼境界:renderer から来た値を検証せずに書かない。未知・ローカルは黙って無視し、
+  // 現在の同意状態をそのまま返す(不正な id で同意を作らせない)。
+  ipcMain.handle(IpcChannel.GrantConsent, (_event, raw: unknown): ConsentSnapshot => {
+    if (isConsentableProviderId(raw)) deps.providers.grantConsent(raw);
+    return deps.providers.loadConsent();
+  });
 }

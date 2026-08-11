@@ -8,6 +8,7 @@
 import { app } from "electron";
 import { existsSync as fsExistsSync } from "node:fs";
 import { createStore, createAppStore } from "./store.js";
+import { createProviderStore } from "./providerStore.js";
 import { createKeyHook } from "./keyHook.js";
 import { createCheerRuntime } from "./cheerRuntime.js";
 import { createPopupWindow } from "./windows.js";
@@ -31,7 +32,8 @@ if (!hasSingleInstanceLock) {
 const STATS_FLUSH_INTERVAL_MS = 10_000;
 
 function bootstrap(): void {
-  const store = createAppStore(createStore());
+  const rawStore = createStore();
+  const store = createAppStore(rawStore);
   const { config, migrated } = store.loadTriggerConfig();
   const stats = store.loadStats();
 
@@ -95,6 +97,9 @@ function bootstrap(): void {
 
   registerIpcHandlers({
     store,
+    // プロバイダー選択・同意はキャラ作成側の関心。発動経路(cheerRuntime / keyHook)は
+    // これに一切触れない — 応援はプール + wav だけで成立する(CLAUDE.md 不変条件)。
+    providers: createProviderStore(rawStore),
     onConfigUpdated: (next) => cheerRuntime.setConfig(next),
   });
 

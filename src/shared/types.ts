@@ -33,6 +33,14 @@ export interface ProviderSelection {
   image: ImageProviderId;
 }
 
+// 既定はローカル一式(CLAUDE.md)。外部を既定にすると、ユーザーが何も選ばないまま
+// 外部送信が起こりうる状態になる — 同意ゲートの前提を崩さないため既定は必ずローカル。
+export const DEFAULT_PROVIDER_SELECTION: ProviderSelection = {
+  text: "local-ollama",
+  voice: "local-voicevox",
+  image: "local-sdcpp",
+};
+
 // 各 union のランタイム配列。順序は決定的(specs/data-model.md の 24 シナリオ列挙順と一致)。
 export const SPEED_ZONES = ["slow", "normal", "fast"] as const satisfies readonly SpeedZone[];
 export const CHEER_TYPES = ["regular", "milestone"] as const satisfies readonly CheerType[];
