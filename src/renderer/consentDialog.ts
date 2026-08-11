@@ -45,3 +45,39 @@ export function setAgreement(state: ConsentDialogState, agreed: boolean): Consen
 export function canSubmitConsent(state: ConsentDialogState): boolean {
   return state.agreed;
 }
+
+// 生成開始が返しうる失敗のうち、providers に関わるものだけを扱う形。
+// main の StartGenerationResult と同じ形を renderer 側で受けるための最小の型。
+export type GenerationFailure =
+  | { ok: true }
+  | { ok: false; reason: "already-running" | "no-character" }
+  | {
+      ok: false;
+      reason: "consent-required" | "missing-api-key" | "voice-id-required";
+      provider: ProviderId;
+    };
+
+// シナリオ: 外部選択時は同意ダイアログを経る
+// 同意で解ける失敗だけがダイアログの対象。キー未設定でダイアログを出すと、
+// 同意しても直らない画面を見せることになる。
+export function consentNeededFor(result: GenerationFailure): ProviderId | null {
+  if (result.ok) return null;
+  return result.reason === "consent-required" ? result.provider : null;
+}
+
+// シナリオ: 外部生成失敗時は自動でローカルに切り替えない [異常系]
+// 確定事項(2026-07-26): 自動では切り替えず、ユーザーに提示して手動で切り替える。
+// よって文言も「切り替えました」と書かない — 何が足りないかだけを伝える。
+export function blockMessage(
+  reason: "consent-required" | "missing-api-key" | "voice-id-required",
+  displayName: string,
+): string {
+  switch (reason) {
+    case "consent-required":
+      return `${displayName} への送信にはあなたの同意が必要です。`;
+    case "missing-api-key":
+      return `${displayName} の API キーが設定されていません。`;
+    case "voice-id-required":
+      return `${displayName} の voice ID が設定されていません。`;
+  }
+}

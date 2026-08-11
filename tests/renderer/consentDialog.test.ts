@@ -10,6 +10,8 @@ import {
   openConsentDialog,
   setAgreement,
   canSubmitConsent,
+  consentNeededFor,
+  blockMessage,
   type ConsentDialogState,
 } from "../../src/renderer/consentDialog.js";
 import { isConsentableProviderId } from "../../src/shared/providerDisclosure.js";
@@ -115,5 +117,44 @@ describe("providerDisclosure / 同意はプロバイダー単位で 1 回のみ"
     ]) {
       expect(isConsentableProviderId(bad), String(bad)).toBe(false);
     }
+  });
+});
+
+describe("consentDialog / 外部生成失敗時は自動でローカルに切り替えない [異常系]", () => {
+  it("asks for consent only when that is what blocked generation", () => {
+    expect(consentNeededFor({ ok: false, reason: "consent-required", provider: "openai" })).toBe(
+      "openai",
+    );
+  });
+
+  it("does not ask for consent when the api key is what is missing", () => {
+    // キー未設定でダイアログを出すと、同意しても直らない画面を見せることになる。
+    expect(
+      consentNeededFor({ ok: false, reason: "missing-api-key", provider: "openai" }),
+    ).toBeNull();
+  });
+
+  it("returns null for the failures that have nothing to do with providers", () => {
+    expect(consentNeededFor({ ok: false, reason: "already-running" })).toBeNull();
+    expect(consentNeededFor({ ok: false, reason: "no-character" })).toBeNull();
+    expect(consentNeededFor({ ok: true })).toBeNull();
+  });
+
+  it("explains each provider-related failure without offering an automatic switch", () => {
+    // 確定事項: 自動では切り替えない。文言も「切り替えました」にしない。
+    const consent = blockMessage("consent-required", "OpenAI");
+    const key = blockMessage("missing-api-key", "OpenAI");
+    const voice = blockMessage("voice-id-required", "ElevenLabs");
+    for (const text of [consent, key, voice]) {
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toMatch(/切り替えました|自動/);
+    }
+    expect(key).toContain("API キー");
+    expect(voice).toContain("voice");
+    expect(consent).toContain("同意");
+  });
+
+  it("names the provider it is talking about", () => {
+    expect(blockMessage("missing-api-key", "Anthropic")).toContain("Anthropic");
   });
 });

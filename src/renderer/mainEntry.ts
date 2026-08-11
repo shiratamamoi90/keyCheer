@@ -25,6 +25,23 @@ import {
   canStartGeneration,
   progressLabel,
 } from "./generationView.js";
+import {
+  openConsentDialog,
+  setAgreement,
+  canSubmitConsent,
+  consentNeededFor,
+  blockMessage,
+  type ConsentDialogState,
+} from "./consentDialog.js";
+import { providerDisplayName } from "../shared/providerDisclosure.js";
+import {
+  TEXT_PROVIDER_IDS,
+  VOICE_PROVIDER_IDS,
+  DEFAULT_PROVIDER_SELECTION,
+  type ProviderSelection,
+  type TextProviderId,
+  type VoiceProviderId,
+} from "../shared/types.js";
 import type { SpeakerOption } from "../shared/ipc.js";
 // window.keycheer の型は preload の公開 API がそのまま正本(popup.ts と同じ宣言を共有する)。
 // 型だけの import なので renderer → preload の実行時依存は生まれない。
@@ -62,6 +79,14 @@ function App(): ReactNS.ReactElement {
   // 生成(changes/0011)。状態遷移は generationView(純粋関数)に委譲する。
   const [saved, setSaved] = React.useState(false);
   const [generation, setGeneration] = React.useState(initialGenerationState());
+  // プロバイダー選択と同意(changes/0003)。既定はローカル一式。
+  const [selection, setSelection] = React.useState<ProviderSelection>(DEFAULT_PROVIDER_SELECTION);
+  const [dialog, setDialog] = React.useState<ConsentDialogState | null>(null);
+  const [blocked, setBlocked] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    void window.keycheer.getProviders().then(setSelection);
+  }, []);
 
   // シナリオ: 話者一覧を VOICEVOX から取得する / VOICEVOX 未起動でも画面は壊れない [異常系]
   React.useEffect(() => {
@@ -93,13 +118,65 @@ function App(): ReactNS.ReactElement {
     });
   }, []);
 
+  const chooseProvider = (kind: "text" | "voice", id: TextProviderId | VoiceProviderId): void => {
+    const next = { ...selection, [kind]: id } as ProviderSelection;
+    setSelection(next);
+    setBlocked(null);
+    void window.keycheer.setProviders(next);
+  };
+
   const startGeneration = (): void => {
+    setBlocked(null);
     void window.keycheer.startGeneration().then((result) => {
-      if (!result.ok) {
-        setGeneration((prev) => applyGenerationEvent(prev, { type: "failed", reason: result.reason }));
+      if (result.ok) return;
+
+      // シナリオ: 外部選択時は同意ダイアログを経る
+      const needsConsent = consentNeededFor(result);
+      if (needsConsent !== null) {
+        setDialog(openConsentDialog(needsConsent));
+        return;
       }
+
+      // シナリオ: 外部生成失敗時は自動でローカルに切り替えない [異常系]
+      // 何が足りないかだけを出す。こちらでローカルへ倒さない。
+      if ("provider" in result) {
+        setBlocked(blockMessage(result.reason, providerDisplayName(result.provider)));
+        return;
+      }
+      setGeneration((prev) => applyGenerationEvent(prev, { type: "failed", reason: result.reason }));
     });
   };
+
+  // 同意ダイアログを通過した時だけ grantConsent を呼ぶ(表示・チェック操作では呼ばない)。
+  const submitConsent = (): void => {
+    if (dialog === null || !canSubmitConsent(dialog)) return;
+    const provider = dialog.providerId;
+    setDialog(null);
+    void window.keycheer.grantConsent(provider).then(() => startGeneration());
+  };
+
+  const providerSelect = (
+    kind: "text" | "voice",
+    label: string,
+    ids: readonly (TextProviderId | VoiceProviderId)[],
+    current: string,
+  ): ReactNS.ReactElement =>
+    React.createElement(
+      "label",
+      { key: kind },
+      label,
+      React.createElement(
+        "select",
+        {
+          value: current,
+          onChange: (e: ReactNS.ChangeEvent<HTMLSelectElement>) =>
+            chooseProvider(kind, e.target.value as TextProviderId | VoiceProviderId),
+        },
+        ...ids.map((id) =>
+          React.createElement("option", { key: id, value: id }, providerDisplayName(id)),
+        ),
+      ),
+    );
 
   const submit = (): void => {
     const input = { name, personality, speakerId };
@@ -171,6 +248,11 @@ function App(): ReactNS.ReactElement {
 
     React.createElement("button", { type: "button", onClick: submit }, "保存"),
 
+    // プロバイダー選択(changes/0003)。画像は生成フローに乗っていないため出さない。
+    React.createElement("h2", null, "生成に使うプロバイダー"),
+    providerSelect("text", "応援メッセージ", TEXT_PROVIDER_IDS, selection.text),
+    providerSelect("voice", "音声", VOICE_PROVIDER_IDS, selection.voice),
+
     // 生成(changes/0011)。キャラ保存後にのみ押せる。生成中は押せない。
     React.createElement(
       "button",
@@ -189,6 +271,58 @@ function App(): ReactNS.ReactElement {
       React.createElement("p", { key: `${e.field}:${e.reason}`, className: "error" }, errorText(e)),
     ),
     status !== null ? React.createElement("p", { className: "status" }, status) : null,
+    blocked !== null ? React.createElement("p", { className: "error" }, blocked) : null,
+
+    // シナリオ: 同意ダイアログに ToS リンクと必須チェック
+    dialog === null
+      ? null
+      : React.createElement(
+          "div",
+          { className: "dialog", role: "dialog", "aria-modal": true },
+          React.createElement("h2", null, `${dialog.displayName} へ送信します`),
+          React.createElement("p", null, "送信される情報:"),
+          React.createElement(
+            "ul",
+            null,
+            ...dialog.sentItems.map((item) => React.createElement("li", { key: item }, item)),
+          ),
+          React.createElement(
+            "p",
+            null,
+            React.createElement(
+              "a",
+              { href: dialog.tosUrl, target: "_blank", rel: "noreferrer" },
+              "利用規約",
+            ),
+            " / ",
+            React.createElement(
+              "a",
+              { href: dialog.privacyUrl, target: "_blank", rel: "noreferrer" },
+              "プライバシーポリシー",
+            ),
+          ),
+          React.createElement(
+            "label",
+            { className: "agree" },
+            React.createElement("input", {
+              type: "checkbox",
+              checked: dialog.agreed,
+              onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                setDialog(setAgreement(dialog, e.target.checked)),
+            }),
+            "上記に同意します",
+          ),
+          React.createElement(
+            "button",
+            { type: "button", onClick: submitConsent, disabled: !canSubmitConsent(dialog) },
+            "同意して生成",
+          ),
+          React.createElement(
+            "button",
+            { type: "button", onClick: () => setDialog(null) },
+            "キャンセル",
+          ),
+        ),
   );
 }
 

@@ -72,6 +72,18 @@ export function disclosureFor(id: ProviderId): ProviderDisclosure | null {
   return DISCLOSURES[id] ?? null;
 }
 
+// 画面に出す名前。開示情報を持たないローカル分もここには載る
+// (ドロップダウンはローカル・外部を同じ並びで出すため)。
+const LOCAL_DISPLAY_NAMES: Readonly<Partial<Record<ProviderId, string>>> = {
+  "local-ollama": "Ollama(ローカル)",
+  "local-voicevox": "VOICEVOX(ローカル)",
+  "local-sdcpp": "stable-diffusion.cpp(ローカル)",
+};
+
+export function providerDisplayName(id: ProviderId): string {
+  return DISCLOSURES[id]?.displayName ?? LOCAL_DISPLAY_NAMES[id] ?? id;
+}
+
 // 信頼境界:renderer から届いた値を同意として書く前の門(security-rules.md「入力と信頼境界」)。
 // 「開示情報を持つ = 外部プロバイダー = 同意の対象」。ローカル・未知の文字列・非文字列はすべて弾く。
 // hasOwnProperty で見るのは、`__proto__` や `toString` が prototype 経由で真になるのを防ぐため。
