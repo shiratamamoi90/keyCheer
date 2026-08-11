@@ -4,23 +4,33 @@
 // **このモジュールだけが providers を import する。** index.ts(発動経路の配線)には
 // 混ぜない — 発動経路は外部依存ゼロという不変条件をコードの構造としても保つため
 // (index.ts 冒頭のコメントと eslint.config.js の mainCheerPathRestrictedPatterns)。
-// 生成先はローカルのみ(Ollama / VOICEVOX)。外部プロバイダーは別 change。
+// 生成先は providers 設定に従う(既定はローカル一式)。外部を選んだ場合は
+// checkGenerationGate で同意・API キーを確かめてからでないと組み立てに進まない。
 //
 // テスト対象外の I/O グルー。判定ロジックは characterCreation / characterStore 側にあり、
 // そちらで注入して縛っている。
 
-import { ipcMain, type BrowserWindow } from "electron";
-import { createOllamaTextGenerator } from "../agent/providers/localOllama.js";
-import { createVoicevoxSynthesizer } from "../agent/providers/localVoicevox.js";
+import { ipcMain, safeStorage, type BrowserWindow } from "electron";
+import Store from "electron-store";
+import { createSecretStore } from "../agent/secrets.js";
 import { createGenerationRunner } from "./characterCreation.js";
+import { createTextGeneratorFor, createVoiceSynthesizerFor } from "./providerFactory.js";
+import { checkGenerationGate } from "../engine/providers/gate.js";
 import { loadPool, type CharacterFs } from "./characterStore.js";
 import { IpcChannel } from "../shared/ipc.js";
 import type { GenerationProgressPayload, StartGenerationResult } from "../shared/ipc.js";
 import type { MessagePool } from "../engine/messagePool.js";
+import type { ProviderId } from "../shared/types.js";
 import type { AppStore } from "./store.js";
+import type { ProviderStore } from "./providerStore.js";
 
 export interface CharacterCreationDeps {
   store: AppStore;
+  providers: ProviderStore;
+  // API キー・voice ID の解決。既定は safeStorage(下の createDefaultSecretAccess)。
+  // 注入可能にしてあるのは、index.ts に secrets を import させないため
+  // (index.ts は発動経路の配線に徹する。eslint.config.js)。
+  secrets?: SecretAccess;
   fs: CharacterFs;
   userDataDir: string;
   // 生成完了時に発動経路へ反映する(再起動なしでプールを使わせる)
@@ -29,8 +39,34 @@ export interface CharacterCreationDeps {
   getWindow: () => BrowserWindow | null;
 }
 
+// API キーと voice ID の解決だけを表す最小の口。値はここで保持しない。
+export interface SecretAccess {
+  apiKeyFor: (id: ProviderId) => string | null;
+  voiceIdFor: (id: ProviderId) => string | null;
+}
+
+// 既定の解決:キーは safeStorage(平文 JSON に出さない — 不変条件)。
+// voice ID は [要確認] のため常に null。決まるまで ElevenLabs は組み立てに進まない。
+function createDefaultSecretAccess(): SecretAccess {
+  const blobs = new Store<Record<string, string>>({ name: "secrets" });
+  const secretStore = createSecretStore({
+    safeStorage,
+    backend: {
+      get: (id) => blobs.get(id),
+      set: (id, value) => blobs.set(id, value),
+      has: (id) => blobs.has(id),
+      delete: (id) => blobs.delete(id),
+    },
+  });
+  return {
+    apiKeyFor: (id) => secretStore.getApiKey(id),
+    voiceIdFor: () => null,
+  };
+}
+
 export function registerCharacterCreation(deps: CharacterCreationDeps): void {
   const runner = createGenerationRunner();
+  const secrets = deps.secrets ?? createDefaultSecretAccess();
 
   const emit = (payload: GenerationProgressPayload): void => {
     const win = deps.getWindow();
@@ -47,6 +83,22 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
     }
 
     const system = deps.store.loadSystem();
+    const selection = deps.providers.loadProviders();
+
+    // シナリオ: 外部選択時は同意ダイアログを経る / APIキー未設定で外部を選んだ場合 [異常系]
+    // ここを通らない限り外部への送信は起こらない(組み立てにも進まない)。
+    const gate = checkGenerationGate({
+      selection,
+      consent: deps.providers.loadConsent(),
+      hasApiKey: (id) => secrets.apiKeyFor(id) !== null,
+    });
+    if (!gate.ok) return { ok: false, reason: gate.reason, provider: gate.provider };
+
+    const factoryDeps = { system, apiKeyFor: secrets.apiKeyFor, voiceIdFor: secrets.voiceIdFor };
+    const text = createTextGeneratorFor(selection.text, factoryDeps);
+    if (!text.ok) return { ok: false, reason: text.reason, provider: selection.text };
+    const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
+    if (!voice.ok) return { ok: false, reason: voice.reason, provider: selection.voice };
 
     // 再開:既存の完了状態があれば未完了バケットだけを続行する。
     // (pool.json には completion も保存している — characterStore.savePool)
@@ -57,11 +109,8 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
       character: { name: character.name, personality: character.personality },
       userDataDir: deps.userDataDir,
       fs: deps.fs,
-      textGenerator: createOllamaTextGenerator({
-        endpoint: system.ollamaEndpoint,
-        model: system.ollamaModel,
-      }),
-      synthesizer: createVoicevoxSynthesizer({ endpoint: system.voicevoxEndpoint }),
+      textGenerator: text.generator,
+      synthesizer: voice.synthesizer,
       speakerId: character.voicevoxSpeakerId,
       ...(resumeFrom !== undefined ? { resumeFrom } : {}),
       onProgress: (p) => emit({ type: "progress", phase: p.phase, done: p.done, total: p.total }),

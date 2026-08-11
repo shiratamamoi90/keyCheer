@@ -94,9 +94,16 @@ export interface CharacterSummaryPayload {
 }
 
 // renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
+// 外部プロバイダーで止まった場合は、どのプロバイダーが何で止まったかを返す。
+// renderer はそれを見て同意ダイアログ / キー入力のどちらを出すか決める。
 export type StartGenerationResult =
   | { ok: true }
-  | { ok: false; reason: "already-running" | "no-character" };
+  | { ok: false; reason: "already-running" | "no-character" }
+  | {
+      ok: false;
+      reason: "consent-required" | "missing-api-key" | "voice-id-required";
+      provider: ProviderId;
+    };
 
 // renderer ⇄ main: 外部プロバイダーの同意状態(changes/0003)。
 // true のものだけが載る。未同意は「キーが無い」で表す(false を持ち回らない)。

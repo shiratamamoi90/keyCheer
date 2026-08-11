@@ -107,6 +107,7 @@ function bootstrap(): void {
   // 発動経路(上の cheerRuntime 配線)には混ざらない。
   registerCharacterCreation({
     store,
+    providers: createProviderStore(rawStore),
     fs: characterFs,
     userDataDir: app.getPath("userData"),
     // シナリオ: 生成直後は再起動なしで応援に反映される
