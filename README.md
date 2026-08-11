@@ -42,6 +42,28 @@ npm run dev       # build 後に electron dist/main/index.js を起動
 (`ollamaEndpoint` / `voicevoxEndpoint`)で上書きできる。
 未起動でもアプリはクラッシュせず、baseline 定型文で応援する。
 
+### 日本語入力(WSL で開発する場合のみ)
+
+WSLg は Windows の IME を Linux アプリへ渡さないため、**WSL 内に IME を入れないと
+キャラ作成フォーム(名前・性格)に日本語を打ち込めない**。Windows 実機では OS の IME が
+そのまま効くので、この手順は WSL 開発時だけのもの。
+
+```bash
+sudo apt install -y fcitx5 fcitx5-mozc   # 初回のみ
+fcitx5 -d                                # ログインごとに 1 回
+```
+
+環境変数(`~/.profile` に置く。設定後は WSL を再起動するか、`source ~/.profile` してから起動する):
+
+```bash
+export GTK_IM_MODULE=fcitx
+export QT_IM_MODULE=fcitx
+export XMODIFIERS=@im=fcitx
+```
+
+Electron は WSLg 上で X11(XWayland)として動くため、IME は XIM 経由で繋がる。
+Wayland で動かす場合のみ `--enable-wayland-ime` が別途要る(現状は不要)。
+
 ### コマンド
 
 | コマンド             | 内容                                                          |
