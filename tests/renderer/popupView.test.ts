@@ -1,5 +1,5 @@
 // renderer/popupView: CheerFiredPayload → 表示内容 / 表示時間 / 音声再生の有無 の純粋な写像。
-// spec: changes/0007-runnable-popup-slice/spec.md
+// spec: 論点 0017
 //   発動でポップアップが表示される / 表示時間が過ぎたら消える [境界] /
 //   表示中に次の発動が来たら上書きする / wav がある発動で音声も再生する /
 //   wav が無い発動はテキストのみ [異常系] / 入力内容は renderer に渡らない [不変条件]
@@ -12,7 +12,7 @@ import {
   tick,
   type PopupState,
 } from "../../src/renderer/popupView.js";
-import type { CheerFiredPayload } from "../../src/shared/ipc.js";
+import type { CheerFiredPayload } from "../../src/core/shared/ipc.js";
 
 function payload(overrides: Partial<CheerFiredPayload> = {}): CheerFiredPayload {
   return {
@@ -30,7 +30,7 @@ function payload(overrides: Partial<CheerFiredPayload> = {}): CheerFiredPayload 
 }
 
 describe("popupView / 発動でポップアップが表示される", () => {
-  it("shows the payload message", () => {
+  it("S0017_01 shows the payload message", () => {
     const { state } = showCheer(initialPopupState, payload(), 1_000);
     expect(state.visible).toBe(true);
     expect(state.text).toBe("いいペースだね!");
@@ -46,7 +46,7 @@ describe("popupView / 発動でポップアップが表示される", () => {
 });
 
 describe("popupView / 表示時間が過ぎたら消える [境界]", () => {
-  it("stays visible until just before popupDurationMs", () => {
+  it("S0017_02 stays visible until just before popupDurationMs", () => {
     const { state } = showCheer(initialPopupState, payload(), 1_000);
     expect(tick(state, 1_000 + 4_999).visible).toBe(true);
   });
@@ -65,7 +65,7 @@ describe("popupView / 表示時間が過ぎたら消える [境界]", () => {
 });
 
 describe("popupView / 表示中に次の発動が来たら上書きする", () => {
-  it("replaces the text and resets the remaining time (キューに積まない)", () => {
+  it("S0017_03 replaces the text and resets the remaining time (キューに積まない)", () => {
     const first = showCheer(initialPopupState, payload({ message: "A" }), 1_000).state;
     // 残り 2000ms の時点で次の発動
     const second = showCheer(first, payload({ message: "B" }), 1_000 + 3_000).state;
@@ -79,7 +79,7 @@ describe("popupView / 表示中に次の発動が来たら上書きする", () =
 });
 
 describe("popupView / wav がある発動で音声も再生する", () => {
-  it("returns the wav path to play once", () => {
+  it("S0017_04 returns the wav path to play once", () => {
     const wavPath = "/userData/characters/chia/voices/m001.wav";
     const { playWavPath } = showCheer(initialPopupState, payload({ wavPath }), 1_000);
     expect(playWavPath).toBe(wavPath);
@@ -94,7 +94,7 @@ describe("popupView / wav がある発動で音声も再生する", () => {
 });
 
 describe("popupView / wav が無い発動はテキストのみ [異常系]", () => {
-  it("returns no wav path and still shows the text", () => {
+  it("S0017_05 returns no wav path and still shows the text", () => {
     const { state, playWavPath } = showCheer(initialPopupState, payload({ wavPath: null }), 1_000);
     expect(playWavPath).toBeNull();
     expect(state.visible).toBe(true);

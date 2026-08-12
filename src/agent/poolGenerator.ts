@@ -1,16 +1,16 @@
 // poolGenerator: キャラ作成時に 24 シナリオ × 約 20 文のメッセージプールを一括生成する
 // オーケストレーション。I/O(実際の LLM 呼び出し)は TextGenerator として注入される。
-// spec: specs/integrations.md(プール一括生成成功 / 中断と再開 / 進捗 UX / 文字数契約 /
+// 要件: docs/integrations.md(プール一括生成成功 / 中断と再開 / 進捗 UX / 文字数契約 /
 //        Ollama 未起動のフォールバック)
-// 品質は縛らない(→ experiments/)。契約(件数・30 字・再開可能性・クラッシュしない)のみ。
+// 品質は縛らない(→ 非決定的な論点(decisions/))。契約(件数・30 字・再開可能性・クラッシュしない)のみ。
 
 import {
   ALL_BUCKET_KEYS,
   type BucketKey,
   type MessagePool,
   type PoolMessage,
-} from "../engine/messagePool.js";
-import type { TextGenerator } from "../engine/providers/types.js";
+} from "../core/messagePool.js";
+import type { TextGenerator } from "../core/providers/types.js";
 
 export type CompletionStatus = "complete" | "pending" | "failed";
 
@@ -24,7 +24,7 @@ export interface CharacterProfile {
   personality: string;
 }
 
-// 1 文 = 30 文字以内(コードポイント基準。specs/data-model.md)
+// 1 文 = 30 文字以内(コードポイント基準。docs/data-model.md)
 export const MAX_MESSAGE_LENGTH = 30;
 // バケットあたりの生成文数。24 バケット × 8 = 192 文。
 // 2026-07-26 に 20(= 480 文)から引き下げた。理由はキャラ作成の所要時間と wav の
@@ -49,7 +49,7 @@ export function isPoolComplete(state: PoolGenerationState): boolean {
   return ALL_BUCKET_KEYS.every((k) => state.completion[k] === "complete");
 }
 
-// システムプロンプト(specs/integrations.md のテンプレート。キャラ設定から自動生成)
+// システムプロンプト(docs/integrations.md のテンプレート。キャラ設定から自動生成)
 export function buildSystemPrompt(
   character: CharacterProfile,
   scenarioKey: BucketKey,
@@ -126,7 +126,7 @@ export async function generatePool(input: GeneratePoolInput): Promise<PoolGenera
         // 全文が空 = 実質失敗。空バケット complete にすると発動時フォールバック頼みになるため failed
         completion[key] = "failed";
       } else {
-        // messageId は wav ファイル名に使うため Windows セーフな文字のみ(specs/data-model.md)
+        // messageId は wav ファイル名に使うため Windows セーフな文字のみ(docs/data-model.md)
         buckets[key] = texts.map((text, i) => ({
           id: `${key}-${String(i).padStart(3, "0")}`,
           text,

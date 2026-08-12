@@ -1,7 +1,7 @@
 // popup: 応援ポップアップの描画エントリ。表示判断は popupView(純粋関数)に委譲する。
-// spec: changes/0007-runnable-popup-slice/spec.md
+// spec: 論点 0017
 // この層は DOM 操作と音声再生だけを行う I/O グルー — テスト対象外(popupView 側で縛る)。
-// engine / providers / agent は import しない(発動経路の不変条件。ESLint で強制)。
+// core / providers / agent は import しない(発動経路の不変条件。ESLint で強制)。
 
 import { initialPopupState, showCheer, tick, type PopupState } from "./popupView.js";
 import type { KeyCheerApi } from "../preload/api.js";

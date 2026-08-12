@@ -1,10 +1,10 @@
 // stability-image: ImageGenerator の外部実装(Stability AI v2beta stable-image core)。
-// spec: changes/0009-additional-external-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 // 失敗時は throw(自動リトライしない C6)。API キーは Authorization ヘッダにのみ乗せる。
 // 1 リクエスト 1 枚のため count 回呼ぶ(openaiDalle と同型)。
 // width/height は受け付けられないため aspect_ratio へ決定的に写像する。
 
-import type { ImageGenerator, ImageGenerationRequest } from "../../engine/providers/types.js";
+import type { ImageGenerator, ImageGenerationRequest } from "../../core/providers/types.js";
 
 export interface StabilityImageConfig {
   apiKey: string;

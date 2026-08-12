@@ -1,5 +1,5 @@
 // renderer/characterForm: キャラ作成フォームのビューモデル(純粋関数)。
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 // DOM 操作は I/O グルーでテスト対象外。検証と値の組み立てだけをここで縛る。
 
 import { describe, it, expect } from "vitest";
@@ -18,7 +18,7 @@ const VALID: CharacterFormInput = {
 };
 
 describe("characterForm / 必須項目が揃うまで保存できない", () => {
-  it("rejects an empty name", () => {
+  it("S0019_01 rejects an empty name", () => {
     const result = validateCharacterForm({ ...VALID, name: "" });
     expect(result.ok).toBe(false);
     expect(result.errors).toContainEqual({ field: "name", reason: "required" });
@@ -41,7 +41,7 @@ describe("characterForm / 必須項目が揃うまで保存できない", () => 
 });
 
 describe("characterForm / 名前と性格の長さ制約 [境界]", () => {
-  it("accepts a name exactly at the limit", () => {
+  it("S0019_02 accepts a name exactly at the limit", () => {
     const name = "あ".repeat(CHARACTER_NAME_MAX);
     expect(validateCharacterForm({ ...VALID, name }).ok).toBe(true);
   });
@@ -68,7 +68,7 @@ describe("characterForm / 名前と性格の長さ制約 [境界]", () => {
 });
 
 describe("characterForm / 前後の空白は無視する [境界]", () => {
-  it("treats whitespace-only input as missing", () => {
+  it("S0019_03 treats whitespace-only input as missing", () => {
     const result = validateCharacterForm({ ...VALID, name: "   " });
     expect(result.errors).toContainEqual({ field: "name", reason: "required" });
   });
@@ -86,7 +86,7 @@ describe("characterForm / 前後の空白は無視する [境界]", () => {
 });
 
 describe("characterForm / 話者を選ばないと保存できない", () => {
-  it("rejects a null speakerId", () => {
+  it("S0019_04 rejects a null speakerId", () => {
     const result = validateCharacterForm({ ...VALID, speakerId: null });
     expect(result.ok).toBe(false);
     expect(result.errors).toContainEqual({ field: "speakerId", reason: "required" });

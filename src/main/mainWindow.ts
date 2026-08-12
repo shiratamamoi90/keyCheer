@@ -1,5 +1,5 @@
 // mainWindow: メインウィンドウ(将来キャラ作成 UI を載せる場所)の生成・表示/非表示アダプタ。
-// spec: changes/0008-main-window-character-creation/spec.md
+// spec: 論点 0018
 // 決定ロジックは mainWindowController(Electron 非依存・テスト対象)に委譲し、ここは
 // BrowserWindow / dialog の実体を注入する薄い I/O グルーに徹する。
 //
@@ -15,7 +15,7 @@ import {
   applyCloseConfirmation,
   type MainWindowHandle,
 } from "./mainWindowController.js";
-import type { Character, Onboarding } from "../shared/types.js";
+import type { Character, Onboarding } from "../core/shared/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRELOAD_PATH = join(__dirname, "../preload/index.mjs");

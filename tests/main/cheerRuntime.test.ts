@@ -1,6 +1,6 @@
-// main/cheerRuntime: 発動経路のグルー(engine の合成 + wav 解決 + 履歴記録)。
-// spec: specs/cheer-trigger.md(通常/マイルストーン発動・履歴の記録・wav 欠損フォールバック)
-//       specs/key-counter.md(累計カウント・アクティブ秒数の累積)
+// main/cheerRuntime: 発動経路のグルー(core の合成 + wav 解決 + 履歴記録)。
+// 要件: docs/cheer-trigger.md(通常/マイルストーン発動・履歴の記録・wav 欠損フォールバック)
+//       docs/key-counter.md(累計カウント・アクティブ秒数の累積)
 // 依存(時刻・乱数・fs・IPC・store)はすべて注入されるため決定的にテストできる。
 
 import { describe, it, expect } from "vitest";
@@ -9,8 +9,8 @@ import {
   type CheerRuntimeDeps,
   type StatsDelta,
 } from "../../src/main/cheerRuntime.js";
-import type { CheerFiredPayload } from "../../src/shared/ipc.js";
-import type { CheerHistoryEntry, TriggerConfig } from "../../src/shared/types.js";
+import type { CheerFiredPayload } from "../../src/core/shared/ipc.js";
+import type { CheerHistoryEntry, TriggerConfig } from "../../src/core/shared/types.js";
 
 const CONFIG: TriggerConfig = {
   regular: 50,
@@ -54,7 +54,7 @@ describe("cheerRuntime / 通常応援を N 回ごとに発動", () => {
     expect(emitted[0]?.popupDurationMs).toBe(5000);
   });
 
-  it("キャラ未作成時の発動: baseline selections carry no wav path", () => {
+  it("S0013_11 キャラ未作成時の発動: baseline selections carry no wav path", () => {
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG);
     for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
@@ -65,7 +65,7 @@ describe("cheerRuntime / 通常応援を N 回ごとに発動", () => {
 
 describe("cheerRuntime / 累計カウントからの再開", () => {
   it("累計カウントが triggers.regular の倍数: seeds the counter from persisted totalKeyCount", () => {
-    // GIVEN 前回終了時までの累計 999(specs/cheer-trigger.md は「累計カウント」で判定する)
+    // GIVEN 前回終了時までの累計 999(docs/cheer-trigger.md は「累計カウント」で判定する)
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 999 });
 
@@ -78,7 +78,7 @@ describe("cheerRuntime / 累計カウントからの再開", () => {
     expect(emitted[0]?.type).toBe("milestone");
   });
 
-  it("履歴の記録: cheerHistory entries carry the cumulative count", () => {
+  it("S0013_12 履歴の記録: cheerHistory entries carry the cumulative count", () => {
     const { deps, history } = harness();
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 149 });
     runtime.handleKeyPress(T0);
@@ -169,7 +169,7 @@ describe("cheerRuntime / 音声ファイル欠損時のフォールバック [�
     expect(emitted[0]?.wavPath).toBeNull();
   });
 
-  it("プールからの 1 文選択 + 対応 wav 再生: resolves the wav path when present", () => {
+  it("S0013_05 プールからの 1 文選択 + 対応 wav 再生: resolves the wav path when present", () => {
     const { deps, emitted } = harness({ wavExists: () => true });
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 49 });
     runtime.setActiveCharacter("chia", {
@@ -195,12 +195,12 @@ describe("cheerRuntime / 設定変更の即時反映", () => {
   });
 });
 
-// spec: specs/pool-generation.md
+// 要件: docs/pool-generation.md
 //   「起動時にプールを読み込んで応援に使う」「キャラ未作成なら baseline で応援する」
 //   「生成直後は再起動なしで応援に反映される」
-// setActiveCharacter に渡す実データが揃ったのが changes/0011。ここでは
+// setActiveCharacter に渡す実データが揃ったのが 論点 0020。ここでは
 // 「プールを渡すと発動内容が baseline から切り替わる」ことを固定する。
-import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/engine/messagePool.js";
+import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/core/messagePool.js";
 
 function poolWith(text: string): MessagePool {
   const buckets = Object.fromEntries(
@@ -218,7 +218,7 @@ function fireOnce(runtime: ReturnType<typeof createCheerRuntime>): void {
 }
 
 describe("cheerRuntime / キャラ未作成なら baseline で応援する", () => {
-  it("emits a baseline message with no wav", () => {
+  it("S0020_09 emits a baseline message with no wav", () => {
     const h = harness();
     const runtime = createCheerRuntime(h.deps, CONFIG);
     runtime.setActiveCharacter(null, null);
@@ -227,13 +227,13 @@ describe("cheerRuntime / キャラ未作成なら baseline で応援する", () 
 
     expect(h.emitted).toHaveLength(1);
     expect(h.emitted[0]!.wavPath).toBeNull();
-    // baseline 定型文の ID は "baseline:" 接頭辞を持つ(specs/data-model.md)
+    // baseline 定型文の ID は "baseline:" 接頭辞を持つ(docs/data-model.md)
     expect(h.history[0]!.messageId).toMatch(/^baseline:/);
   });
 });
 
 describe("cheerRuntime / 起動時にプールを読み込んで応援に使う", () => {
-  it("emits the pool text and resolves a wav path", () => {
+  it("S0020_08 emits the pool text and resolves a wav path", () => {
     const h = harness();
     const runtime = createCheerRuntime(h.deps, CONFIG);
     runtime.setActiveCharacter("char-1", poolWith("プールの文言"));
@@ -258,7 +258,7 @@ describe("cheerRuntime / 起動時にプールを読み込んで応援に使う"
 });
 
 describe("cheerRuntime / 生成直後は再起動なしで応援に反映される", () => {
-  it("switches from baseline to the pool without recreating the runtime", () => {
+  it("S0020_10 switches from baseline to the pool without recreating the runtime", () => {
     const h = harness();
     const runtime = createCheerRuntime(h.deps, CONFIG);
     runtime.setActiveCharacter(null, null);

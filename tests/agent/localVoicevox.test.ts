@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createVoicevoxSynthesizer } from "../../src/agent/providers/localVoicevox.js";
 
-// spec: specs/integrations.md「VOICEVOX (ローカル) の呼び出し契約」
+// 要件: docs/integrations.md「VOICEVOX (ローカル) の呼び出し契約」
 //   POST /audio_query?text=...&speaker=ID → POST /synthesis?speaker=ID → wav
 // 「VOICEVOX 未起動のフォールバック [異常系]」/ 自動リトライしない(C6)
 
@@ -27,7 +27,7 @@ function makeFetchMock() {
 }
 
 describe("local-voicevox / 呼び出し契約", () => {
-  it("calls audio_query then synthesis with encoded text and speaker id, returns wav bytes", async () => {
+  it("S0016_23 calls audio_query then synthesis with encoded text and speaker id, returns wav bytes", async () => {
     const fetchFn = makeFetchMock();
     const synth = createVoicevoxSynthesizer({
       endpoint: "http://localhost:50021",
@@ -62,7 +62,7 @@ describe("local-voicevox / 呼び出し契約", () => {
 });
 
 describe("local-voicevox / 未起動のフォールバック [異常系]", () => {
-  it("rejects on connection failure without retrying", async () => {
+  it("S0016_24 rejects on connection failure without retrying", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("ECONNREFUSED 127.0.0.1:50021");
     });

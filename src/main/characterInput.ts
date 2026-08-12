@@ -1,5 +1,5 @@
 // characterInput: renderer から届いたキャラ保存リクエストの検証。
-// spec: specs/character-creation.md「renderer からの入力は main 側でも検証する [不変条件]」
+// 要件: docs/character-creation.md「renderer からの入力は main 側でも検証する [不変条件]」
 //
 // 信頼境界:フォーム側(renderer/characterForm.ts)の検証は UX のためのもので、
 // main 側の検証を省く理由にはならない(security-rules.md「入力と信頼境界」)。
@@ -40,7 +40,7 @@ export function validateCharacterProfile(raw: unknown): ValidateCharacterProfile
   return { ok: true, value: { name, personality, voicevoxSpeakerId: speakerId as number } };
 }
 
-// renderer へ返す保存済みキャラの要約(changes/0011)。
+// renderer へ返す保存済みキャラの要約(論点 0020)。
 // 確定事項「保存だけして後で生成できる」を満たすため、再起動後もフォームが
 // 現在のキャラを読み出せる必要がある。ただし renderer へ渡すのは表示と生成に要る値だけに絞る
 // (imagePaths のような絶対パスや generatedBy を UI へ流さない)。

@@ -4,7 +4,7 @@ import {
   ELEVENLABS_DEFAULT_OUTPUT_FORMAT,
 } from "../../src/agent/providers/elevenLabsTts.js";
 
-// spec: changes/0009-additional-external-providers/spec.md
+// spec: 論点 0016
 //   ElevenLabs TTS による VoiceSynthesizer 実装。
 //   voice_id はパスパラメータ、認証は xi-api-key、output_format に wav_* を明示して wav を直接受け取る。
 
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("elevenlabs-tts / ElevenLabs (外部) の呼び出し契約", () => {
-  it("POSTs to /v1/text-to-speech/{voice_id} with xi-api-key and the text body", async () => {
+  it("S0016_26 POSTs to /v1/text-to-speech/{voice_id} with xi-api-key and the text body", async () => {
     const fetchFn = vi.fn(async () => okAudio([1, 2, 3]));
     const synth = createElevenLabsSynthesizer({
       apiKey: "xi-test",
@@ -80,7 +80,7 @@ describe("elevenlabs-tts / ElevenLabs (外部) の呼び出し契約", () => {
 });
 
 describe("elevenlabs-tts / ElevenLabs も wav を返す [不変条件]", () => {
-  it("requests a wav output format explicitly (既定の mp3 に任せない)", async () => {
+  it("S0016_27 requests a wav output format explicitly (既定の mp3 に任せない)", async () => {
     const fetchFn = vi.fn(async () => okAudio([1]));
     const synth = createElevenLabsSynthesizer({
       apiKey: "xi",

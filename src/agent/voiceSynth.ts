@@ -1,10 +1,10 @@
 // voiceSynth: プール全文の事前 wav 合成オーケストレーション。キャラ作成時のみ実行。
 // 合成(VoiceSynthesizer)と書き込み(writeWav)は注入。発動経路はここに依存しない
 // (発動時は保存済み wav を再生するだけ)。
-// spec: specs/integrations.md「全文事前合成」「部分失敗時の許容」
+// 要件: docs/integrations.md「全文事前合成」「部分失敗時の許容」
 
-import type { PoolMessage } from "../engine/messagePool.js";
-import type { VoiceSynthesizer } from "../engine/providers/types.js";
+import type { PoolMessage } from "../core/messagePool.js";
+import type { VoiceSynthesizer } from "../core/providers/types.js";
 
 export interface SynthesizePoolInput {
   messages: readonly PoolMessage[];

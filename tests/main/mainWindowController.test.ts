@@ -1,5 +1,5 @@
 // main/mainWindowController: メインウィンドウの表示/非表示の決定ロジック。
-// spec: changes/0008-main-window-character-creation/spec.md
+// spec: 論点 0018
 // Electron を import しないため決定的にテストできる(BrowserWindow はフェイクの MainWindowHandle で代替)。
 
 import { describe, it, expect } from "vitest";
@@ -10,7 +10,7 @@ import {
   applyCloseConfirmation,
   type MainWindowHandle,
 } from "../../src/main/mainWindowController.js";
-import type { Character, Onboarding } from "../../src/shared/types.js";
+import type { Character, Onboarding } from "../../src/core/shared/types.js";
 
 const COMPLETE: Character = {
   id: "char-test",
@@ -24,19 +24,19 @@ const NOT_SKIPPED: Onboarding = { skipMainWindowAutoShow: false };
 const SKIPPED: Onboarding = { skipMainWindowAutoShow: true };
 
 describe("mainWindowController / キャラクター未作成なら起動時にメインウィンドウを表示する", () => {
-  it("returns true when no character exists and auto-show is not skipped", () => {
+  it("S0018_01 returns true when no character exists and auto-show is not skipped", () => {
     expect(shouldAutoShowMainWindow(undefined, NOT_SKIPPED)).toBe(true);
   });
 });
 
 describe("mainWindowController / キャラクター作成済みなら起動時にメインウィンドウを表示しない", () => {
-  it("returns false once a character exists", () => {
+  it("S0018_02 returns false once a character exists", () => {
     expect(shouldAutoShowMainWindow(COMPLETE, NOT_SKIPPED)).toBe(false);
   });
 });
 
 describe("mainWindowController / スキップ済みなら未作成でも起動時に表示しない", () => {
-  it("returns false when skipMainWindowAutoShow is true, even with no character", () => {
+  it("S0018_03 returns false when skipMainWindowAutoShow is true, even with no character", () => {
     expect(shouldAutoShowMainWindow(undefined, SKIPPED)).toBe(false);
   });
 });
@@ -62,7 +62,7 @@ function fakeHandle(initiallyVisible: boolean): MainWindowHandle & {
 }
 
 describe("mainWindowController / トレイクリックで表示/非表示をトグルする", () => {
-  it("shows and focuses a hidden window", () => {
+  it("S0018_04 shows and focuses a hidden window", () => {
     const win = fakeHandle(false);
     toggleMainWindow(win);
     expect(win.calls).toEqual(["show", "focus"]);
@@ -78,7 +78,7 @@ describe("mainWindowController / トレイクリックで表示/非表示をト�
 });
 
 describe("mainWindowController / スキップ済みでもトレイからは開ける", () => {
-  it("shows a hidden window regardless of skipMainWindowAutoShow", () => {
+  it("S0018_08 shows a hidden window regardless of skipMainWindowAutoShow", () => {
     // スキップは自動表示のみを抑制する。手動オープンの経路は onboarding を参照しない。
     expect(shouldAutoShowMainWindow(undefined, SKIPPED)).toBe(false);
     const win = fakeHandle(false);
@@ -89,19 +89,19 @@ describe("mainWindowController / スキップ済みでもトレイからは開�
 });
 
 describe("mainWindowController / 作成済みなら閉じてもダイアログを出さない", () => {
-  it("decides to hide directly when a character exists", () => {
+  it("S0018_05 decides to hide directly when a character exists", () => {
     expect(decideOnMainWindowClose(COMPLETE)).toBe("hide");
   });
 });
 
 describe("mainWindowController / 未作成のまま閉じるとダイアログが出る", () => {
-  it("decides to confirm when no character exists yet", () => {
+  it("S0018_06 decides to confirm when no character exists yet", () => {
     expect(decideOnMainWindowClose(undefined)).toBe("confirm");
   });
 });
 
 describe("mainWindowController / ダイアログの選択でスキップフラグが決まる", () => {
-  it("keeps skipMainWindowAutoShow false when the box is unchecked", () => {
+  it("S0018_07 keeps skipMainWindowAutoShow false when the box is unchecked", () => {
     expect(applyCloseConfirmation(false, NOT_SKIPPED)).toEqual({
       skipMainWindowAutoShow: false,
     });

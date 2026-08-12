@@ -1,5 +1,5 @@
 // main/characterStore: pool.json と wav の永続化。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 // fs は注入。テストは実ファイルを書かない。wav パスの解決は発動経路と同じ
 // resolveWavPath に委ねる(生成側で別の規約を作らない)。
 
@@ -14,7 +14,7 @@ import {
   type CharacterFs,
 } from "../../src/main/characterStore.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
-import { ALL_BUCKET_KEYS } from "../../src/engine/messagePool.js";
+import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
 import { emptyPoolState } from "../../src/agent/poolGenerator.js";
 
 const USER_DATA = "/userdata";
@@ -97,7 +97,7 @@ describe("characterStore / ローカル生成でプールと wav が揃う", () 
     expect(parsed.characterId).toBe(CHAR_ID);
     expect(parsed.version).toBe(1);
     expect(Object.keys(parsed.buckets as object)).toHaveLength(24);
-    // 中断・再開のために completion も残す(specs/data-model.md)
+    // 中断・再開のために completion も残す(docs/data-model.md)
     expect(parsed.completion).toBeDefined();
 
     expect(loadPool(fs, USER_DATA, CHAR_ID)?.characterId).toBe(CHAR_ID);
@@ -156,7 +156,7 @@ describe("characterStore / 既にプールがある状態で再生成", () => {
   });
 });
 
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //   「Ollama 未起動で生成を開始した [異常系] — pool.json は完成扱いにせず、応援は baseline のまま」
 // 生成失敗時も部分結果は再開のために保存する。その結果 24 バケットすべてが空の
 // pool.json が残りうるが、これは「使えるプール」ではないため読み込み時に弾く。

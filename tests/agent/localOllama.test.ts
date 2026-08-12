@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createOllamaTextGenerator } from "../../src/agent/providers/localOllama.js";
 
-// spec: specs/integrations.md(Ollama ローカルの呼び出し契約 / 未起動のフォールバック /
+// 要件: docs/integrations.md(Ollama ローカルの呼び出し契約 / 未起動のフォールバック /
 //        自動リトライしない C6)/ decisions/0002-local-llm-ollama.md
 // fetch は注入し、HTTP 契約(URL・メソッド・ボディ)を決定的に検査する。
 

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { createOpenAITTSSynthesizer } from "../../src/agent/providers/openaiTts.js";
 import { createOpenAIDalleGenerator } from "../../src/agent/providers/openaiDalle.js";
 
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md(外部音声・画像)
+// spec: 論点 0016 / docs/integrations.md(外部音声・画像)
 //   OpenAI TTS (/v1/audio/speech) と DALL-E (/v1/images/generations)。
 //   バイナリ返却、bearer 認証、自動リトライしない(C6)。
-// specs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
+// docs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
 
 const WAV = new Uint8Array([82, 73, 70, 70, 1, 2]);
 const IMG = new Uint8Array([137, 80, 78, 71]); // PNG magic
@@ -157,8 +157,8 @@ describe("openai-dalle / 呼び出し契約", () => {
     expect([...images[0]!.slice(0, 4)]).toEqual([137, 80, 78, 71]);
   });
 
-  // spec: specs/integrations.md「3 枚生成して終了」/「通常/喜び/激励の 3 枚を表情タグ差し替えで生成」
-  it("3 枚生成して終了: requests one image per expression tag (通常/喜び/激励)", async () => {
+  // 要件: docs/integrations.md「3 枚生成して終了」/「通常/喜び/激励の 3 枚を表情タグ差し替えで生成」
+  it("S0016_28 3 枚生成して終了: requests one image per expression tag (通常/喜び/激励)", async () => {
     const b64 = Buffer.from(IMG).toString("base64");
     const fetchFn = vi.fn(
       async () =>

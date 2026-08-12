@@ -1,5 +1,5 @@
 // preload: contextBridge で最小 API だけを renderer に公開する。
-// spec: changes/0007-runnable-popup-slice/spec.md「preload が公開する API は最小 [不変条件]」
+// spec: 論点 0017「preload が公開する API は最小 [不変条件]」
 // API の中身は ./api.ts(ipc 注入の純粋なファクトリ。テストはそちらで縛る)。
 // ここは electron を触るだけの I/O グルー — テスト対象外、検証は typecheck / lint / 実機確認。
 

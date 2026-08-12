@@ -1,6 +1,6 @@
 // renderer/consentDialog: 外部プロバイダー同意ダイアログのビューモデル(純粋関数)。
-// spec: specs/integrations.md「同意ダイアログに ToS リンクと必須チェック」
-//        specs/integrations.md「外部選択時は同意ダイアログを経る」
+// 要件: docs/integrations.md「同意ダイアログに ToS リンクと必須チェック」
+//        docs/integrations.md「外部選択時は同意ダイアログを経る」
 //
 // DOM 操作・IPC は mainEntry 側の I/O グルー。ここは「何を出すか」「いつ送信できるか」だけを縛る。
 // 送信そのものは行わない(同意が成立するまで送信経路に入らないことは main 側で担保する)。
@@ -14,7 +14,7 @@ import {
   blockMessage,
   type ConsentDialogState,
 } from "../../src/renderer/consentDialog.js";
-import { isConsentableProviderId } from "../../src/shared/providerDisclosure.js";
+import { isConsentableProviderId } from "../../src/core/shared/providerDisclosure.js";
 
 describe("consentDialog / 同意ダイアログに ToS リンクと必須チェック", () => {
   it("includes the tos and privacy links of that provider", () => {

@@ -1,9 +1,9 @@
 // secrets: API キーを OS セキュアストレージ(Electron safeStorage)経由で暗号化保存する。
-// spec: specs/integrations.md「API キーは平文 JSON に出ない [不変条件]」/ specs/data-model.md「API キー」
+// 要件: docs/integrations.md「API キーは平文 JSON に出ない [不変条件]」/ docs/data-model.md「API キー」
 // 不変条件: electron-store の平文 JSON にはキー本体を書かない。暗号化不可なら保存しない(平文フォールバック禁止)。
 // safeStorage と永続化バックエンドは注入(main プロセスが実物を渡す)。
 
-import type { ProviderId } from "../shared/types.js";
+import type { ProviderId } from "../core/shared/types.js";
 
 // Electron safeStorage の必要部分だけを型で表す(依存を薄く保つ)
 export interface SafeStorageLike {
@@ -20,7 +20,7 @@ export interface SecretBackend {
   delete(id: string): void;
 }
 
-// キー識別子の規約(specs/data-model.md)
+// キー識別子の規約(docs/data-model.md)
 export function apiKeyIdentifier(provider: ProviderId | string): string {
   return `keycheer.api-key.${provider}`;
 }

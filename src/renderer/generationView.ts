@@ -1,9 +1,9 @@
 // generationView: 生成ボタンと進捗表示のビューモデル(純粋関数)。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //   「生成の進捗が通知される」「生成中に再度生成を開始できない [境界]」
 //
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは状態遷移と表示文言だけを持つ。
-// engine 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
+// core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
 export type GenerationPhaseName = "idle" | "text" | "voice" | "done" | "failed";
 

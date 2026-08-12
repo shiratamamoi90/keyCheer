@@ -1,6 +1,6 @@
 // store: electron-store(JSON 永続化)の薄い I/O アダプタ。
-// 設定の検証・既定値補完・マイグレーションは engine の純粋関数に委譲する(main は判定ロジックを持たない)。
-// spec: specs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular=100 のマイグレーション」
+// 設定の検証・既定値補完・マイグレーションは core の純粋関数に委譲する(main は判定ロジックを持たない)。
+// 要件: docs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular=100 のマイグレーション」
 // 注:API キー本体はここ(平文 JSON)に書かない(safeStorage 管轄。src/agent/secrets.ts)。
 
 import Store from "electron-store";
@@ -9,7 +9,7 @@ import {
   validateTriggerConfig,
   migrateLegacyDefaults,
   DEFAULT_TRIGGER_CONFIG,
-} from "../engine/index.js";
+} from "../core/index.js";
 import {
   EMPTY_STATS,
   DEFAULT_ONBOARDING,
@@ -20,7 +20,7 @@ import {
   type Character,
   type Onboarding,
   type SystemConfig,
-} from "../shared/types.js";
+} from "../core/shared/types.js";
 
 // electron-store に持たせる最小スキーマ(Phase 1。popup は UI 実装時に追加)。
 interface PersistedSchema {
@@ -36,7 +36,7 @@ interface PersistedSchema {
 // 移行済みフラグ等、ユーザー設定ではない内部状態。
 // `regularDefaultMigrated` は旧既定(regular=100)→ 50 の移行を **1 回だけ**にするために持つ。
 // これが無いと、ユーザーが意図して 100 を選び直すたびに起動時へ 50 へ戻してしまう
-// (specs/data-model.md「以降ユーザーが明示変更した値は尊重する(再上書きしない)」違反)。
+// (docs/data-model.md「以降ユーザーが明示変更した値は尊重する(再上書きしない)」違反)。
 interface AppMeta {
   regularDefaultMigrated?: boolean;
 }
@@ -49,8 +49,8 @@ export interface AppStore {
   recordKeyCount(day: string, delta: number): void;
   addActiveSeconds(day: string, seconds: number): void;
   loadCharacter(): Character | undefined;
-  // changes/0010: フォームが保存するのはプロフィールのみ(プール・wav・画像は別 change)。
-  // changes/0011: 初回保存時に不変の characterId を採番する。
+  // 論点 0019: フォームが保存するのはプロフィールのみ(プール・wav・画像は別の論点)。
+  // 論点 0020: 初回保存時に不変の characterId を採番する。
   saveCharacter(profile: Pick<Character, "name" | "personality" | "voicevoxSpeakerId">): void;
   loadSystem(): SystemConfig;
   loadOnboarding(): Onboarding;
@@ -60,10 +60,16 @@ export interface AppStore {
 // electron-store 実体を注入可能にして、main 以外(将来のテスト用フェイク)からも組み立て可能にする。
 export type StoreLike = Pick<Store<PersistedSchema>, "get" | "set">;
 
-// characterId の採番(changes/0011)。
+// characterId の採番(論点 0020)。
 // `{userData}/characters/{characterId}/` のディレクトリ名になるため、
 // パス区切りや Windows で使えない文字が混ざらない文字種だけを使う。
 // 名前からは導出しない — 名前を変えるたびに生成済みの wav が迷子になるため。
+/** 文字列配列として読めない値(単一文字列・null・数値混じり)は捨てて空配列にする。 */
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
 export function newCharacterId(): string {
   const random = Math.random().toString(36).slice(2, 10);
   return `char-${Date.now().toString(36)}-${random}`;
@@ -139,7 +145,7 @@ export function createAppStore(store: StoreLike): AppStore {
       return store.get("character") as Character | undefined;
     },
 
-    // changes/0010: プロフィールのみを書く。既存のキャラは上書きする(1 キャラのみ)。
+    // 論点 0019: プロフィールのみを書く。既存のキャラは上書きする(1 キャラのみ)。
     // プール・wav・画像・generatedBy は生成フローの change が埋める。
     saveCharacter(profile) {
       const current = store.get("character") as Character | undefined;
@@ -158,7 +164,14 @@ export function createAppStore(store: StoreLike): AppStore {
     // シナリオ: system 設定の読み込みと既定値補完
     loadSystem() {
       const stored = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
-      return { ...DEFAULT_SYSTEM_CONFIG, ...stored };
+      return {
+        ...DEFAULT_SYSTEM_CONFIG,
+        ...stored,
+        // 除外設定は手書き編集で壊れやすい(単一文字列を書きがち)。型に適合しない値は
+        // 既定へ落とす(docs/data-model.md「既存設定の読み込みと既定値補完」)。
+        excludedApps: normalizeStringList(stored.excludedApps),
+        excludedKeys: normalizeStringList(stored.excludedKeys),
+      };
     },
 
     loadOnboarding() {

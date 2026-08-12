@@ -1,13 +1,13 @@
 // preload/api: renderer へ公開する最小 API の形。
-// spec: changes/0007-runnable-popup-slice/spec.md「preload が公開する API は最小 [不変条件]」
+// spec: 論点 0017「preload が公開する API は最小 [不変条件]」
 //        「入力内容は renderer に渡らない [不変条件]」
 // contextBridge への登録そのものは I/O グルー。ここでは ipc を注入して API オブジェクトの
 // 形と橋渡しの挙動(Electron のイベントオブジェクトを renderer に漏らさない)を縛る。
 
 import { describe, it, expect, vi } from "vitest";
 import { createKeyCheerApi, type IpcLike } from "../../src/preload/api.js";
-import { IpcChannel } from "../../src/shared/ipc.js";
-import { DEFAULT_TRIGGER_CONFIG } from "../../src/shared/types.js";
+import { IpcChannel } from "../../src/core/shared/ipc.js";
+import { DEFAULT_TRIGGER_CONFIG } from "../../src/core/shared/types.js";
 
 function fakeIpc(): IpcLike & {
   listeners: Map<string, ((event: unknown, ...args: unknown[]) => void)[]>;
@@ -30,7 +30,7 @@ function fakeIpc(): IpcLike & {
 }
 
 describe("preload / preload が公開する API は最小 [不変条件]", () => {
-  it("exposes exactly the documented functions and nothing else", () => {
+  it("S0017_07 exposes exactly the documented functions and nothing else", () => {
     const api = createKeyCheerApi(fakeIpc());
     // 0010 で saveCharacter / getSpeakers を追加(キャラ作成フォーム用)。
     // 追加してもなお Node / Electron のオブジェクトは露出させない。
@@ -82,7 +82,7 @@ describe("preload / IPC の橋渡し", () => {
     expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GetStats);
   });
 
-  it("入力内容は renderer に渡らない: hands the listener the payload only (not the Electron event)", () => {
+  it("S0017_09 入力内容は renderer に渡らない: hands the listener the payload only (not the Electron event)", () => {
     const ipc = fakeIpc();
     const api = createKeyCheerApi(ipc);
     const received: unknown[] = [];
@@ -112,7 +112,7 @@ describe("preload / IPC の橋渡し", () => {
 });
 
 describe("preload / 同意ダイアログに ToS リンクと必須チェック", () => {
-  it("bridges grantConsent to its own channel with the provider id", async () => {
+  it("S0016_04 bridges grantConsent to its own channel with the provider id", async () => {
     const ipc = fakeIpc();
     await createKeyCheerApi(ipc).grantConsent("openai");
     expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GrantConsent, "openai");

@@ -1,5 +1,5 @@
 // renderer/generationView: 生成ボタンと進捗表示の状態遷移(純粋関数)。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 // DOM 操作は I/O グルーでテスト対象外。ここでは「いつ押せるか」「何を出すか」だけを縛る。
 
 import { describe, it, expect } from "vitest";

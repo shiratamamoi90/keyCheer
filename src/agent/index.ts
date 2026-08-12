@@ -1,5 +1,5 @@
 // agent: 非決定的 I/O アダプタ。プロバイダー実装・プール生成・音声合成・再生計画。
-// engine を利用するが、engine は agent を import しない(architecture.md)。
+// core を利用するが、core は agent を import しない(architecture.md)。
 //
 // ここは **意図的にバレル(re-export)にしない**。まとめて公開すると、発動経路
 // (main/cheerRuntime)がこのファイル経由で providers・生成系を引き込めてしまい、

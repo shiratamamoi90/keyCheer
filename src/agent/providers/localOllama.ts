@@ -1,8 +1,8 @@
 // local-ollama: TextGenerator のローカル実装(Ollama HTTP :11434)。キャラ作成時のみ呼ばれる。
-// spec: specs/integrations.md(呼び出し契約 / 未起動フォールバック / 自動リトライしない C6)
+// 要件: docs/integrations.md(呼び出し契約 / 未起動フォールバック / 自動リトライしない C6)
 // 通信先は localhost の Ollama のみ。fetch は注入可能(テスト・タイムアウト制御のため)。
 
-import type { TextGenerator, TextGenerationRequest } from "../../engine/providers/types.js";
+import type { TextGenerator, TextGenerationRequest } from "../../core/providers/types.js";
 
 export interface OllamaConfig {
   endpoint: string; // 例: "http://localhost:11434"(system.ollamaEndpoint)

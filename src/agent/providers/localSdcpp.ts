@@ -1,11 +1,11 @@
 // local-sdcpp: ImageGenerator のローカル実装(sd.cpp 子プロセス)。キャラ設定の「AIで生成」でのみ起動、常駐しない。
-// spec: specs/integrations.md「画像 (sd.cpp / 外部)」
+// 要件: docs/integrations.md「画像 (sd.cpp / 外部)」
 //   3 枚生成して終了 / 同一シード + 表情タグ差し替え / タイムアウト・失敗時はプロセス終了(ゾンビ防止) /
 //   子プロセスはタイムアウト・キャンセル・重複起動排他を持つ [不変条件]。
 // spawn / readOutput は注入(main プロセスが child_process.spawn と fs 読み出しを渡す)。
-// [要確認] Vulkan iGPU→失敗時 CPU の自動切替は実バイナリ挙動に合わせて別途(specs/integrations.md)。
+// [要確認] Vulkan iGPU→失敗時 CPU の自動切替は実バイナリ挙動に合わせて別途(docs/integrations.md)。
 
-import type { ImageGenerator, ImageGenerationRequest } from "../../engine/providers/types.js";
+import type { ImageGenerator, ImageGenerationRequest } from "../../core/providers/types.js";
 import { EXPRESSION_TAGS, expressionTagAt } from "./expressions.js";
 
 export { EXPRESSION_TAGS };
@@ -17,7 +17,7 @@ export interface ChildHandleLike {
 
 export type SpawnLike = (command: string, args: string[]) => ChildHandleLike;
 
-// 通常 / 喜び / 激励(specs/integrations.md)。同一シードでこのタグだけ差し替える。
+// 通常 / 喜び / 激励(docs/integrations.md)。同一シードでこのタグだけ差し替える。
 // タグの正本は ./expressions.ts(外部プロバイダーと共有)。
 const DEFAULT_STEPS = 4;
 

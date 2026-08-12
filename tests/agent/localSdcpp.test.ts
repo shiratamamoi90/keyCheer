@@ -5,7 +5,7 @@ import {
   type SpawnLike,
 } from "../../src/agent/providers/localSdcpp.js";
 
-// spec: specs/integrations.md「画像 (sd.cpp / 外部)」
+// 要件: docs/integrations.md「画像 (sd.cpp / 外部)」
 //   3 枚生成して終了 / 同一シードで再現 / タイムアウト・失敗時はプロセス終了(ゾンビ防止) /
 //   子プロセスはタイムアウト・キャンセル・重複起動排他を持つ [不変条件]。
 // spawn / readOutput は注入。実バイナリには触れず、引数・プロセス制御・出力読み出しを検査する。
@@ -122,7 +122,7 @@ describe("localSdcpp / 非ゼロ終了で失敗 [異常系]", () => {
 });
 
 describe("localSdcpp / タイムアウト/失敗時 [異常系] — プロセスを kill(ゾンビ防止)", () => {
-  it("kills the child and rejects when it does not finish within timeoutMs", async () => {
+  it("S0016_33 kills the child and rejects when it does not finish within timeoutMs", async () => {
     vi.useFakeTimers();
     const child = makeChild();
     const spawn: SpawnLike = () => child; // 決して close しない

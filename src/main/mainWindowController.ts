@@ -1,10 +1,10 @@
 // mainWindowController: メインウィンドウの表示/非表示ライフサイクルの決定ロジック。
-// spec: changes/0008-main-window-character-creation/spec.md
+// spec: 論点 0018
 // Electron を import しない。BrowserWindow / dialog の実体は main/mainWindow.ts が
 // MainWindowHandle として注入するため、ここは決定的にテストできる。
 
-import { hasCharacter } from "../engine/index.js";
-import type { Character, Onboarding } from "../shared/types.js";
+import { hasCharacter } from "../core/index.js";
+import type { Character, Onboarding } from "../core/shared/types.js";
 
 export interface MainWindowHandle {
   isVisible(): boolean;

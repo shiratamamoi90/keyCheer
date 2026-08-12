@@ -1,9 +1,9 @@
 // auditLog: 外部プロバイダーへの送信を監査ログに記録する。キャラ作成時のみ発生。
-// spec: specs/integrations.md「外部送信を監査ログに記録」/ specs/data-model.md「監査ログ」
+// 要件: docs/integrations.md「外部送信を監査ログに記録」/ docs/data-model.md「監査ログ」
 // 不変条件: payload 本文は含めない(要約のみ)。stats とは別ファイル({userData}/audit.log.json)。
 // clock と appender(実際の追記 I/O)は注入する。
 
-import type { ProviderId } from "../shared/types.js";
+import type { ProviderId } from "../core/shared/types.js";
 
 export interface AuditEntry {
   timestamp: string; // ISO 8601

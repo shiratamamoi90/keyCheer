@@ -1,6 +1,6 @@
 // main/providerStore: プロバイダー選択と同意の永続化。
-// spec: specs/data-model.md「同意フラグ未通過状態の永続化禁止」
-//        specs/integrations.md「同意はプロバイダー単位で 1 回のみ」
+// 要件: docs/data-model.md「同意フラグ未通過状態の永続化禁止」
+//        docs/integrations.md「同意はプロバイダー単位で 1 回のみ」
 //
 // store.ts と分けている理由:store.ts は発動経路(main/index.ts)からも読まれる。
 // providers の関心をそこへ集めると「発動経路は providers を知らない」が曖昧になる。
@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { createProviderStore } from "../../src/main/providerStore.js";
 import type { StoreLike } from "../../src/main/store.js";
-import { DEFAULT_PROVIDER_SELECTION } from "../../src/shared/types.js";
+import { DEFAULT_PROVIDER_SELECTION } from "../../src/core/shared/types.js";
 
 function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
   raw: Record<string, unknown>;
@@ -25,7 +25,7 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
 }
 
 describe("providerStore / 同意フラグ未通過状態の永続化禁止", () => {
-  it("reads consent as empty when nothing was ever granted", () => {
+  it("S0015_08 reads consent as empty when nothing was ever granted", () => {
     // ダイアログを出しただけ・表示中に強制終了、のいずれでも同意は生まれない。
     expect(createProviderStore(fakeStore()).loadConsent()).toEqual({});
   });

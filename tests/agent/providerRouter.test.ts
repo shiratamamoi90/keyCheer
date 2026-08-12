@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { routeTextGeneration } from "../../src/agent/providerRouter.js";
-import { emptyConsentState, grantConsent } from "../../src/engine/providers/consent.js";
+import { emptyConsentState, grantConsent } from "../../src/core/providers/consent.js";
 import { createAuditLogger } from "../../src/agent/auditLog.js";
-import type { TextGenerator } from "../../src/engine/providers/types.js";
-import type { TextProviderId } from "../../src/shared/types.js";
+import type { TextGenerator } from "../../src/core/providers/types.js";
+import type { TextProviderId } from "../../src/core/shared/types.js";
 
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 //   ローカル/外部ルーティング、前提条件(同意 + API キー)ゲート、外部送信を監査記録、
 //   失敗時は自動でローカルにフォールバックしない(C6)。
 
@@ -105,7 +105,7 @@ describe("providerRouter / 外部送信は監査ログに記録", () => {
 });
 
 describe("providerRouter / 外部生成失敗時は自動でローカルに切り替えない [異常系]", () => {
-  it("returns generation-failed and never calls the local provider", async () => {
+  it("S0016_06 returns generation-failed and never calls the local provider", async () => {
     const openai = fakeGenerator("openai", async () => {
       throw new Error("500 upstream");
     });
@@ -146,7 +146,7 @@ describe("providerRouter / プロバイダー未登録 [境界]", () => {
   });
 });
 
-// spec: changes/0009-additional-external-providers/spec.md
+// spec: 論点 0016
 // 回帰ガード:providerRouter はプロバイダーごとの分岐を持たない汎用実装であり、
 // 新しい外部プロバイダーを足しても router 側の変更を要さないことを固定する。
 // (実装より後に書いたテスト。Red は経ていない — router は最初からこの性質を満たしていた)

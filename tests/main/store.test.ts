@@ -1,10 +1,17 @@
 // main/store: 設定の読み込み・マイグレーション・統計追記の契約。
-// spec: specs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular = 100 のマイグレーション [境界]」
+// 要件: docs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular = 100 のマイグレーション [境界]」
 // electron-store は StoreLike で注入できるため、main 層でもここは決定的にテストできる。
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createAppStore, type StoreLike } from "../../src/main/store.js";
-import { DEFAULT_TRIGGER_CONFIG, EMPTY_STATS, DEFAULT_ONBOARDING } from "../../src/shared/types.js";
+import {
+  DEFAULT_TRIGGER_CONFIG,
+  EMPTY_STATS,
+  DEFAULT_ONBOARDING,
+  DEFAULT_SYSTEM_CONFIG,
+} from "../../src/core/shared/types.js";
 
 function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
   raw: Record<string, unknown>;
@@ -20,7 +27,7 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
 }
 
 describe("store / 既存設定の読み込みと既定値補完", () => {
-  it("fills missing keys with defaults (旧バージョン JSON)", () => {
+  it("S0015_01 fills missing keys with defaults (旧バージョン JSON)", () => {
     const store = createAppStore(fakeStore({ triggers: { regular: 75 } }));
     const { config, migrated } = store.loadTriggerConfig();
     expect(config.regular).toBe(75);
@@ -37,7 +44,7 @@ describe("store / 既存設定の読み込みと既定値補完", () => {
 });
 
 describe("store / `triggers.regular = 100` のマイグレーション [境界]", () => {
-  it("resets the legacy default 100 to 50 and flags migrated on first launch", () => {
+  it("S0015_02 resets the legacy default 100 to 50 and flags migrated on first launch", () => {
     const fake = fakeStore({ triggers: { ...DEFAULT_TRIGGER_CONFIG, regular: 100 } });
     const { config, migrated } = createAppStore(fake).loadTriggerConfig();
     expect(config.regular).toBe(50);
@@ -106,7 +113,7 @@ describe("store / 統計の追記", () => {
   });
 });
 
-describe("store / character の読み込み(changes/0008)", () => {
+describe("store / character の読み込み(論点 0018)", () => {
   it("returns undefined when no character has been saved yet", () => {
     const store = createAppStore(fakeStore());
     expect(store.loadCharacter()).toBeUndefined();
@@ -125,7 +132,7 @@ describe("store / character の読み込み(changes/0008)", () => {
   });
 });
 
-describe("store / onboarding の読み書き(changes/0008)", () => {
+describe("store / onboarding の読み書き(論点 0018)", () => {
   it("defaults skipMainWindowAutoShow to false when unset", () => {
     const store = createAppStore(fakeStore());
     expect(store.loadOnboarding()).toEqual(DEFAULT_ONBOARDING);
@@ -139,10 +146,10 @@ describe("store / onboarding の読み書き(changes/0008)", () => {
   });
 });
 
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 //   「保存するとプロフィールが永続化される」「保存に失敗した場合 [異常系]」
 describe("store / 保存するとプロフィールが永続化される", () => {
-  it("persists the profile so the next load reads it back", () => {
+  it("S0019_08 persists the profile so the next load reads it back", () => {
     const backing = fakeStore();
     const store = createAppStore(backing);
 
@@ -164,7 +171,7 @@ describe("store / 保存するとプロフィールが永続化される", () =>
     expect(store.loadCharacter()).toMatchObject({ name: "B", voicevoxSpeakerId: 2 });
   });
 
-  it("does not invent image paths (画像は別 change)", () => {
+  it("does not invent image paths (画像は別の論点)", () => {
     const store = createAppStore(fakeStore());
 
     store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
@@ -175,7 +182,7 @@ describe("store / 保存するとプロフィールが永続化される", () =>
 });
 
 describe("store / 保存に失敗した場合 [異常系]", () => {
-  it("propagates the write failure instead of reporting success", () => {
+  it("S0019_09 propagates the write failure instead of reporting success", () => {
     const backing = fakeStore();
     backing.set = (() => {
       throw new Error("EACCES");
@@ -188,7 +195,7 @@ describe("store / 保存に失敗した場合 [異常系]", () => {
   });
 });
 
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //   「characterId はキャラ保存時に決まる」「characterId は名前を変えても変わらない [不変条件]」
 describe("store / characterId はキャラ保存時に決まる", () => {
   it("assigns an id on the first save", () => {
@@ -240,5 +247,40 @@ describe("store / system 設定の読み込みと既定値補完", () => {
     for (const url of [system.ollamaEndpoint, system.voicevoxEndpoint]) {
       expect(["localhost", "127.0.0.1", "[::1]"]).toContain(new URL(url).hostname);
     }
+  });
+
+  it("replaces a non-array excludedApps with the default (JSON 直接編集への防御)", () => {
+    // 要件: docs/data-model.md「既存設定の読み込みと既定値補完」(型に適合した設定オブジェクトになる)
+    const store = createAppStore(fakeStore({ system: { excludedApps: "code.exe" } }));
+
+    expect(store.loadSystem().excludedApps).toEqual([]);
+  });
+});
+
+describe("store / 除外設定はスキーマだけ用意しカウントには効かない", () => {
+  it("S0011_09 除外設定: 既定は空配列で、カウント経路のどこからも参照されない", () => {
+    // GIVEN 除外リストに値が入った設定(将来の実装を先取りして書かれた JSON)
+    const store = createAppStore(fakeStore({ system: { excludedApps: ["code.exe"] } }));
+
+    // WHEN 設定を読み込む
+    const system = store.loadSystem();
+
+    // THEN スキーマとしては存在し、値も保持される
+    expect(system.excludedApps).toEqual(["code.exe"]);
+    expect(system.excludedKeys).toEqual([]);
+    expect(DEFAULT_SYSTEM_CONFIG.excludedApps).toEqual([]);
+    expect(DEFAULT_SYSTEM_CONFIG.excludedKeys).toEqual([]);
+
+    // THEN しかしカウント経路は誰もこの値を読まない(常に全アプリ・全キーが対象)
+    const countingPath = [
+      "src/core/keyCounter.ts",
+      "src/core/runtime.ts",
+      "src/main/keyHook.ts",
+      "src/main/cheerRuntime.ts",
+    ];
+    const readers = countingPath.filter((file) =>
+      /excluded/i.test(readFileSync(join(import.meta.dirname, "..", "..", file), "utf8")),
+    );
+    expect(readers).toEqual([]);
   });
 });

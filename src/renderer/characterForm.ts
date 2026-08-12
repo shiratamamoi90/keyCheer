@@ -1,10 +1,10 @@
 // characterForm: キャラ作成フォームのビューモデル(純粋関数)。
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 //   「必須項目が揃うまで保存できない」「名前と性格の長さ制約 [境界]」
 //   「前後の空白は無視する [境界]」「話者を選ばないと保存できない」
 //
 // DOM 操作・IPC 送信は mainEntry 側の I/O グルー。ここは検証と値の組み立てだけを持つ。
-// engine 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
+// core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
 // [要確認] 確定値(2026-07-26):名前 20 文字 / 性格 200 文字。コードポイント単位で数える。
 export const CHARACTER_NAME_MAX = 20;
@@ -26,7 +26,7 @@ export interface CharacterFormValidation {
   errors: CharacterFormError[];
 }
 
-// 保存対象のプロフィール(Character のうち本 change が書き込む部分)
+// 保存対象のプロフィール(Character のうちこの論点 が書き込む部分)
 export interface CharacterProfileDraft {
   name: string;
   personality: string;

@@ -1,0 +1,110 @@
+// IPC チャンネル定義:main ⇄ renderer の唯一の契約点。
+// core の共有型のみ参照し、providers・agent 実装には触れない(発動経路の境界を型レベルでも保つ)。
+// チャンネル名は文字列定数で一元管理し、main/preload/renderer が同じ値を参照する。
+
+import type { SpeedZone, CheerType, TimeOfDay, TriggerConfig, Stats, ProviderId } from "./types.js";
+
+export const IpcChannel = {
+  // renderer → main(invoke:双方向)
+  GetTriggerConfig: "keycheer:get-trigger-config",
+  UpdateTriggerConfig: "keycheer:update-trigger-config",
+  GetStats: "keycheer:get-stats",
+  // キャラ作成フォーム(論点 0019)。生成は含まず、プロフィールの保存と話者一覧のみ。
+  SaveCharacter: "keycheer:save-character",
+  GetSpeakers: "keycheer:get-speakers",
+  GetCharacter: "keycheer:get-character",
+  // プール・wav の生成(論点 0020)。生成はローカルのみ(Ollama / VOICEVOX)。
+  StartGeneration: "keycheer:start-generation",
+  CancelGeneration: "keycheer:cancel-generation",
+  GenerationProgress: "keycheer:generation-progress",
+  // 外部プロバイダーの同意(論点 0016)。キャラ作成側の関心で、発動経路とは無関係。
+  GetProviders: "keycheer:get-providers",
+  SetProviders: "keycheer:set-providers",
+  GetConsent: "keycheer:get-consent",
+  GrantConsent: "keycheer:grant-consent",
+  // main → renderer(send:片方向)
+  CheerFired: "keycheer:cheer-fired",
+  ConfigMigrated: "keycheer:config-migrated",
+} as const;
+
+export type IpcChannel = (typeof IpcChannel)[keyof typeof IpcChannel];
+
+// main → renderer: 応援発動時にポップアップへ渡すペイロード。
+// 発動経路の産物 — providers に一切依存しない(プール + wav のみで成立)。
+export interface CheerFiredPayload {
+  count: number;
+  kpm: number;
+  speedZone: SpeedZone;
+  timeOfDay: TimeOfDay;
+  type: CheerType;
+  messageId: string;
+  message: string; // {milestone} 補間後の表示テキスト
+  wavPath: string | null; // null = テキストのみ(wav 欠損 / baseline 定型文)
+  popupDurationMs: number;
+}
+
+// main → renderer: 旧既定値(regular=100)からの移行通知(docs/data-model.md のマイグレーション)
+export interface ConfigMigratedPayload {
+  field: "regular";
+  from: number;
+  to: number;
+}
+
+// renderer → main への設定更新リクエスト(バリデーションは main 側 core で行う)
+export type UpdateTriggerConfigRequest = TriggerConfig;
+
+// renderer ← main の統計スナップショット(表示用)
+export type StatsSnapshot = Stats;
+
+// renderer → main: キャラ作成フォームが保存するプロフィール(論点 0019)。
+// プール・wav・画像は含まない(生成は別の論点)。
+export interface SaveCharacterRequest {
+  name: string;
+  personality: string;
+  voicevoxSpeakerId: number;
+}
+
+export type SaveCharacterResult = { ok: true } | { ok: false; errors: string[] };
+
+// renderer ← main: 話者一覧(VOICEVOX から取得。未起動なら unavailable)
+export interface SpeakerOption {
+  id: number;
+  name: string;
+  styleName: string;
+}
+
+export type GetSpeakersResult =
+  | { ok: true; speakers: SpeakerOption[] }
+  | { ok: false; reason: "unavailable" };
+
+// main → renderer: 生成の進捗・完了・失敗(論点 0020)。
+// 応援発動経路とは無関係のチャンネル。プロバイダー実装の型は載せない。
+export type GenerationProgressPayload =
+  | { type: "progress"; phase: "text" | "voice"; done: number; total: number }
+  | { type: "done"; synthesized: number; missing: number }
+  | { type: "failed"; reason: string };
+
+// renderer ← main: 保存済みキャラの要約(未保存なら null)。
+// 表示と生成に要る値だけ。imagePaths / generatedBy は渡さない。
+export interface CharacterSummaryPayload {
+  id: string;
+  name: string;
+  personality: string;
+  voicevoxSpeakerId: number;
+}
+
+// renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
+// 外部プロバイダーで止まった場合は、どのプロバイダーが何で止まったかを返す。
+// renderer はそれを見て同意ダイアログ / キー入力のどちらを出すか決める。
+export type StartGenerationResult =
+  | { ok: true }
+  | { ok: false; reason: "already-running" | "no-character" }
+  | {
+      ok: false;
+      reason: "consent-required" | "missing-api-key" | "voice-id-required";
+      provider: ProviderId;
+    };
+
+// renderer ⇄ main: 外部プロバイダーの同意状態(論点 0016)。
+// true のものだけが載る。未同意は「キーが無い」で表す(false を持ち回らない)。
+export type ConsentSnapshot = Readonly<Partial<Record<ProviderId, true>>>;

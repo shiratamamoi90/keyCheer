@@ -1,5 +1,5 @@
 // characterCreation: プール生成 → wav 合成 → 永続化のオーケストレーション。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //
 // 生成の中身は agent 側(generatePool / synthesizePoolVoices)が持つ。ここは配線と
 // 「いつ保存するか」「失敗をどう扱うか」だけを決める。
@@ -7,8 +7,8 @@
 
 import { generatePool, isPoolComplete, type PoolGenerationState } from "../agent/poolGenerator.js";
 import { synthesizePoolVoices } from "../agent/voiceSynth.js";
-import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../engine/messagePool.js";
-import type { TextGenerator, VoiceSynthesizer } from "../engine/providers/types.js";
+import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
+import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
 import { savePool, createWavWriter, clearVoices, type CharacterFs } from "./characterStore.js";
 
 export type GenerationPhase = "text" | "voice";

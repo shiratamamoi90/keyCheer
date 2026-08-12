@@ -1,5 +1,5 @@
 // main/characterCreation: プール生成 → wav 合成 → 永続化のオーケストレーション。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 // 生成の中身(generatePool / synthesizePoolVoices)は 0002 で実装・テスト済み。
 // ここで縛るのは配線・進捗・中断再開・失敗時の扱い・二重起動の防止。
 // プロバイダーと fs はすべて注入。実 HTTP も実ファイル書き込みも発生させない。
@@ -11,9 +11,9 @@ import {
 } from "../../src/main/characterCreation.js";
 import { loadPool, type CharacterFs } from "../../src/main/characterStore.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
-import { ALL_BUCKET_KEYS } from "../../src/engine/messagePool.js";
+import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
 import { MESSAGES_PER_BUCKET } from "../../src/agent/poolGenerator.js";
-import type { TextGenerator, VoiceSynthesizer } from "../../src/engine/providers/types.js";
+import type { TextGenerator, VoiceSynthesizer } from "../../src/core/providers/types.js";
 
 const USER_DATA = "/userdata";
 const CHAR_ID = "chia-abc123";
@@ -62,7 +62,7 @@ function baseInput(fs: CharacterFs, over: Record<string, unknown> = {}) {
 }
 
 describe("characterCreation / ローカル生成でプールと wav が揃う", () => {
-  it("saves the pool and one wav per message", async () => {
+  it("S0020_01 saves the pool and one wav per message", async () => {
     const fs = fakeFs();
     const result = await createGenerationRunner().start(baseInput(fs));
 
@@ -86,7 +86,7 @@ describe("characterCreation / ローカル生成でプールと wav が揃う", 
 });
 
 describe("characterCreation / 生成の進捗が通知される", () => {
-  it("reports both the text phase and the voice phase", async () => {
+  it("S0020_02 reports both the text phase and the voice phase", async () => {
     const fs = fakeFs();
     const progress: GenerationProgress[] = [];
     await createGenerationRunner().start(
@@ -106,7 +106,7 @@ describe("characterCreation / 生成の進捗が通知される", () => {
 });
 
 describe("characterCreation / Ollama 未起動で生成を開始した [異常系]", () => {
-  it("fails without synthesizing anything and without a usable pool", async () => {
+  it("S0020_03 fails without synthesizing anything and without a usable pool", async () => {
     const fs = fakeFs();
     const synthesizer = okVoice();
     const textGenerator: TextGenerator = {
@@ -129,7 +129,7 @@ describe("characterCreation / Ollama 未起動で生成を開始した [異常�
 });
 
 describe("characterCreation / VOICEVOX 未起動で音声だけ失敗した [異常系]", () => {
-  it("still saves the pool so cheers use pool text without audio", async () => {
+  it("S0020_04 still saves the pool so cheers use pool text without audio", async () => {
     const fs = fakeFs();
     const synthesizer: VoiceSynthesizer = {
       id: "local-voicevox",
@@ -150,7 +150,7 @@ describe("characterCreation / VOICEVOX 未起動で音声だけ失敗した [異
 });
 
 describe("characterCreation / 音声の部分失敗を許容する [境界]", () => {
-  it("counts the failures as missing and still completes", async () => {
+  it("S0020_05 counts the failures as missing and still completes", async () => {
     const fs = fakeFs();
     let n = 0;
     const synthesizer: VoiceSynthesizer = {
@@ -173,7 +173,7 @@ describe("characterCreation / 音声の部分失敗を許容する [境界]", ()
 });
 
 describe("characterCreation / 生成を中断して再開する", () => {
-  it("keeps partial results and resumes only the unfinished buckets", async () => {
+  it("S0020_06 keeps partial results and resumes only the unfinished buckets", async () => {
     const fs = fakeFs();
     let bucketCalls = 0;
     const textGenerator: TextGenerator = {
@@ -203,7 +203,7 @@ describe("characterCreation / 生成を中断して再開する", () => {
 });
 
 describe("characterCreation / 生成中に再度生成を開始できない [境界]", () => {
-  it("refuses a second start while one is in flight", async () => {
+  it("S0020_07 refuses a second start while one is in flight", async () => {
     const fs = fakeFs();
     const runner = createGenerationRunner();
     let release: (() => void) | undefined;

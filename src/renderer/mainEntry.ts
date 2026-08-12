@@ -1,5 +1,5 @@
 // mainEntry: メインウィンドウ(キャラ作成フォーム)の描画エントリ。
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 //
 // バンドラを使わない(0007 確定事項の延長)ため、React/ReactDOM は main.html が UMD の
 // <script> でグローバルとして読み込む。JSX は使わず React.createElement を直接呼ぶ
@@ -8,7 +8,7 @@
 //
 // 検証ロジックは characterForm.ts(純粋関数)に置きテストで縛る。ここは DOM 配線だけの
 // I/O グルーでユニットテスト対象外 — 検証は typecheck / lint / 実機確認。
-// engine 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
+// core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
 import type * as ReactNS from "react";
 import type * as ReactDOMClientNS from "react-dom/client";
@@ -33,7 +33,7 @@ import {
   blockMessage,
   type ConsentDialogState,
 } from "./consentDialog.js";
-import { providerDisplayName } from "../shared/providerDisclosure.js";
+import { providerDisplayName } from "../core/shared/providerDisclosure.js";
 import {
   TEXT_PROVIDER_IDS,
   VOICE_PROVIDER_IDS,
@@ -41,8 +41,8 @@ import {
   type ProviderSelection,
   type TextProviderId,
   type VoiceProviderId,
-} from "../shared/types.js";
-import type { SpeakerOption } from "../shared/ipc.js";
+} from "../core/shared/types.js";
+import type { SpeakerOption } from "../core/shared/ipc.js";
 // window.keycheer の型は preload の公開 API がそのまま正本(popup.ts と同じ宣言を共有する)。
 // 型だけの import なので renderer → preload の実行時依存は生まれない。
 import type { KeyCheerApi } from "../preload/api.js";
@@ -76,10 +76,10 @@ function App(): ReactNS.ReactElement {
   const [speakersUnavailable, setSpeakersUnavailable] = React.useState(false);
   const [errors, setErrors] = React.useState<CharacterFormError[]>([]);
   const [status, setStatus] = React.useState<string | null>(null);
-  // 生成(changes/0011)。状態遷移は generationView(純粋関数)に委譲する。
+  // 生成(論点 0020)。状態遷移は generationView(純粋関数)に委譲する。
   const [saved, setSaved] = React.useState(false);
   const [generation, setGeneration] = React.useState(initialGenerationState());
-  // プロバイダー選択と同意(changes/0003)。既定はローカル一式。
+  // プロバイダー選択と同意(論点 0016)。既定はローカル一式。
   const [selection, setSelection] = React.useState<ProviderSelection>(DEFAULT_PROVIDER_SELECTION);
   const [dialog, setDialog] = React.useState<ConsentDialogState | null>(null);
   const [blocked, setBlocked] = React.useState<string | null>(null);
@@ -143,7 +143,9 @@ function App(): ReactNS.ReactElement {
         setBlocked(blockMessage(result.reason, providerDisplayName(result.provider)));
         return;
       }
-      setGeneration((prev) => applyGenerationEvent(prev, { type: "failed", reason: result.reason }));
+      setGeneration((prev) =>
+        applyGenerationEvent(prev, { type: "failed", reason: result.reason }),
+      );
     });
   };
 
@@ -248,12 +250,12 @@ function App(): ReactNS.ReactElement {
 
     React.createElement("button", { type: "button", onClick: submit }, "保存"),
 
-    // プロバイダー選択(changes/0003)。画像は生成フローに乗っていないため出さない。
+    // プロバイダー選択(論点 0016)。画像は生成フローに乗っていないため出さない。
     React.createElement("h2", null, "生成に使うプロバイダー"),
     providerSelect("text", "応援メッセージ", TEXT_PROVIDER_IDS, selection.text),
     providerSelect("voice", "音声", VOICE_PROVIDER_IDS, selection.voice),
 
-    // 生成(changes/0011)。キャラ保存後にのみ押せる。生成中は押せない。
+    // 生成(論点 0020)。キャラ保存後にのみ押せる。生成中は押せない。
     React.createElement(
       "button",
       {

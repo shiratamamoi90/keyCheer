@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { resolveWavPath, planCheerPlayback } from "../../src/agent/cheerPlayer.js";
-import type { CheerSelection } from "../../src/engine/cheerSelector.js";
+import type { CheerSelection } from "../../src/core/cheerSelector.js";
 
-// spec: specs/data-model.md「音声ファイル」(messageId → wav パスは決定的に解決可能)
-//       specs/cheer-trigger.md「音声ファイル欠損時のフォールバック」「キャラ未作成時の発動」
+// 要件: docs/data-model.md「音声ファイル」(messageId → wav パスは決定的に解決可能)
+//       docs/cheer-trigger.md「音声ファイル欠損時のフォールバック」「キャラ未作成時の発動」
 // 再生(音を出す)は main 側。ここは再生計画(何を表示し、どの wav を鳴らすか)まで。
 
 function selection(overrides: Partial<CheerSelection> = {}): CheerSelection {
@@ -40,7 +40,7 @@ describe("cheerPlayer / プールからの 1 文選択 + 対応 wav 再生", () 
 });
 
 describe("cheerPlayer / 音声ファイル欠損時のフォールバック [異常系]", () => {
-  it("falls back to text-only popup when the wav file is missing", () => {
+  it("S0013_10 falls back to text-only popup when the wav file is missing", () => {
     const plan = planCheerPlayback({
       selection: selection(),
       userDataDir: "/appdata/keyCheer",

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { synthesizePoolVoices } from "../../src/agent/voiceSynth.js";
-import type { VoiceSynthesizer } from "../../src/engine/providers/types.js";
-import type { PoolMessage } from "../../src/engine/messagePool.js";
+import type { VoiceSynthesizer } from "../../src/core/providers/types.js";
+import type { PoolMessage } from "../../src/core/messagePool.js";
 
-// spec: specs/integrations.md「全文事前合成」「部分失敗時の許容」
+// 要件: docs/integrations.md「全文事前合成」「部分失敗時の許容」
 //   各メッセージ 1:1 の wav、失敗分は「wav 欠損」として残しキャラ作成は完了する。
 
 const WAV = new Uint8Array([82, 73, 70, 70]);
@@ -25,7 +25,7 @@ function messages(n: number): PoolMessage[] {
 }
 
 describe("voiceSynth / 全文事前合成", () => {
-  it("writes one wav per message, keyed by messageId", async () => {
+  it("S0016_22 writes one wav per message, keyed by messageId", async () => {
     const writes: string[] = [];
     const writeWav = vi.fn(async (messageId: string, _bytes: Uint8Array) => {
       writes.push(messageId);
@@ -63,7 +63,7 @@ describe("voiceSynth / 全文事前合成", () => {
 });
 
 describe("voiceSynth / 部分失敗時の許容 [異常系]", () => {
-  it("collects failed ids as missing and does not throw (5 of 480 may fail)", async () => {
+  it("S0016_25 collects failed ids as missing and does not throw (5 of 480 may fail)", async () => {
     const failIds = new Set(["msg-1", "msg-3"]);
     const writeWav = vi.fn(async () => {});
     const result = await synthesizePoolVoices({

@@ -5,12 +5,12 @@ import {
   type AuditEntry,
 } from "../../src/agent/auditLog.js";
 
-// spec: specs/integrations.md「外部送信を監査ログに記録」/ specs/data-model.md「監査ログ」
+// 要件: docs/integrations.md「外部送信を監査ログに記録」/ docs/data-model.md「監査ログ」
 //   {timestamp, provider, action, payloadSummary} を append。payload 本文は含めない・要約のみ。
 //   clock と appender は注入。
 
 describe("auditLog / 外部送信を監査ログに記録", () => {
-  it("appends an entry with injected timestamp, provider, action, and summary", () => {
+  it("S0016_08 appends an entry with injected timestamp, provider, action, and summary", () => {
     const entries: AuditEntry[] = [];
     const logger = createAuditLogger({
       append: (e) => entries.push(e),

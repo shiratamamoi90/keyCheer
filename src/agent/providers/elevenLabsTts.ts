@@ -1,9 +1,9 @@
 // elevenlabs-tts: VoiceSynthesizer の外部実装(ElevenLabs Text to Speech)。
-// spec: changes/0009-additional-external-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 // 失敗時は throw(自動リトライしない C6)。API キーは xi-api-key ヘッダにのみ乗せる(Bearer ではない)。
 // voice_id はパスパラメータ。数値の speakerId は注入されたテーブルで voice ID 文字列へ写像する。
 
-import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../engine/providers/types.js";
+import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../core/providers/types.js";
 
 export interface ElevenLabsTtsConfig {
   apiKey: string;

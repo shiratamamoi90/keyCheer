@@ -1,5 +1,5 @@
 // speakerCatalog: VOICEVOX から話者一覧を取得する。
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 //   「話者一覧を VOICEVOX から取得する」「VOICEVOX 未起動でも画面は壊れない [異常系]」
 //   「話者一覧の取得は localhost に閉じる [不変条件]」
 //

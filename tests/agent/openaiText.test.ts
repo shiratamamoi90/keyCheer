@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createOpenAITextGenerator } from "../../src/agent/providers/openaiText.js";
 
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 //   外部テキストプロバイダー(OpenAI)。HTTP 契約 + 自動リトライしない(C6)。
 // API キー・fetch は注入。キーはヘッダにのみ乗り、レスポンス解析は行を分割して返す。
-// specs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
+// docs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
 
 function okJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -102,7 +102,7 @@ describe("openai-text / 再現性のためのシード", () => {
 });
 
 describe("openai-text / HTTP エラーは throw する [異常系]", () => {
-  it("通信失敗・プロキシ環境 [異常系]: rejects on connection failure, called exactly once (自動リトライしない)", async () => {
+  it("S0016_07 通信失敗・プロキシ環境 [異常系]: rejects on connection failure, called exactly once (自動リトライしない)", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("network down");
     });

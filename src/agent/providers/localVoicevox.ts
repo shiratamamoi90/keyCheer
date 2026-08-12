@@ -1,9 +1,9 @@
 // local-voicevox: VoiceSynthesizer のローカル実装(VOICEVOX HTTP :50021)。キャラ作成時のみ呼ばれる。
-// spec: specs/integrations.md「VOICEVOX (ローカル) の呼び出し契約」
+// 要件: docs/integrations.md「VOICEVOX (ローカル) の呼び出し契約」
 //   POST /audio_query?text=...&speaker=ID → POST /synthesis?speaker=ID → wav
 // 失敗時は throw(自動リトライしない C6)。呼び出し側(voiceSynth)が部分失敗を許容する。
 
-import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../engine/providers/types.js";
+import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../core/providers/types.js";
 
 export interface VoicevoxConfig {
   endpoint: string; // 例: "http://localhost:50021"(system.voicevoxEndpoint)

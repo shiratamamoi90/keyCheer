@@ -20,9 +20,9 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "@engine/*": ["src/engine/*"],
+      "@core/*": ["src/core/*"],
       "@agent/*": ["src/agent/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/core/shared/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"],

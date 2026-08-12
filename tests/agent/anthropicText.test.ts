@@ -5,7 +5,7 @@ import {
   ANTHROPIC_MAX_TOKENS_MARGIN,
 } from "../../src/agent/providers/anthropicText.js";
 
-// spec: changes/0009-additional-external-providers/spec.md
+// spec: 論点 0016
 //   Anthropic Messages API による TextGenerator 実装。
 //   systemPrompt はトップレベル system、messages には user ロールが必要(OpenAI と構造が違う)。
 
@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("anthropic-text / Anthropic (外部) の呼び出し契約", () => {
-  it("POSTs /v1/messages with the documented headers and body shape", async () => {
+  it("S0016_19 POSTs /v1/messages with the documented headers and body shape", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({
       apiKey: "sk-ant-test",
@@ -87,7 +87,7 @@ describe("anthropic-text / Anthropic (外部) の呼び出し契約", () => {
 });
 
 describe("anthropic-text / Anthropic の max_tokens を要求量から決める [境界]", () => {
-  it("computes max_tokens deterministically from count", async () => {
+  it("S0016_20 computes max_tokens deterministically from count", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
 
@@ -112,7 +112,7 @@ describe("anthropic-text / Anthropic の max_tokens を要求量から決める 
 });
 
 describe("anthropic-text / Anthropic はシードを受け付けない [境界]", () => {
-  it("never sends seed even when the caller pins one", async () => {
+  it("S0016_21 never sends seed even when the caller pins one", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
 
@@ -125,7 +125,7 @@ describe("anthropic-text / Anthropic はシードを受け付けない [境界]"
 });
 
 describe("anthropic-text / API キーは認証ヘッダにのみ乗る [不変条件]", () => {
-  it("puts the key in x-api-key only, never in the url or body", async () => {
+  it("S0016_10 puts the key in x-api-key only, never in the url or body", async () => {
     const fetchFn = vi.fn(async () => okJson(messagesResponse));
     const gen = createAnthropicTextGenerator({ apiKey: "sk-ant-secret", model: "m", fetchFn });
 
@@ -140,7 +140,7 @@ describe("anthropic-text / API キーは認証ヘッダにのみ乗る [不変�
 });
 
 describe("anthropic-text / HTTP エラーは throw する [異常系]", () => {
-  it("rejects on 401 without retrying", async () => {
+  it("S0016_12 rejects on 401 without retrying", async () => {
     const fetchFn = vi.fn(async () => new Response("unauthorized", { status: 401 }));
     const gen = createAnthropicTextGenerator({ apiKey: "bad", model: "m", fetchFn });
 
@@ -160,7 +160,7 @@ describe("anthropic-text / HTTP エラーは throw する [異常系]", () => {
 });
 
 describe("anthropic-text / タイムアウト予算を超えたら中断する [境界]", () => {
-  it("aborts the in-flight request once timeoutMs elapses", async () => {
+  it("S0016_11 aborts the in-flight request once timeoutMs elapses", async () => {
     vi.useFakeTimers();
     const fetchFn = vi.fn(
       (_url: string, init: RequestInit) =>

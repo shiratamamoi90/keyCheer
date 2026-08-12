@@ -19,7 +19,7 @@ import { registerAudioProtocol } from "./audioProtocol.js";
 import { createNodeCharacterFs } from "./nodeCharacterFs.js";
 import { loadPool } from "./characterStore.js";
 import { registerCharacterCreation } from "./characterCreationIpc.js";
-import { IpcChannel } from "../shared/ipc.js";
+import { IpcChannel } from "../core/shared/ipc.js";
 
 // 単一インスタンス化(キーフックの多重登録・トレイ重複を防ぐ)。
 // ロックを取れなかった側は quit を要求し、以降の初期化(キーフック登録)へは進まない。
@@ -28,7 +28,7 @@ if (!hasSingleInstanceLock) {
   app.quit();
 }
 
-// 統計をディスクへ書き戻す間隔。キー 1 打ごとに書かない(specs/key-counter.md 不変条件)。
+// 統計をディスクへ書き戻す間隔。キー 1 打ごとに書かない(docs/key-counter.md 不変条件)。
 const STATS_FLUSH_INTERVAL_MS = 10_000;
 
 function bootstrap(): void {
@@ -41,7 +41,7 @@ function bootstrap(): void {
   const popupWindow = createPopupWindow();
 
   // メインウィンドウ(将来キャラ作成 UI を載せる場所)。キャラ未作成 かつ 自動表示未スキップなら
-  // 起動時に自動表示する(changes/0008-main-window-character-creation/spec.md)。
+  // 起動時に自動表示する(論点 0018)。
   const mainWindow = createMainWindow({
     getCharacter: () => store.loadCharacter(),
     getOnboarding: () => store.loadOnboarding(),
@@ -74,11 +74,11 @@ function bootstrap(): void {
       },
     },
     config,
-    // 発動判定は累計カウント基準(specs/cheer-trigger.md)。前回までの累計から継続する。
+    // 発動判定は累計カウント基準(docs/cheer-trigger.md)。前回までの累計から継続する。
     { initialCount: stats.totalKeyCount },
   );
 
-  // 起動時に既存キャラのプールを読み込んで発動経路へ紐付ける(changes/0011)。
+  // 起動時に既存キャラのプールを読み込んで発動経路へ紐付ける(論点 0020)。
   // プールが無い / 壊れている場合は null のまま = baseline 定型文で応援する。
   const characterFs = createNodeCharacterFs();
   const savedCharacter = store.loadCharacter();
@@ -89,7 +89,7 @@ function bootstrap(): void {
   cheerRuntime.setActiveCharacter(savedCharacter?.id ?? null, savedPool);
 
   // キーフック:押下ごとにカウント記録 + 発動判定。keycode は読まない(privacy)。
-  // カウンタはメモリ上で加算し、ディスクへは定期 flush する(specs/key-counter.md 不変条件)。
+  // カウンタはメモリ上で加算し、ディスクへは定期 flush する(docs/key-counter.md 不変条件)。
   const keyHook = createKeyHook((now) => cheerRuntime.handleKeyPress(now));
   keyHook.start();
 
@@ -117,7 +117,7 @@ function bootstrap(): void {
 
   createTray({ onQuit: () => app.quit(), onShowMain: () => mainWindow.toggle() });
 
-  // 旧既定(regular=100)からの移行通知(specs/data-model.md)。
+  // 旧既定(regular=100)からの移行通知(docs/data-model.md)。
   // 表示先の設定ウィンドウは本スライスに無いため、今はログに残すだけ。
   // 設定 UI の change で IpcChannel.ConfigMigrated を使って画面に出す。
   if (migrated) {

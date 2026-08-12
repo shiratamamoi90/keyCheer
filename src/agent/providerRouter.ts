@@ -1,15 +1,15 @@
 // providerRouter: キャラ作成時のテキスト生成を、設定に応じたプロバイダーへ振り分ける。
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 // 責務:
-//   1. 前提条件(同意 + API キー)を engine の checkGenerationPreconditions で確認(ローカルは免除)
+//   1. 前提条件(同意 + API キー)を core の checkGenerationPreconditions で確認(ローカルは免除)
 //   2. 外部送信の直前に監査ログへ記録(本文を含まない要約のみ)
 //   3. 失敗しても別プロバイダーへ自動フォールバックしない(C6)
 // 発動経路とは無関係(このモジュールはキャラ作成フローからのみ呼ばれる)。
 
-import type { TextGenerator, TextGenerationRequest } from "../engine/providers/types.js";
-import type { TextProviderId } from "../shared/types.js";
-import { isLocalProvider } from "../engine/providers/registry.js";
-import { checkGenerationPreconditions, type ConsentState } from "../engine/providers/consent.js";
+import type { TextGenerator, TextGenerationRequest } from "../core/providers/types.js";
+import type { TextProviderId } from "../core/shared/types.js";
+import { isLocalProvider } from "../core/providers/registry.js";
+import { checkGenerationPreconditions, type ConsentState } from "../core/providers/consent.js";
 import type { AuditLogger } from "./auditLog.js";
 
 export type RouteTextResult =

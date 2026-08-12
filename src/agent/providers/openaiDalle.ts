@@ -1,12 +1,12 @@
 // openai-dalle: ImageGenerator の外部実装(OpenAI Images /v1/images/generations)。
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 //   「通常/喜び/激励の 3 枚を表情タグ差し替えで生成」— ローカル(sd.cpp)と同じタグを使い、
 //   1 リクエスト = 1 枚で count 回呼ぶ(dall-e-3 は n=1 のみ受け付けるため)。
 // 失敗時は throw(自動リトライしない C6)。b64_json で受け取りバイト列にデコードする。
 // 注: この API に seed 指定は無いため `request.seed` は送れない(同一シード再現は
-//     [要確認] — specs/integrations.md「同一シードで再現」)。
+//     [要確認] — docs/integrations.md「同一シードで再現」)。
 
-import type { ImageGenerator, ImageGenerationRequest } from "../../engine/providers/types.js";
+import type { ImageGenerator, ImageGenerationRequest } from "../../core/providers/types.js";
 import { EXPRESSION_TAGS, expressionTagAt } from "./expressions.js";
 
 export interface OpenAIDalleConfig {

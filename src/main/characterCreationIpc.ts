@@ -1,5 +1,5 @@
 // characterCreationIpc: キャラ作成(プール・wav 生成)の IPC 配線。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //
 // **このモジュールだけが providers を import する。** index.ts(発動経路の配線)には
 // 混ぜない — 発動経路は外部依存ゼロという不変条件をコードの構造としても保つため
@@ -15,12 +15,12 @@ import Store from "electron-store";
 import { createSecretStore } from "../agent/secrets.js";
 import { createGenerationRunner } from "./characterCreation.js";
 import { createTextGeneratorFor, createVoiceSynthesizerFor } from "./providerFactory.js";
-import { checkGenerationGate } from "../engine/providers/gate.js";
+import { checkGenerationGate } from "../core/providers/gate.js";
 import { loadPool, type CharacterFs } from "./characterStore.js";
-import { IpcChannel } from "../shared/ipc.js";
-import type { GenerationProgressPayload, StartGenerationResult } from "../shared/ipc.js";
-import type { MessagePool } from "../engine/messagePool.js";
-import type { ProviderId } from "../shared/types.js";
+import { IpcChannel } from "../core/shared/ipc.js";
+import type { GenerationProgressPayload, StartGenerationResult } from "../core/shared/ipc.js";
+import type { MessagePool } from "../core/messagePool.js";
+import type { ProviderId } from "../core/shared/types.js";
 import type { AppStore } from "./store.js";
 import type { ProviderStore } from "./providerStore.js";
 

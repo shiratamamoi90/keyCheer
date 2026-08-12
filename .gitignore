@@ -1,41 +1,65 @@
+# ---------------------------------------------------------------------------
+# 【追跡する = 自分が書いた成果物だけ】
+#   src/  tests/  .gitignore  設定ファイル(package.json / tsconfig / eslint / prettier)
+#   decisions/(議論と決定の記録)  docs/(要件・用語・外部との契約)
+#   README.md(使用者向け)  DEVELOPMENT.md(開発者向け)
+#
+# 【除外する = 次の4区分】
+#   1. 機密情報          漏れると取り返しがつかない(公開後は削除しても回収できない)
+#   2. 生成物・キャッシュ 再生成できる。差分がノイズになる
+#   3. テンプレート同梱物 フォーマットの説明・ルール・仕組み。成果物ではない
+#   4. 手元の作業管理    共有する必要がないもの。決定と正本は追跡する
+# ---------------------------------------------------------------------------
+
+# --- 1. 機密情報 -----------------------------------------------------------
+# API キーは Electron safeStorage(Windows Credential Manager)から読む。
+# ファイルに置かない(@.claude/rules/security-rules.md「機密情報」)。ここは最後の防波堤。
+.env
+.env.*
+!.env.example
+*.local
+
+# --- 2. 生成物・キャッシュ --------------------------------------------------
+# Node / TypeScript(このプロジェクトの言語。@.claude/rules/stack.md「Stack」)
 node_modules/
 dist/
-out/
 build/
+out/
 release/
 release-builds/
 coverage/
+*.tsbuildinfo
+
+# Electron の配布成果物・同梱するモデル重み(配布時に別管理)
+*.exe
+*.nsis
+models/
+*.gguf
+*.safetensors
+generated-images/
+
+# 言語に依存しないもの
+*.log
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 
-# エージェント運用のフォーマット類(git に上げない)
-.claude/
-CLAUDE.md
+# --- 3. テンプレート同梱物 --------------------------------------------------
+# エージェントへのルール・実行・強制(方針 / skill / hooks)
+/CLAUDE.md
+/.claude/
+/scripts/hooks.sh
+/scripts/validate.sh
+# ↑ スクリプトは名前で除外する。自分で足した scripts/ 配下(postbuild.mjs)は追跡される
 
-# 開発プロセスの作業フォルダ(成果物は specs/ decisions/ に反映済み)
-changes/
-experiments/
-baselines/
-scripts/validate.sh
+# フォーマット自体の説明
+/TEMPLATE.md
+# ↑ README.md(使う人向け)と DEVELOPMENT.md(開発する人向け)は**追跡する**。
+#   フォーマットの説明は上げず、作ったシステムの説明を上げる、という切り分け
 
-# シークレット(safeStorage に行くべきもの・誤コミット防止)
-.env
-.env.*
-*.local
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Electron / ビルド成果物
-*.exe
-*.nsis
-
-# 同梱・生成物(配布時に別管理)
-models/
-*.gguf
-*.safetensors
-generated-images/
+# --- 4. 手元の作業管理 ------------------------------------------------------
+# 反映作業の単位。要件はここには無い(正本は docs/、経緯は decisions/)ので共有しない。
+/work/

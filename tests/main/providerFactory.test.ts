@@ -1,5 +1,5 @@
 // main/providerFactory: 選択された ProviderId から実際の生成器を組み立てる。
-// spec: specs/integrations.md「MVP 実装セット(確定)」/「生成元プロバイダーの保存」
+// 要件: docs/integrations.md「MVP 実装セット(確定)」/「生成元プロバイダーの保存」
 //
 // 「どのモデルを使うか」は確定事項(2026-07-26)により**プロバイダーごとに固定**し
 // UI から選ばせない。ここがその固定値の置き場。
@@ -10,7 +10,7 @@ import {
   createTextGeneratorFor,
   createVoiceSynthesizerFor,
 } from "../../src/main/providerFactory.js";
-import { DEFAULT_SYSTEM_CONFIG } from "../../src/shared/types.js";
+import { DEFAULT_SYSTEM_CONFIG } from "../../src/core/shared/types.js";
 
 const deps = {
   system: DEFAULT_SYSTEM_CONFIG,

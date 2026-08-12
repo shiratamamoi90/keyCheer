@@ -1,13 +1,13 @@
 // consentDialog: 外部プロバイダー同意ダイアログのビューモデル(純粋関数)。
-// spec: specs/integrations.md「同意ダイアログに ToS リンクと必須チェック」
+// 要件: docs/integrations.md「同意ダイアログに ToS リンクと必須チェック」
 //                            「外部選択時は同意ダイアログを経る」
 //
 // DOM 生成・リンクを開く・同意の確定(永続化)は mainEntry / main 側の I/O グルー。
 // ここは「何を出すか」「いつ送信ボタンを押せるか」だけを持つ。
-// engine 実装 / providers は import しない(renderer は使う側。eslint.config.js)。
+// core 実装 / providers は import しない(renderer は使う側。eslint.config.js)。
 
-import type { ProviderId } from "../shared/types.js";
-import { disclosureFor } from "../shared/providerDisclosure.js";
+import type { ProviderId } from "../core/shared/types.js";
+import { disclosureFor } from "../core/shared/providerDisclosure.js";
 
 export interface ConsentDialogState {
   readonly providerId: ProviderId;

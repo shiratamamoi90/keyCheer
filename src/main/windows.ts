@@ -1,6 +1,6 @@
 // windows: BrowserWindow 生成の薄いアダプタ(応援ポップアップ)。
-// spec: changes/0007-runnable-popup-slice/spec.md「ポップアップは入力の邪魔をしない [不変条件]」
-// この層は engine/providers を import しない(UI 側は engine を「使う側」)。
+// spec: 論点 0017「ポップアップは入力の邪魔をしない [不変条件]」
+// この層は core/providers を import しない(UI 側は core を「使う側」)。
 // 設定ウィンドウは本スライスに含めない(設定 UI の change で追加する)。
 
 import { BrowserWindow, screen } from "electron";

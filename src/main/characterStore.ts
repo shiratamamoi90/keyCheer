@@ -1,12 +1,12 @@
 // characterStore: メッセージプール(pool.json)と wav の永続化。
-// spec: changes/0011-pool-generation-and-playback/spec.md /
-//       specs/data-model.md「メッセージプール」「保存ルート」「音声ファイル」
+// spec: 論点 0020 /
+//       docs/data-model.md「メッセージプール」「保存ルート」「音声ファイル」
 //
 // fs は注入する(テストで実ファイルを書かないため)。
 // wav パスの解決は発動経路と同じ `resolveWavPath` に一本化する — 生成側で別の規約を
 // 作ると「書いた場所」と「読む場所」がずれる余地が生まれるため。
 
-import { isValidPool, countMessages, type MessagePool } from "../engine/messagePool.js";
+import { isValidPool, countMessages, type MessagePool } from "../core/messagePool.js";
 import { resolveWavPath } from "../agent/cheerPlayer.js";
 import type { PoolGenerationState } from "../agent/poolGenerator.js";
 
@@ -35,7 +35,7 @@ export function voicesDir(userDataDir: string, characterId: string): string {
 }
 
 // シナリオ: ローカル生成でプールと wav が揃う
-// completion も一緒に保存する(中断・再開のため。specs/data-model.md)。
+// completion も一緒に保存する(中断・再開のため。docs/data-model.md)。
 export function savePool(
   fs: CharacterFs,
   userDataDir: string,
@@ -75,7 +75,7 @@ export function loadPool(
     return null;
   }
 
-  // バケット構造の契約は engine の isValidPool が正本(検証を二重に持たない)
+  // バケット構造の契約は core の isValidPool が正本(検証を二重に持たない)
   if (!isValidPool(parsed)) return null;
 
   const pool = { characterId, version: POOL_VERSION, buckets: parsed.buckets };

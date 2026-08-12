@@ -25,9 +25,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@engine": resolve(__dirname, "src/engine"),
+      "@core": resolve(__dirname, "src/core"),
       "@agent": resolve(__dirname, "src/agent"),
-      "@shared": resolve(__dirname, "src/shared"),
+      "@shared": resolve(__dirname, "src/core/shared"),
     },
   },
 });

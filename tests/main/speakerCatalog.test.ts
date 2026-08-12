@@ -1,5 +1,5 @@
 // main/speakerCatalog: VOICEVOX から話者一覧を取得する。
-// spec: changes/0010-character-creation-local/spec.md
+// spec: 論点 0019
 // fetch は注入。実サーバーを叩かない。通信先が localhost に閉じていることも縛る。
 
 import { describe, it, expect, vi } from "vitest";
@@ -28,7 +28,7 @@ function okJson(body: unknown): Response {
 }
 
 describe("speakerCatalog / 話者一覧を VOICEVOX から取得する", () => {
-  it("flattens speakers and styles into selectable entries", async () => {
+  it("S0019_05 flattens speakers and styles into selectable entries", async () => {
     const fetchFn = vi.fn(async () => okJson(speakersResponse));
 
     const result = await fetchSpeakers({ fetchFn });
@@ -53,7 +53,7 @@ describe("speakerCatalog / 話者一覧を VOICEVOX から取得する", () => {
 });
 
 describe("speakerCatalog / VOICEVOX 未起動でも画面は壊れない [異常系]", () => {
-  it("returns unavailable instead of throwing when the connection fails", async () => {
+  it("S0019_06 returns unavailable instead of throwing when the connection fails", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("ECONNREFUSED");
     });
@@ -75,7 +75,7 @@ describe("speakerCatalog / VOICEVOX 未起動でも画面は壊れない [異常
 });
 
 describe("speakerCatalog / 話者一覧の取得は localhost に閉じる [不変条件]", () => {
-  it("only ever talks to localhost", async () => {
+  it("S0019_07 only ever talks to localhost", async () => {
     const urls: string[] = [];
     const fetchFn = (async (input: RequestInfo | URL) => {
       urls.push(String(input));

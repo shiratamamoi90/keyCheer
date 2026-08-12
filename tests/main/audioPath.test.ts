@@ -1,5 +1,5 @@
 // main/audioPath: 専用スキームで要求された wav パスの検証(信頼境界)。
-// spec: changes/0007-runnable-popup-slice/spec.md「wav がある発動で音声も再生する」
+// spec: 論点 0017「wav がある発動で音声も再生する」
 // security-rules.md「入力と信頼境界」: renderer から来る URL をそのままファイル読み出しに使わない。
 // 注: この検証関数はグルー(audioProtocol)から切り出した後付けの契約テスト(Red-first ではない)。
 

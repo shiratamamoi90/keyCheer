@@ -1,5 +1,5 @@
 // nodeCharacterFs: characterStore が要求する CharacterFs の Node 実装。
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 // テスト対象外の I/O グルー(判定ロジックを持たない)。テストは characterStore 側で
 // インメモリの偽物を注入して縛る。providers には触れないため発動経路から使ってよい。
 

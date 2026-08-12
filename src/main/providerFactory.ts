@@ -1,5 +1,5 @@
 // providerFactory: 選択された ProviderId から実際の生成器を組み立てる。
-// spec: specs/integrations.md「MVP 実装セット(確定)」
+// 要件: docs/integrations.md「MVP 実装セット(確定)」
 //
 // **このモジュールと characterCreationIpc だけが providers を import する。**
 // index.ts(発動経路の配線)には混ぜない — 発動経路は外部依存ゼロという不変条件を
@@ -15,8 +15,13 @@ import { createOpenAITextGenerator } from "../agent/providers/openaiText.js";
 import { createAnthropicTextGenerator } from "../agent/providers/anthropicText.js";
 import { createOpenAITTSSynthesizer } from "../agent/providers/openaiTts.js";
 import { createElevenLabsSynthesizer } from "../agent/providers/elevenLabsTts.js";
-import type { TextGenerator, VoiceSynthesizer } from "../engine/providers/types.js";
-import type { ProviderId, SystemConfig, TextProviderId, VoiceProviderId } from "../shared/types.js";
+import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
+import type {
+  ProviderId,
+  SystemConfig,
+  TextProviderId,
+  VoiceProviderId,
+} from "../core/shared/types.js";
 
 // プロバイダーごとに固定するモデル。UI からは選ばせない(2026-07-26 確定)。
 const OPENAI_TEXT_MODEL = "gpt-4o-mini";

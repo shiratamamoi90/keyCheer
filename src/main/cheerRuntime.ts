@@ -1,13 +1,13 @@
-// cheerRuntime: 発動経路の main 側グルー。1 押下 = engine.onKeyPress を回し、
+// cheerRuntime: 発動経路の main 側グルー。1 押下 = core.onKeyPress を回し、
 // 発動時に wav パスを解決してポップアップへ IPC 送信し、cheerHistory を記録する。
 // キー数・アクティブ時間はメモリ上に貯め、flushStats() でまとめて永続化する。
 //
 // ★ 発動経路の不変条件(cheer-trigger.md / CLAUDE.md):
 //   ここは providers 設定・プロバイダー実装・生成系(poolGenerator/voiceSynth/providerRouter)を import しない。
 //   外部送信は一切発生しない(localhost 含む)。成立要件はプール + 保存済み wav のみ。
-//   engine(決定的)と agent の cheerPlayer(wav パス解決のみ、providers 非依存)だけに依存する。
+//   core(決定的)と agent の cheerPlayer(wav パス解決のみ、providers 非依存)だけに依存する。
 //
-// 時刻・乱数・プールは注入する(engine の純粋性を保つため、非決定性の注入点は main に閉じる)。
+// 時刻・乱数・プールは注入する(core の純粋性を保つため、非決定性の注入点は main に閉じる)。
 
 import {
   onKeyPress,
@@ -15,13 +15,13 @@ import {
   initialKeyCounterState,
   type RuntimeState,
   type MessagePool,
-} from "../engine/index.js";
+} from "../core/index.js";
 import { planCheerPlayback } from "../agent/cheerPlayer.js";
-import { baselineMessages } from "../engine/baseline/messages.js";
-import type { TriggerConfig, CheerHistoryEntry } from "../shared/types.js";
-import type { CheerFiredPayload } from "../shared/ipc.js";
+import { baselineMessages } from "../core/baseline/messages.js";
+import type { TriggerConfig, CheerHistoryEntry } from "../core/shared/types.js";
+import type { CheerFiredPayload } from "../core/shared/ipc.js";
 
-// 1 回の flush で永続化する単位(specs/key-counter.md「メモリ上で加算し、定期的にディスクへ保存する」)
+// 1 回の flush で永続化する単位(docs/key-counter.md「メモリ上で加算し、定期的にディスクへ保存する」)
 export interface StatsDelta {
   day: string; // ローカル日付 "YYYY-MM-DD"
   keys: number;
@@ -35,7 +35,7 @@ export interface CheerRuntimeDeps {
   emitCheer: (payload: CheerFiredPayload) => void;
   // cheerHistory への追記(store 経由)
   recordHistory: (entry: CheerHistoryEntry) => void;
-  // wav 実在チェック(fs は main 側で注入。engine/発動経路は fs に触れない)
+  // wav 実在チェック(fs は main 側で注入。core/発動経路は fs に触れない)
   wavExists: (path: string) => boolean;
   // 統計のまとめ書き(flushStats から日付ごとに 1 回ずつ呼ばれる)
   recordStats?: (delta: StatsDelta) => void;
@@ -43,7 +43,7 @@ export interface CheerRuntimeDeps {
 }
 
 export interface CheerRuntimeOptions {
-  // 前回終了時までの累計キー数。発動判定は「累計カウント」で行う(specs/cheer-trigger.md)ため、
+  // 前回終了時までの累計キー数。発動判定は「累計カウント」で行う(docs/cheer-trigger.md)ため、
   // 起動時に永続化済みの totalKeyCount を渡してカウンタを継続させる。
   initialCount?: number;
 }
@@ -117,7 +117,7 @@ export function createCheerRuntime(
       state = result.state;
 
       // シナリオ: キー押下でカウント加算 / アクティブ秒数の累積
-      // ディスクには書かずメモリに貯める(specs/key-counter.md 不変条件)。
+      // ディスクには書かずメモリに貯める(docs/key-counter.md 不変条件)。
       const day = localDayKey(new Date(now));
       const bucket = pending.get(day) ?? { keys: 0, activeMs: 0 };
       bucket.keys += 1;

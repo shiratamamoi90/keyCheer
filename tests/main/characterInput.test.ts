@@ -1,5 +1,5 @@
 // main/characterInput: renderer から届いた保存リクエストの検証。
-// spec: specs/character-creation.md「renderer からの入力は main 側でも検証する [不変条件]」
+// 要件: docs/character-creation.md「renderer からの入力は main 側でも検証する [不変条件]」
 // フォーム側(characterForm)の検証は UX のためのもので、main 側の検証を省く理由にはならない
 // (security-rules.md「入力と信頼境界」)。electron に依存しないため決定的にテストできる。
 
@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { validateCharacterProfile } from "../../src/main/characterInput.js";
 
 describe("characterInput / renderer からの入力は main 側でも検証する [不変条件]", () => {
-  it("accepts a well-formed profile", () => {
+  it("S0019_10 accepts a well-formed profile", () => {
     const result = validateCharacterProfile({
       name: "チア",
       personality: "元気いっぱい",
@@ -80,7 +80,7 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
   });
 });
 
-// spec: changes/0011-pool-generation-and-playback/spec.md
+// spec: 論点 0020
 //   確定事項「保存だけして後で生成できる」— 再起動後もフォームが保存済みキャラを
 //   読み出せないと、生成ボタンへ到達できない。読み出しは公開する値を限定する。
 describe("characterInput / 保存済みキャラの読み出しは公開する値を限定する", () => {

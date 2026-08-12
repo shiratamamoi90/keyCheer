@@ -1,8 +1,8 @@
 // openai-tts: VoiceSynthesizer の外部実装(OpenAI TTS /v1/audio/speech)。
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 // 失敗時は throw(自動リトライしない C6)。キャラ作成時のみ・明示同意後に呼ばれる。
 
-import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../engine/providers/types.js";
+import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../core/providers/types.js";
 
 export interface OpenAITTSConfig {
   apiKey: string;

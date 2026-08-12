@@ -6,12 +6,12 @@ import {
   MAX_MESSAGE_LENGTH,
   MESSAGES_PER_BUCKET,
 } from "../../src/agent/poolGenerator.js";
-import { ALL_BUCKET_KEYS } from "../../src/engine/messagePool.js";
-import type { TextGenerator, TextGenerationRequest } from "../../src/engine/providers/types.js";
+import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
+import type { TextGenerator, TextGenerationRequest } from "../../src/core/providers/types.js";
 
-// spec: specs/integrations.md(テキスト: プール一括生成成功 / 生成途中の中断と再開 /
+// 要件: docs/integrations.md(テキスト: プール一括生成成功 / 生成途中の中断と再開 /
 //        一括生成中の進捗 UX / 文字数契約 [境界] / Ollama 未起動のフォールバック [異常系])
-// 生成品質は測らない(→ experiments/)。契約・クラッシュしない・再開可能性のみ縛る。
+// 生成品質は測らない(→ 非決定的な論点(decisions/))。契約・クラッシュしない・再開可能性のみ縛る。
 
 const character = { name: "チアちゃん", personality: "元気いっぱい" };
 
@@ -30,7 +30,7 @@ function makeGenerator(
 }
 
 describe("poolGenerator / プール一括生成成功", () => {
-  it("generates 24 buckets x MESSAGES_PER_BUCKET messages, addressable by scenario key", async () => {
+  it("S0016_14 generates 24 buckets x MESSAGES_PER_BUCKET messages, addressable by scenario key", async () => {
     const generator = makeGenerator(async ({ count }) =>
       Array.from({ length: count }, (_, i) => `msg${i}`),
     );
@@ -52,7 +52,7 @@ describe("poolGenerator / プール一括生成成功", () => {
     }
     expect(total).toBe(24 * MESSAGES_PER_BUCKET);
     // 既定値は 8(= 192 文)。20(= 480 文)から引き下げた根拠は
-    // decisions/0007 と changes/0011 を参照(作成時間とディスク使用量)。
+    // decisions/0007 と 論点 0020 を参照(作成時間とディスク使用量)。
     expect(MESSAGES_PER_BUCKET).toBe(8);
     // シナリオごとに 1 回ずつ呼ばれ、scenarioKey が渡る
     expect(generator.calls).toHaveLength(24);
@@ -76,7 +76,7 @@ describe("poolGenerator / プール一括生成成功", () => {
 });
 
 describe("poolGenerator / 文字数契約 [境界]", () => {
-  it("truncates messages longer than 30 characters (code points)", async () => {
+  it("S0016_17 truncates messages longer than 30 characters (code points)", async () => {
     const long = "あ".repeat(45);
     const generator = makeGenerator(async () => [long, "短い文"]);
     const state = await generatePool({ characterId: "c", character, generator });
@@ -97,7 +97,7 @@ describe("poolGenerator / 文字数契約 [境界]", () => {
 });
 
 describe("poolGenerator / Ollama (ローカル) 未起動のフォールバック [異常系]", () => {
-  it("does not crash; marks buckets failed and pool stays incomplete", async () => {
+  it("S0016_18 does not crash; marks buckets failed and pool stays incomplete", async () => {
     const generator = makeGenerator(async () => {
       throw new Error("ECONNREFUSED 127.0.0.1:11434");
     });
@@ -117,7 +117,7 @@ describe("poolGenerator / Ollama (ローカル) 未起動のフォールバッ�
 });
 
 describe("poolGenerator / 生成途中の中断と再開", () => {
-  it("resume regenerates only pending/failed buckets and keeps completed ones", async () => {
+  it("S0016_15 resume regenerates only pending/failed buckets and keeps completed ones", async () => {
     // 1 回目: 最初の 3 バケットだけ成功、それ以外は失敗
     let callCount = 0;
     const flaky = makeGenerator(async ({ count }) => {
@@ -189,7 +189,7 @@ describe("poolGenerator / 初期状態", () => {
   });
 });
 
-// spec: specs/integrations.md「プール一括生成成功」(24 シナリオ × 8 文 = 192 文)
+// 要件: docs/integrations.md「プール一括生成成功」(24 シナリオ × 8 文 = 192 文)
 // プロンプトで件数を指示しても LLM がそのとおり返す保証はない。多く返された場合に
 // そのまま採用すると、プール総数・生成時間・ディスク使用量の見積もりが崩れる
 // (2026-07-26 の 480 → 192 削減が無意味になる)。
@@ -222,5 +222,31 @@ describe("poolGenerator / 要求数を超える応答は切り詰める [境界]
       messagesPerBucket: 3,
     });
     expect(state.pool.buckets[ALL_BUCKET_KEYS[0]!]).toHaveLength(3);
+  });
+});
+
+describe("poolGenerator / 一括生成中の進捗 UX", () => {
+  it("S0016_16 onProgress は単調増加し、最後は total に達する", async () => {
+    // GIVEN 進捗を記録するコールバック
+    const seen: Array<[number, number]> = [];
+
+    // WHEN プールを一括生成する
+    const generator = makeGenerator(async ({ count }) =>
+      Array.from({ length: count }, (_, i) => `msg${i}`),
+    );
+    await generatePool({
+      characterId: "test-char",
+      character,
+      generator,
+      onProgress: (done, total) => seen.push([done, total]),
+    });
+
+    // THEN 進捗は 0 件から始まらず、後戻りせず、total に到達する
+    expect(seen.length).toBeGreaterThan(0);
+    const totals = new Set(seen.map(([, total]) => total));
+    expect(totals.size).toBe(1);
+    const dones = seen.map(([done]) => done);
+    expect(dones).toEqual([...dones].sort((a, b) => a - b));
+    expect(dones.at(-1)).toBe(seen[0]![1]);
   });
 });

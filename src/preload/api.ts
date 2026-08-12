@@ -1,11 +1,11 @@
 // preload/api: renderer へ公開する最小 API。ipc を注入して組み立てる純粋なファクトリ。
-// spec: changes/0007-runnable-popup-slice/spec.md「preload が公開する API は最小 [不変条件]」
+// spec: 論点 0017「preload が公開する API は最小 [不変条件]」
 // 不変条件:
 //   - 公開するのは下記 5 関数のみ。Electron / Node のオブジェクト(ipcRenderer・require・fs 等)は渡さない。
 //   - main からのイベントは **ペイロードだけ**を renderer に渡す(IpcRendererEvent を漏らさない)。
 //   - providers / agent の生成系には触れない(発動経路の分離)。
 
-import { IpcChannel } from "../shared/ipc.js";
+import { IpcChannel } from "../core/shared/ipc.js";
 import type {
   CheerFiredPayload,
   CharacterSummaryPayload,
@@ -18,8 +18,8 @@ import type {
   StatsSnapshot,
   UpdateTriggerConfigRequest,
   ConsentSnapshot,
-} from "../shared/ipc.js";
-import type { TriggerConfig, ProviderId, ProviderSelection } from "../shared/types.js";
+} from "../core/shared/ipc.js";
+import type { TriggerConfig, ProviderId, ProviderSelection } from "../core/shared/types.js";
 
 // 保存結果の型は providerStore が正本。preload は形だけ再宣言せず構造で受ける
 // (main の実装を preload から import しないため — 発動経路/プロセス境界を跨がせない)。
@@ -43,15 +43,15 @@ export interface KeyCheerApi {
   getTriggerConfig(): Promise<TriggerConfig>;
   updateTriggerConfig(config: UpdateTriggerConfigRequest): Promise<UpdateTriggerConfigResult>;
   getStats(): Promise<StatsSnapshot>;
-  // キャラ作成フォーム(changes/0010)。生成は含まない。
+  // キャラ作成フォーム(論点 0019)。生成は含まない。
   saveCharacter(profile: SaveCharacterRequest): Promise<SaveCharacterResult>;
   getSpeakers(): Promise<GetSpeakersResult>;
   getCharacter(): Promise<CharacterSummaryPayload | null>;
-  // プール・wav の生成(changes/0011)。進捗は onGenerationProgress で流れてくる。
+  // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
   startGeneration(): Promise<StartGenerationResult>;
   cancelGeneration(): Promise<void>;
   onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
-  // 外部プロバイダーの同意(changes/0003)。grantConsent は同意ダイアログを
+  // 外部プロバイダーの同意(論点 0016)。grantConsent は同意ダイアログを
   // 通過した時にだけ呼ぶ — ダイアログの表示・チェック操作では呼ばない。
   getProviders(): Promise<ProviderSelection>;
   setProviders(selection: ProviderSelection): Promise<SaveProvidersResult>;

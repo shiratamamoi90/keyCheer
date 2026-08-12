@@ -5,7 +5,7 @@ import {
   STABILITY_ASPECT_RATIOS,
 } from "../../src/agent/providers/stabilityImage.js";
 
-// spec: changes/0009-additional-external-providers/spec.md
+// spec: 論点 0016
 //   Stability AI(v2beta stable-image core)による ImageGenerator 実装。
 //   1 リクエスト 1 枚のため count 回呼ぶ。width/height は受け付けず aspect_ratio へ写像する。
 
@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("stability-image / Stability AI (外部) の呼び出し契約", () => {
-  it("POSTs multipart/form-data to the core endpoint with bearer auth and accept image/*", async () => {
+  it("S0016_30 POSTs multipart/form-data to the core endpoint with bearer auth and accept image/*", async () => {
     const fetchFn = vi.fn(async () => okImage([137, 80, 78, 71]));
     const gen = createStabilityImageGenerator({ apiKey: "sk-stab", fetchFn });
 
@@ -66,7 +66,7 @@ describe("stability-image / Stability AI (外部) の呼び出し契約", () => 
 });
 
 describe("stability-image / 同一シードで再現する", () => {
-  it("sends the same seed for every expression variant", async () => {
+  it("S0016_29 sends the same seed for every expression variant", async () => {
     const fetchFn = vi.fn(async () => okImage([1]));
     const gen = createStabilityImageGenerator({ apiKey: "sk", fetchFn });
 
@@ -81,7 +81,7 @@ describe("stability-image / 同一シードで再現する", () => {
 });
 
 describe("stability-image / Stability AI は width/height をアスペクト比へ写像する [境界]", () => {
-  it("maps the default 512x768 to 2:3 exactly", () => {
+  it("S0016_31 maps the default 512x768 to 2:3 exactly", () => {
     expect(resolveAspectRatio(512, 768)).toBe("2:3");
   });
 
@@ -120,7 +120,7 @@ describe("stability-image / Stability AI は width/height をアスペクト比�
 });
 
 describe("stability-image / 解決できないサイズはエラーにする [異常系]", () => {
-  it("throws for a non-positive dimension instead of silently picking a size", () => {
+  it("S0016_32 throws for a non-positive dimension instead of silently picking a size", () => {
     expect(() => resolveAspectRatio(0, 768)).toThrow();
     expect(() => resolveAspectRatio(512, -1)).toThrow();
   });

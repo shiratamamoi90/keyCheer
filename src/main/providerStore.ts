@@ -1,6 +1,6 @@
 // providerStore: プロバイダー選択と同意フラグの永続化(キャラ作成側だけが使う)。
-// spec: specs/data-model.md「同意フラグ未通過状態の永続化禁止」
-//        specs/integrations.md「同意はプロバイダー単位で 1 回のみ」/「プロバイダー設定の保存」
+// 要件: docs/data-model.md「同意フラグ未通過状態の永続化禁止」
+//        docs/integrations.md「同意はプロバイダー単位で 1 回のみ」/「プロバイダー設定の保存」
 //
 // store.ts と分けている理由:store.ts は発動経路(main/index.ts)からも読まれる。
 // providers の関心をそこへ集めると「発動経路は providers を知らない」が曖昧になる。
@@ -8,13 +8,13 @@
 //
 // 注:API キー本体はここ(平文 JSON)に書かない(safeStorage 管轄。src/agent/secrets.ts)。
 
-import { validateProviderSelection } from "../engine/providers/registry.js";
-import { isConsentableProviderId } from "../shared/providerDisclosure.js";
+import { validateProviderSelection } from "../core/providers/registry.js";
+import { isConsentableProviderId } from "../core/shared/providerDisclosure.js";
 import {
   DEFAULT_PROVIDER_SELECTION,
   type ProviderId,
   type ProviderSelection,
-} from "../shared/types.js";
+} from "../core/shared/types.js";
 import type { StoreLike } from "./store.js";
 
 // 値は `true` のみ。未同意は「キーが無い」で表す — false を持ち回ると
@@ -41,7 +41,7 @@ export function createProviderStore(store: StoreLike): ProviderStore {
 
   return {
     // シナリオ: プロバイダー設定の保存(不正値は既定へ倒す)
-    // JSON 直接編集・旧バージョンの残骸でクラッシュさせない。検証は engine の純粋関数に委譲。
+    // JSON 直接編集・旧バージョンの残骸でクラッシュさせない。検証は core の純粋関数に委譲。
     loadProviders() {
       const validated = validateProviderSelection(read().selection);
       return validated.ok ? validated.value : DEFAULT_PROVIDER_SELECTION;

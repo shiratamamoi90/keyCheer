@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createSecretStore, apiKeyIdentifier } from "../../src/agent/secrets.js";
 
-// spec: specs/integrations.md「API キーは平文 JSON に出ない [不変条件]」/ specs/data-model.md「API キー」
+// 要件: docs/integrations.md「API キーは平文 JSON に出ない [不変条件]」/ docs/data-model.md「API キー」
 //   Electron safeStorage 経由で暗号化保存。electron-store の JSON にはキー本体を書かない。
 // safeStorage と永続化バックエンドは注入。fake safeStorage は base64 で可逆変換する。
 
@@ -34,7 +34,7 @@ describe("secrets / キー識別子の規約", () => {
 });
 
 describe("secrets / API キーは平文 JSON に出ない [不変条件]", () => {
-  it("API キーが平文 JSON に出ない: stores only ciphertext; plaintext never reaches the backend", () => {
+  it("S0015_07 API キーが平文 JSON に出ない: stores only ciphertext; plaintext never reaches the backend", () => {
     const backend = memoryBackend();
     const safeStorage = fakeSafeStorage();
     const store = createSecretStore({ safeStorage, backend });
@@ -49,7 +49,7 @@ describe("secrets / API キーは平文 JSON に出ない [不変条件]", () =>
     expect(backend.has("keycheer.api-key.openai")).toBe(true);
   });
 
-  it("round-trips the key via safeStorage decrypt", () => {
+  it("S0016_05 round-trips the key via safeStorage decrypt", () => {
     const store = createSecretStore({ safeStorage: fakeSafeStorage(), backend: memoryBackend() });
     store.setApiKey("openai", "sk-abc");
     expect(store.getApiKey("openai")).toBe("sk-abc");

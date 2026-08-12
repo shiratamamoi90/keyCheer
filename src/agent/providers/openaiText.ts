@@ -1,8 +1,8 @@
 // openai-text: TextGenerator の外部実装(OpenAI Chat Completions)。キャラ作成時のみ・明示同意後に呼ばれる。
-// spec: changes/0003-external-api-providers/spec.md / specs/integrations.md
+// spec: 論点 0016 / docs/integrations.md
 // 失敗時は throw(自動リトライしない C6)。API キーは Authorization ヘッダにのみ乗せる。
 
-import type { TextGenerator, TextGenerationRequest } from "../../engine/providers/types.js";
+import type { TextGenerator, TextGenerationRequest } from "../../core/providers/types.js";
 
 export interface OpenAITextConfig {
   apiKey: string;
