@@ -3,7 +3,8 @@
 // 決定ロジックは mainWindowController(Electron 非依存・テスト対象)に委譲し、ここは
 // BrowserWindow / dialog の実体を注入する薄い I/O グルーに徹する。
 //
-// テスト対象外(electron を import する I/O グルー)。検証は typecheck / lint。
+// electron に触れる部分(窓を 1 つしか作らない / 読み込み失敗をログに留める)は
+// BrowserWindow を偽物に差し替えて tests/main/mainWindow.test.ts で縛る。
 
 import { BrowserWindow, dialog } from "electron";
 import { fileURLToPath } from "node:url";

@@ -11,15 +11,15 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       // main は「electron/uiohook を import する I/O グルー」だけ除外する。
       // store / cheerRuntime は依存注入で決定的にテストできるため計測対象に含める。
+      // ipc.ts / windows.ts は electron を偽物に差し替えて縛れたので除外から外した
+      // (tests/integration/settingsFlow.test.ts / tests/main/windows.test.ts)。
       exclude: [
         "src/**/*.d.ts",
         "src/eval/**",
         "src/renderer/**",
         "src/main/index.ts",
-        "src/main/ipc.ts",
         "src/main/keyHook.ts",
         "src/main/tray.ts",
-        "src/main/windows.ts",
       ],
     },
   },

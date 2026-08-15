@@ -41,6 +41,12 @@ export function createPopupWindow(): BrowserWindow {
     },
   });
   win.setIgnoreMouseEvents(true); // 入力の邪魔をしない(打鍵中に前面へ出るため)
-  void win.loadFile(POPUP_INDEX);
+  win.loadFile(POPUP_INDEX).catch((err: unknown) => {
+    // シナリオ: renderer の読み込みに失敗した場合 [異常系]
+    // ログのみ残し、ユーザーへは通知しない(docs/popup.md)。表示だけが失われ、
+    // キーカウント・統計の記録は続く。`void` で捨てると未処理 rejection で
+    // プロセスごと落ち、記録の継続という要件を破る。
+    console.error("[keycheer] ポップアップの読み込みに失敗しました", err);
+  });
   return win;
 }
