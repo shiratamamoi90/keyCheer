@@ -1,7 +1,7 @@
 # 要件: 応援ポップアップの表示(発動 → 表示 → 自動クローズ)
 
 発動条件を満たしたとき、main から届く `CheerFiredPayload` だけでポップアップの表示内容が決まり、
-一定時間で消える。renderer は engine / providers / Node に触れない。
+一定時間で消える。renderer は core / providers / Node に触れない。
 
 見た目・アニメーションの良し悪しは本 spec の対象外(デザイン判断であり、決定的な受け入れ条件にしない)。
 表示内容は決定的に縛るが、表示の見た目は縛らない。詳細な経緯は `work(削除済み)/0007-runnable-popup-slice/`。
@@ -65,7 +65,7 @@
 - THEN 発動イベントの購読・設定取得/更新・統計取得だけが存在し、Node / Electron のオブジェクト
   (`require` / `ipcRenderer` / `fs` 等)は一切露出しない(`contextIsolation: true`, `nodeIntegration: false`)
 
-### S0017_08 renderer は engine / providers を import しない [不変条件]
+### S0017_08 renderer は core / providers を import しない [不変条件]
 
 - GIVEN renderer / preload のソース
 - WHEN import を検査する
@@ -87,7 +87,7 @@
 
 ## 不変条件
 
-- renderer / preload は engine を**使う側**。engine は両者に依存しない。
+- renderer / preload は core を**使う側**。core は両者に依存しない。
 - 発動経路(main → preload → renderer)に providers 設定・プロバイダー実装を持ち込まない。
 - `contextIsolation: true` / `nodeIntegration: false` を維持する(最小権限)。
 - ポップアップに渡すのは `CheerFiredPayload` のみ。入力内容は含めない。

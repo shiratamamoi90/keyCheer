@@ -90,6 +90,6 @@
 ## 不変条件
 
 - フォームの検証は**純粋関数**として切り出し、Electron / DOM に依存させない。
-- renderer は engine 実装・providers・agent を import しない。
+- renderer は core 実装・providers・agent を import しない。
 - 話者一覧の取得は localhost のみ。外部送信は発生しない。
 - 保存するのはプロフィールのみ。プール・wav・画像は生成フローの責務。

@@ -213,7 +213,7 @@
 - GIVEN cheerHistory・プールバケットキーに使う timeOfDay
 - WHEN 値を書き込む
 - THEN `"morning" | "afternoon" | "evening" | "night"` のいずれか
-- 注:時刻 → timeOfDay の分類関数(境界定数)は `docs/time-of-day.md` に確定。各呼び出し側は engine の `classifyTimeOfDay` を使い、独自実装で if を書かない。
+- 注:時刻 → timeOfDay の分類関数(境界定数)は `docs/time-of-day.md` に確定。各呼び出し側は core の `classifyTimeOfDay` を使い、独自実装で if を書かない。
 
 ### S0015_05 プロバイダー識別子の定義域 [境界]
 
@@ -245,7 +245,7 @@
   (`timeOfDay` がローカル時基準なので揃えた)。UTC 基準にすると JST では 09:00 に「当日」が変わる。
 - **統計をディスクへ書き戻す間隔**。「メモリ上で加算し定期的に保存」(key-counter.md 不変条件)の
   「定期的」を現状 **10 秒 + 終了前 flush** で実装。秒未満の端数は次回へ繰り越す(累計が目減りしないため)。
-- **`pool.json` の `completion` の保存形式**。engine の `MessagePool` 型は `buckets` のみを持ち、
+- **`pool.json` の `completion` の保存形式**。core の `MessagePool` 型は `buckets` のみを持ち、
   `completion` は生成オーケストレーション側(agent)の状態。本 spec の「同一ファイルに併記」を採るか、
   別ファイルに分けるかは永続化を実装する change で確定する。
 - 統計肥大化時の保持期間・集約方針(未検討)。

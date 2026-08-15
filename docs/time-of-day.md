@@ -24,8 +24,8 @@
 ## 引数契約(確定)
 
 - `classifyTimeOfDay(hour: number)` — `hour` は **0 以上 23 以下の整数**(`Date.prototype.getHours()` の戻り値域と同じ)。
-- engine 内では検証も正規化も throw もしない。**呼び出し側が `0..23` 整数を渡す責務**を負う(設計時点で防ぐ)。
-- ローカル時刻 / UTC の判断は engine の責務外。呼び出し側で `date.getHours()`(ローカル時)を採用する。
+- core 内では検証も正規化も throw もしない。**呼び出し側が `0..23` 整数を渡す責務**を負う(設計時点で防ぐ)。
+- ローカル時刻 / UTC の判断は core の責務外。呼び出し側で `date.getHours()`(ローカル時)を採用する。
 
 ### S0014_01 朝の代表時刻
 
@@ -96,6 +96,6 @@
 ## 不変条件
 
 - 純粋関数(副作用なし、入力以外を参照しない)。
-- engine 層に置く。Electron API / fetch / child_process を import しない。
+- core 層に置く。Electron API / fetch / child_process を import しない。
 - 境界定数(`MORNING_START` / `AFTERNOON_START` / `EVENING_START` / `NIGHT_START`)は export し、呼び出し側からも参照可能にする(マジックナンバー禁止)。
 - 引数 `hour` の有効域(`0..23` 整数)は **呼び出し側で保証**する(本関数内では検査しない)。`Date.getHours()` の戻り値はこの域を満たすため、ラッパ経由なら自然に成立する。

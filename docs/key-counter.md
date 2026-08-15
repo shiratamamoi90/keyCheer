@@ -36,7 +36,7 @@
 
 - GIVEN `activeThresholdSec` を 60 → 120 に変更
 - WHEN 直後に `isActive` を判定
-- THEN 新しい閾値 120 秒で判定される(再起動不要、engine は引数で受け取る)
+- THEN 新しい閾値 120 秒で判定される(再起動不要、core は引数で受け取る)
 
 ### S0011_07 アクティブ秒数の累積
 

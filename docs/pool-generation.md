@@ -93,5 +93,5 @@ wav を生成して永続化し、起動時に読み込んで応援発動に使�
   発動経路の配線(`src/main/index.ts`)から providers を import しない
   (キャラ作成は `characterCreationIpc.ts` に分離。ESLint で機械的に強制)。
 - wav パスの解決は `resolveWavPath` に一本化する(生成側と発動側で規約を二重に持たない)。
-- fs I/O はすべて main 側。engine は純粋関数のまま。
+- fs I/O はすべて main 側。core は純粋関数のまま。
 - 生成の失敗は握り潰さない。完了していないプールを「完了」として扱わない。
