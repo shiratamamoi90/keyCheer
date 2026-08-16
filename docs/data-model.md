@@ -13,11 +13,12 @@
     "personality": "元気いっぱいで、いつもポジティブ。語尾に「だよ!」をつける。",
     "imagePaths": { "normal": "...", "happy": "...", "excited": "..." },
     "voicevoxSpeakerId": 3,
-    // 生成元プロバイダー(再生成時の参照用)
+    // 生成元プロバイダー(再生成時の参照用。論点 0022)。
+    // **実際に作った種別だけ**が現れる。各フィールドは任意で、未生成・未実装の種別は持たない
+    // (下の例は画像生成が未実装のため image が無い)。選択値は providers 側であって、ここではない
     "generatedBy": {
       "text": "local-ollama",
       "voice": "local-voicevox",
-      "image": "local-sdcpp",
     },
   },
   "triggers": {
@@ -194,7 +195,7 @@
 
 - GIVEN 一部キーが欠けた設定 JSON(`providers` / `triggers.activeThresholdSec` 等が無い旧バージョン含む)
 - WHEN 起動時に読み込む
-- THEN 欠損キーは既定値(`triggers.regular=50` / `activeThresholdSec=60` / ローカルプロバイダー / 同意=false 等)で補完され、型に適合した設定オブジェクトになる
+- THEN 欠損キーは既定値(`triggers.regular=50` / `activeThresholdSec=60` / ローカルプロバイダー / 同意=false 等)で補完され、型に適合した設定オブジェクトになる(**例外: `character.generatedBy` は補完しない** → S0022_09)
 
 ### S0015_02 `triggers.regular = 100` のマイグレーション [境界]
 
@@ -238,6 +239,19 @@
 - GIVEN 同意ダイアログ表示中に強制終了 → 再起動
 - WHEN 設定を読み込む
 - THEN `providers.consent.<プロバイダー>` は `false` のまま(永続化されない)
+
+### S0022_09 `generatedBy` は既定値で補完しない [境界]
+
+- GIVEN `character.generatedBy` が無い、または一部の種別だけを持つ設定 JSON(旧バージョン含む)
+- WHEN 起動時に読み込む
+- THEN 欠けている種別は**未設定のまま**で、S0015_01 の既定値補完の**対象外**。
+  とくに `providers` の選択値で埋めない(「作った」と「選んだ」を混ぜないため)
+
+### S0022_10 `generatedBy` の値はプロバイダー識別子の定義域に従う [境界]
+
+- GIVEN `generatedBy` に記録された値
+- WHEN 設定を読み込む
+- THEN 各種別の値は S0015_05 と同じ閉じた union に属する(未設定は許すが、定義域外の文字列は不正)
 
 ## 検討事項 [要確認](β 以降に確定)
 

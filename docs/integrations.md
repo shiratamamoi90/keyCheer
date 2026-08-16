@@ -281,11 +281,59 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ## 生成元の記録
 
-### S0016_34 生成元プロバイダーの保存
+`character.generatedBy` は「**実際にそのキャラを作った**プロバイダー」を種別ごとに残す
+(再生成時の参照用)。`providers` の**選択値ではない** — 選択しただけで生成していない種別は
+記録しない。各フィールドは任意で、記録済みの種別だけが存在する(スキーマは docs/data-model.md)。
 
-- GIVEN プール・音声・画像の生成が完了
-- WHEN `character` を保存する
-- THEN そのキャラを作ったプロバイダーが `character.generatedBy: { text, voice, image }` に記録される(再生成時の参照用)
+> 旧 S0016_34「生成元プロバイダーの保存」は本節が置き換えた(論点 0022)。ID は再利用しない。
+
+### S0022_01 テキスト生成の完了で text を記録
+
+- GIVEN テキストプロバイダーでプールの全バケットを生成できた
+- WHEN 生成完了を保存する
+- THEN `character.generatedBy.text` にそのテキストプロバイダー ID が記録される
+
+### S0022_02 音声合成の完了で voice を記録
+
+- GIVEN プール全文の wav が欠損なく揃った
+- WHEN 生成完了を保存する
+- THEN `character.generatedBy.voice` にその音声プロバイダー ID が記録される
+
+### S0022_03 欠損のある種別は記録しない [異常系]
+
+- GIVEN プール全文のうち wav が 1 本以上欠けている(部分成功)
+- WHEN 生成完了を保存する
+- THEN `generatedBy.voice` は未設定のままで、**同時に成功した `text` の記録は妨げられない**
+
+### S0022_04 生成していない種別は未設定のまま [否定]
+
+- GIVEN 画像を 1 枚も生成していない(`providers.image` は選択されている)
+- WHEN 生成完了を保存する
+- THEN `generatedBy.image` は未設定であり、**`providers.image` の選択値が書き込まれない**
+
+### S0022_05 種別ごとの記録が他の種別を壊さない [否定]
+
+- GIVEN `generatedBy.text` が記録済み
+- WHEN 別の種別(voice)の生成が完了して記録する
+- THEN `generatedBy.text` の値は**変化せず**、消えもしない
+
+### S0022_06 再生成で生成元が更新される
+
+- GIVEN `generatedBy.voice` に記録済みのキャラ
+- WHEN 別の音声プロバイダーで wav を欠損なく作り直す
+- THEN `generatedBy.voice` が新しいプロバイダー ID に更新される
+
+### S0022_07 全種別が失敗したら記録しない [境界]
+
+- GIVEN テキスト・音声のどちらも欠損なく完了しなかった
+- WHEN 生成完了を保存する
+- THEN `generatedBy` にはどの種別も記録されない(空の記録として保存される)
+
+### S0022_08 応援発動経路は生成元を参照しない [否定]
+
+- GIVEN `generatedBy` が記録済みのキャラ
+- WHEN 打鍵して応援が発動する
+- THEN 発動の選択・表示・再生は `generatedBy` を読まず、**記録の有無で発動結果が変わらない**
 
 ## 不変条件 / 要確認
 
