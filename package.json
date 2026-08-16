@@ -13,7 +13,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
-    "eval": "tsx src/eval/index.ts"
+    "eval": "tsx src/eval/index.ts",
+    "services:up": "docker compose --profile cpu up -d",
+    "services:down": "docker compose --profile cpu --profile gpu down",
+    "services:model": "docker compose --profile cpu exec ollama ollama pull gemma2:2b",
+    "services:status": "docker compose --profile cpu --profile gpu ps"
   },
   "dependencies": {
     "electron-store": "10.0.1",

@@ -1,0 +1,69 @@
+# 開発環境のローカル生成ランタイム(論点 0023)。
+#
+# **開発機だけのもの。配布物ではない** — 論点 0010 のとおり、利用者にはランタイムを同梱し、
+# モデル重みを初回セットアップで取得させる。利用者に Docker は要求しない。
+#
+# 既定は CPU(製品ターゲットが iGPU/CPU のため)。GPU は明示的に profile を指定したときだけ。
+# **cpu と gpu を同時に起動しない** — 同じポートを公開するので衝突する。切り替えるときは
+# 先に `npm run services:down` する。
+#
+# イメージはタグ + digest で固定する(タグは中身が差し替わりうる。不変条件「再現性」/
+# @.claude/rules/security-rules.md「依存・サプライチェーン」)。更新するときは digest も取り直す。
+# ポートは docs/integrations.md の契約どおり :11434 / :50021。
+# 公開先を 127.0.0.1 に絞るのは最小権限(LAN から触らせない)。
+
+name: keycheer-dev
+
+services:
+  # --- CPU(既定)---------------------------------------------------------
+  ollama:
+    profiles: ["cpu"]
+    image: ollama/ollama:0.32.13@sha256:77f1a2a54460f0380f2611e1464233d9b82cb6e58afc8f60abec0061049d2d82
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+  voicevox:
+    profiles: ["cpu"]
+    image: voicevox/voicevox_engine:cpu-0.25.2@sha256:eb8c7f46a7d01217d1ff2b6f018261faedeceded3cc756b4fbbf371791ad6c90
+    ports:
+      - "127.0.0.1:50021:50021"
+    restart: unless-stopped
+
+  # --- GPU(opt-in。`docker compose --profile gpu up -d`)------------------
+  # 既定には戻さない。開発機がターゲット(iGPU/CPU)より強いと、遅さに気づけなくなる。
+  ollama-gpu:
+    profiles: ["gpu"]
+    image: ollama/ollama:0.32.13@sha256:77f1a2a54460f0380f2611e1464233d9b82cb6e58afc8f60abec0061049d2d82
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama # CPU 側と同じ重みを共有する(再取得しない)
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  voicevox-gpu:
+    profiles: ["gpu"]
+    image: voicevox/voicevox_engine:nvidia-0.25.2@sha256:f77258b7239be4ea95537aa5bb4fdffe954bc498ff8125d6da1e97a22024846d
+    ports:
+      - "127.0.0.1:50021:50021"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  # gemma2:2b の重みはここに残す。`.gitignore` 区分2がリポジトリ側への持ち込みを止めている。
+  ollama-models:

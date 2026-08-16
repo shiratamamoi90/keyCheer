@@ -12,6 +12,29 @@ npm run build     # tsc -p tsconfig.build.json → scripts/postbuild.mjs
 npm run dev       # build 後に electron dist/main/index.js を起動
 ```
 
+### ローカル生成ランタイム(Ollama / VOICEVOX)
+
+キャラ作成の生成に要る。**Docker で起動する**(論点 0023)。`compose.yaml` が正本。
+
+```bash
+npm run services:up      # CPU で Ollama(:11434)と VOICEVOX(:50021)を起動
+npm run services:model   # gemma2:2b を取得(初回のみ。約 1.6 GB)
+npm run services:status  # 稼働確認
+npm run services:down    # 停止
+```
+
+- **既定は CPU。** 製品ターゲットが iGPU/CPU なので、開発機の GPU で速さに慣れないようにする。
+  GPU で回したいときだけ `docker compose --profile gpu up -d`。
+  **cpu と gpu を同時に起動しない**(同じポートを公開するので衝突する。先に `services:down`)。
+- **これは開発機だけの構成。** 配布物は論点 0010 のとおりランタイムを同梱し、重みを初回取得する。
+  **利用者に Docker は要求しない。**
+- イメージはタグ + digest で固定してある。更新するときは digest も取り直す(固定しないと再現できない)。
+- 起動していなくても**アプリはクラッシュしない**。キャラ作成が完了しないだけで、
+  応援は同梱 baseline 定型文で出る。
+
+参考(この構成での実測。CPU / 16 コア):1 バケット 8 文の生成が約 10 秒(上限 60 秒)、
+プール 24 バケットで約 4 分、wav 1 文の合成が約 0.6 秒。
+
 - 依存はバージョンを固定する(`package-lock.json`)。固定しないと再現できない。
 - `.env` はコミットしない。**API キーは `.env` に置かず** Electron `safeStorage`
   (Windows Credential Manager)へ保存する。必要な環境変数:無し。
