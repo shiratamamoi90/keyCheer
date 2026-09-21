@@ -6,12 +6,11 @@
 import { BrowserWindow, screen } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { PRELOAD_PATH } from "./preloadPath.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ビルド出力(dist/)基準のパス。dist/main/ から見た相対位置。
-// preload は ESM で読ませるため `.mjs`(build スクリプトが拡張子を付け替える)。
-const PRELOAD_PATH = join(__dirname, "../preload/index.mjs");
 const POPUP_INDEX = join(__dirname, "../renderer/popup.html");
 
 // 応援ポップアップ:枠なし・透過・常に最前面・タスクバー非表示。

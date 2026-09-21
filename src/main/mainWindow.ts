@@ -16,10 +16,10 @@ import {
   applyCloseConfirmation,
   type MainWindowHandle,
 } from "./mainWindowController.js";
+import { PRELOAD_PATH } from "./preloadPath.js";
 import type { Character, Onboarding } from "../core/shared/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PRELOAD_PATH = join(__dirname, "../preload/index.mjs");
 const MAIN_INDEX = join(__dirname, "../renderer/main.html");
 
 export interface MainWindowDeps {

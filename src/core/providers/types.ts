@@ -9,7 +9,7 @@ import type { TextProviderId, VoiceProviderId, ImageProviderId } from "../shared
 export interface TextGenerationRequest {
   systemPrompt: string;
   scenarioKey: string; // 例: "fast_regular_evening"(messagePool の BucketKey と同形)
-  count: number; // 生成する文数(バケットあたり約 20)
+  count: number; // 生成する文数。値は呼び出し側が決める(ここに既定値を書くと二重管理になる)
   seed?: number; // 再現性のためのシード(対応プロバイダーのみ)
   timeoutMs: number; // 予算。超過前に呼び出し側がフォールバック
 }

@@ -5,7 +5,8 @@
 
 import { normalize, resolve, sep } from "node:path";
 
-export const AUDIO_SCHEME = "keycheer-audio";
+// 正本は core/shared(main/renderer が同じ値を参照する契約)。ここは再エクスポートのみ。
+export { AUDIO_SCHEME } from "../core/shared/ipc.js";
 
 function isInside(parent: string, child: string): boolean {
   const p = resolve(parent);

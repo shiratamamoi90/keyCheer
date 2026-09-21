@@ -29,6 +29,14 @@ export const IpcChannel = {
 
 export type IpcChannel = (typeof IpcChannel)[keyof typeof IpcChannel];
 
+// wav 再生用のカスタムプロトコル名。main が protocol.handle で登録し、renderer が
+// `${AUDIO_SCHEME}://play/...` の URL を組み立てる — IpcChannel と同じ「main/renderer が
+// 同じ値を参照する契約」なので、このファイル(唯一の契約点)に置く。
+// renderer は src/main を import できない(発動経路の不変条件)ため、main 側に置くと
+// 同じ文字列が両側に重複し、片方だけ変えても誰も気づけない。
+// popup.html の CSP `media-src keycheer-audio:` もこの値と対になっている。
+export const AUDIO_SCHEME = "keycheer-audio";
+
 // main → renderer: 応援発動時にポップアップへ渡すペイロード。
 // 発動経路の産物 — providers に一切依存しない(プール + wav のみで成立)。
 export interface CheerFiredPayload {

@@ -4,6 +4,7 @@
 // core / providers / agent は import しない(発動経路の不変条件。ESLint で強制)。
 
 import { initialPopupState, showCheer, tick, type PopupState } from "./popupView.js";
+import { AUDIO_SCHEME } from "../core/shared/ipc.js";
 import type { KeyCheerApi } from "../preload/api.js";
 
 declare global {
@@ -13,7 +14,7 @@ declare global {
 }
 
 // wav は file:// を直接開かず、main が登録した専用スキーム経由で読む(spec 確定事項 #4)。
-const AUDIO_SCHEME = "keycheer-audio";
+// スキーム名は core/shared/ipc.ts が正本(main 側と同じ値を参照する)。
 
 function audioUrl(wavPath: string): string {
   return `${AUDIO_SCHEME}://play/${encodeURIComponent(wavPath)}`;
