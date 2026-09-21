@@ -77,6 +77,10 @@ describe("poolGenerator / プール一括生成成功", () => {
 
 describe("poolGenerator / 文字数契約 [境界]", () => {
   it("S0016_17 truncates messages longer than 30 characters (code points)", async () => {
+    // 期待値は実装定数から導出しない(impl-rules.md「テストの共通化」)。30 は
+    // docs/data-model.md「1 文 = 30 文字以内」の写し。この 1 行が無いと、実装側で
+    // 上限を変えたとき下の repeat(MAX_MESSAGE_LENGTH) が追随して緑のまま通る。
+    expect(MAX_MESSAGE_LENGTH).toBe(30);
     const long = "あ".repeat(45);
     const generator = makeGenerator(async () => [long, "短い文"]);
     const state = await generatePool({ characterId: "c", character, generator });

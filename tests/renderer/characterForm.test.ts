@@ -41,6 +41,15 @@ describe("characterForm / 必須項目が揃うまで保存できない", () => 
 });
 
 describe("characterForm / 名前と性格の長さ制約 [境界]", () => {
+  it("pins the limits to the values fixed in docs", () => {
+    // 期待値は実装定数から導出しない(impl-rules.md「テストの共通化」)。
+    // 20 / 200 は docs/character-creation.md「確定事項」の写し。この 2 行が無いと、
+    // 実装側で上限を変えたとき下の repeat(CHARACTER_NAME_MAX) が追随して緑のまま通り、
+    // 確定事項との差が検出できない。
+    expect(CHARACTER_NAME_MAX).toBe(20);
+    expect(CHARACTER_PERSONALITY_MAX).toBe(200);
+  });
+
   it("S0019_02 accepts a name exactly at the limit", () => {
     const name = "あ".repeat(CHARACTER_NAME_MAX);
     expect(validateCharacterForm({ ...VALID, name }).ok).toBe(true);
