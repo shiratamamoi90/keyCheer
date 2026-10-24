@@ -96,7 +96,7 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 │   ├── settings.json               # hooks の配線: format on edit, test on stop(Core)
 │   ├── settings.team.json          # チーム用 hooks の配線: veto, validate(Scale, マージで有効化)
 │   ├── rules/                      # ルールの正本8本(どれを見るかは CLAUDE.md の参照先表 / Core)
-│   └── skills/                     # new-topic / decide / new-work / run-loop / validate(実行 / Core)
+│   └── skills/                     # new-topic / decide / new-work / run-loop / validate / where(実行 / Core)
 ├── decisions/                      # 議論と決定の記録。状態をフォルダで表す(Core)
 │   ├── undecided/                  #   未決定:論点ごとに topic.md(+ 非決定的なら config/result)
 │   └── decided/                    #   決定済み 0001〜0020:決定 + 理由 + 却下案 + 反映先
@@ -173,6 +173,9 @@ src/core          ←          src/{agent,main,preload,renderer,eval}
    リファクタ → 総合テスト。**作業中に `docs/` を書き換えない。**
    テスト名にはシナリオ ID を**一字も改変せず**含める(`it("S0012_01 ...")`)。
    `scripts/validate.sh` が要件 ↔ テストを ID で双方向照合する。
+
+現在地を見失ったら `/where`(読み取り専用)。効いている関門・途中の作業・以降の宿題を集めて
+次の一手を1つ示す。**整合の判定はしない** — NG を出す検査は `/validate` が正本。
 
 決め方だけが2通りに分かれる。
 
