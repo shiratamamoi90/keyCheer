@@ -9,6 +9,14 @@ import {
 //   Anthropic Messages API による TextGenerator 実装。
 //   systemPrompt はトップレベル system、messages には user ロールが必要(OpenAI と構造が違う)。
 
+// 応答スキーマ(docs/integrations.md「テキスト応答のパース契約」の写し。実装の定数から導かない)
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: { messages: { type: "array", items: { type: "string" } } },
+  required: ["messages"],
+  additionalProperties: false,
+};
+
 function okJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -17,7 +25,14 @@ function okJson(body: unknown): Response {
 }
 
 const messagesResponse = {
-  content: [{ type: "text", text: "がんばれ!\nいい調子!\nその調子!" }],
+  content: [
+    {
+      type: "tool_use",
+      id: "toolu_test",
+      name: "submit_messages",
+      input: { messages: ["がんばれ!", "いい調子!", "その調子!"] },
+    },
+  ],
 };
 
 const baseRequest = {
@@ -68,21 +83,37 @@ describe("anthropic-text / Anthropic (外部) の呼び出し契約", () => {
     expect(messages).toEqual(["がんばれ!", "いい調子!", "その調子!"]);
   });
 
-  it("concatenates only text blocks and strips bullets/blank lines", async () => {
+  it("rejects a response without a tool_use block (行分割に退避しない)", async () => {
+    const fetchFn = vi.fn(async () =>
+      okJson({ content: [{ type: "text", text: "がんばれ!\nいい調子!" }] }),
+    );
+    const gen = createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
+
+    await expect(gen.generateMessages(baseRequest)).rejects.toThrow();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("anthropic-text / 応答スキーマを tool で要求する", () => {
+  it("S0024_03 forces one tool whose input_schema is the response schema and reads tool_use.input", async () => {
     const fetchFn = vi.fn(async () =>
       okJson({
-        content: [
-          { type: "thinking", thinking: "無視される" },
-          { type: "text", text: "- がんばれ!\n\n1. いい調子!\n・その調子!" },
-        ],
+        content: [{ type: "text", text: "無視される" }, ...messagesResponse.content],
       }),
     );
     const gen = createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
-    await expect(gen.generateMessages(baseRequest)).resolves.toEqual([
-      "がんばれ!",
-      "いい調子!",
-      "その調子!",
-    ]);
+
+    const messages = await gen.generateMessages(baseRequest);
+
+    const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      tools: { name: string; input_schema: unknown }[];
+      tool_choice: unknown;
+    };
+    expect(body.tools).toHaveLength(1);
+    expect(body.tools[0]!.input_schema).toEqual(RESPONSE_SCHEMA);
+    expect(body.tool_choice).toEqual({ type: "tool", name: body.tools[0]!.name });
+    expect(messages).toEqual(["がんばれ!", "いい調子!", "その調子!"]);
   });
 });
 

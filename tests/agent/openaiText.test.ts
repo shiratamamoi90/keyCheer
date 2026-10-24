@@ -3,8 +3,16 @@ import { createOpenAITextGenerator } from "../../src/agent/providers/openaiText.
 
 // spec: 論点 0016 / docs/integrations.md
 //   外部テキストプロバイダー(OpenAI)。HTTP 契約 + 自動リトライしない(C6)。
-// API キー・fetch は注入。キーはヘッダにのみ乗り、レスポンス解析は行を分割して返す。
+// API キー・fetch は注入。キーはヘッダにのみ乗り、応答は応答スキーマの JSON として読む(論点 0024)。
 // docs/integrations.md「共通: 外部プロバイダー呼び出しの契約」は種別を問わず全実装が満たす。
+
+// 応答スキーマ(docs/integrations.md「テキスト応答のパース契約」の写し。実装の定数から導かない)
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: { messages: { type: "array", items: { type: "string" } } },
+  required: ["messages"],
+  additionalProperties: false,
+};
 
 function okJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -14,7 +22,9 @@ function okJson(body: unknown): Response {
 }
 
 const chatResponse = {
-  choices: [{ message: { content: "がんばれ!\nいい調子!\nその調子!" } }],
+  choices: [
+    { message: { content: JSON.stringify({ messages: ["がんばれ!", "いい調子!", "その調子!"] }) } },
+  ],
 };
 
 const baseRequest = {
@@ -58,14 +68,45 @@ describe("openai-text / 呼び出し契約", () => {
   });
 });
 
+describe("openai-text / 応答スキーマを要求する", () => {
+  it("S0024_02 requests the response schema through strict json_schema", async () => {
+    const fetchFn = vi.fn(async () => okJson(chatResponse));
+    const gen = createOpenAITextGenerator({ apiKey: "sk", model: "gpt-4o-mini", fetchFn });
+
+    await gen.generateMessages(baseRequest);
+
+    const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: expect.any(String), strict: true, schema: RESPONSE_SCHEMA },
+    });
+  });
+
+  it("rejects a response that does not follow the schema (行分割に退避しない)", async () => {
+    const fetchFn = vi.fn(async () =>
+      okJson({ choices: [{ message: { content: "がんばれ!\nいい調子!" } }] }),
+    );
+    const gen = createOpenAITextGenerator({ apiKey: "sk", model: "gpt-4o-mini", fetchFn });
+
+    await expect(gen.generateMessages(baseRequest)).rejects.toThrow();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("openai-text / 再現性のためのシード", () => {
   it("forwards request.seed when the caller pins it (再現性を保つ)", async () => {
     const fetchFn = vi.fn(
       async () =>
-        new Response(JSON.stringify({ choices: [{ message: { content: "あ" } }] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ messages: ["あ"] }) } }],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     );
     const gen = createOpenAITextGenerator({ apiKey: "sk", model: "gpt-4o-mini", fetchFn });
     await gen.generateMessages({
@@ -83,10 +124,15 @@ describe("openai-text / 再現性のためのシード", () => {
   it("omits seed when the caller does not pin one", async () => {
     const fetchFn = vi.fn(
       async () =>
-        new Response(JSON.stringify({ choices: [{ message: { content: "あ" } }] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ messages: ["あ"] }) } }],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     );
     const gen = createOpenAITextGenerator({ apiKey: "sk", model: "gpt-4o-mini", fetchFn });
     await gen.generateMessages({

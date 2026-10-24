@@ -11,6 +11,7 @@ import {
   type PoolMessage,
 } from "../core/messagePool.js";
 import type { TextGenerator } from "../core/providers/types.js";
+import { buildMessageTexts, MAX_MESSAGE_LENGTH } from "../core/textResponse.js";
 
 export type CompletionStatus = "complete" | "pending" | "failed";
 
@@ -24,8 +25,8 @@ export interface CharacterProfile {
   personality: string;
 }
 
-// 1 文 = 30 文字以内(コードポイント基準。docs/data-model.md)
-export const MAX_MESSAGE_LENGTH = 30;
+// 正本は core/textResponse(パース規則と同じ場所に置く)。既存の参照先を保つため再エクスポートする
+export { MAX_MESSAGE_LENGTH };
 // バケットあたりの生成文数。24 バケット × 8 = 192 文。
 // 2026-07-26 に 20(= 480 文)から引き下げた。理由はキャラ作成の所要時間と wav の
 // ディスク使用量(480 文だと 16〜32 分 / 約 80MB、192 文なら 7〜13 分 / 約 33MB)。
@@ -68,14 +69,7 @@ export function buildSystemPrompt(
 // シナリオ: 要求数を超える応答は切り詰める [境界] — 件数はプロンプトで指示するだけでは
 // 守られない(LLM が多く返すことがある)。そのまま採用するとプール総数・生成時間・
 // ディスク使用量の見積もりが崩れるため、ここで上限を機械的に効かせる。
-// 少ない分は切り上げない(空でなければバケットとして成立するため)。
-function sanitizeMessages(raw: string[], limit: number): string[] {
-  return raw
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0)
-    .slice(0, limit)
-    .map((t) => [...t].slice(0, MAX_MESSAGE_LENGTH).join(""));
-}
+// 記号の除去を含む規則の本体は core の buildMessageTexts(論点 0024。3 実装で共通)。
 
 export interface GeneratePoolInput {
   characterId: string;
@@ -121,7 +115,7 @@ export async function generatePool(input: GeneratePoolInput): Promise<PoolGenera
         ...(seed !== undefined ? { seed } : {}),
         timeoutMs: timeoutMsPerBucket,
       });
-      const texts = sanitizeMessages(raw, messagesPerBucket);
+      const texts = buildMessageTexts(raw, messagesPerBucket);
       if (texts.length === 0) {
         // 全文が空 = 実質失敗。空バケット complete にすると発動時フォールバック頼みになるため failed
         completion[key] = "failed";

@@ -29,9 +29,10 @@ function forbidGlobalFetch(): void {
 function fakeFetch() {
   const fn = vi.fn(async () =>
     Response.json({
-      response: "がんばれ!",
-      content: [{ text: "がんばれ!" }],
-      choices: [{ message: { content: "がんばれ!" } }],
+      // テキスト 3 実装は応答スキーマ `{ messages }` で読む(論点 0024)
+      response: JSON.stringify({ messages: ["がんばれ!"] }),
+      content: [{ type: "tool_use", input: { messages: ["がんばれ!"] } }],
+      choices: [{ message: { content: JSON.stringify({ messages: ["がんばれ!"] }) } }],
       artifacts: [{ base64: "" }],
       data: [{ b64_json: "" }],
     }),

@@ -8,6 +8,9 @@ import {
 } from "../../src/agent/poolGenerator.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
 import type { TextGenerator, TextGenerationRequest } from "../../src/core/providers/types.js";
+import { createOllamaTextGenerator } from "../../src/agent/providers/localOllama.js";
+import { createOpenAITextGenerator } from "../../src/agent/providers/openaiText.js";
+import { createAnthropicTextGenerator } from "../../src/agent/providers/anthropicText.js";
 
 // 要件: docs/integrations.md(テキスト: プール一括生成成功 / 生成途中の中断と再開 /
 //        一括生成中の進捗 UX / 文字数契約 [境界] / Ollama 未起動のフォールバック [異常系])
@@ -252,5 +255,96 @@ describe("poolGenerator / 一括生成中の進捗 UX", () => {
     const dones = seen.map(([done]) => done);
     expect(dones).toEqual([...dones].sort((a, b) => a - b));
     expect(dones.at(-1)).toBe(seen[0]![1]);
+  });
+});
+
+// テキスト応答のパース契約(論点 0024)。3 実装を実物のまま使い、fetch だけを差し替える。
+// 応答の形はプロバイダーごとに違う(`format` の本文 / `response_format` の本文 / `tool_use.input`)。
+// payload が null のときは、スキーマに従わない応答(行区切りの素のテキスト)を返す。
+type ProviderName = "local-ollama" | "openai" | "anthropic";
+const PROVIDER_NAMES: ProviderName[] = ["local-ollama", "openai", "anthropic"];
+const VIOLATING_TEXT = "がんばれ!\nいい調子!";
+
+function responseFor(provider: ProviderName, payload: string[] | null): unknown {
+  switch (provider) {
+    case "local-ollama":
+      return {
+        response: payload === null ? VIOLATING_TEXT : JSON.stringify({ messages: payload }),
+      };
+    case "openai":
+      return {
+        choices: [
+          {
+            message: {
+              content: payload === null ? VIOLATING_TEXT : JSON.stringify({ messages: payload }),
+            },
+          },
+        ],
+      };
+    case "anthropic":
+      return {
+        content:
+          payload === null
+            ? [{ type: "text", text: VIOLATING_TEXT }]
+            : [{ type: "tool_use", id: "toolu_test", name: "t", input: { messages: payload } }],
+      };
+  }
+}
+
+// 呼び出し順 = バケット順(generatePool は ALL_BUCKET_KEYS の順に 1 回ずつ呼ぶ)
+function providerGenerator(
+  provider: ProviderName,
+  payloadForCall: (callIndex: number) => string[] | null,
+): TextGenerator {
+  let callIndex = 0;
+  const fetchFn = (async () =>
+    Response.json(responseFor(provider, payloadForCall(callIndex++)))) as unknown as typeof fetch;
+  switch (provider) {
+    case "local-ollama":
+      return createOllamaTextGenerator({ endpoint: "http://localhost:11434", model: "m", fetchFn });
+    case "openai":
+      return createOpenAITextGenerator({ apiKey: "sk", model: "m", fetchFn });
+    case "anthropic":
+      return createAnthropicTextGenerator({ apiKey: "sk", model: "m", fetchFn });
+  }
+}
+
+describe("poolGenerator / テキスト応答のパース契約", () => {
+  it("S0024_10 fails only the bucket whose response violates the schema, for every implementation", async () => {
+    for (const provider of PROVIDER_NAMES) {
+      const generator = providerGenerator(provider, (i) => (i === 0 ? null : ["がんばれ!"]));
+
+      const state = await generatePool({
+        characterId: "test-char",
+        character,
+        generator,
+        messagesPerBucket: 1,
+      });
+
+      const [first, ...rest] = ALL_BUCKET_KEYS;
+      expect(state.completion[first!], provider).toBe("failed");
+      expect(state.pool.buckets[first!], provider).toEqual([]);
+      for (const key of rest) expect(state.completion[key], `${provider} ${key}`).toBe("complete");
+    }
+  });
+
+  it("S0024_12 yields the same pool from the same messages across the three implementations", async () => {
+    const payload = ["**がんばれ!**", "1. いい調子(normal)", "ファイト"];
+    const textsByProvider: string[][][] = [];
+
+    for (const provider of PROVIDER_NAMES) {
+      const state = await generatePool({
+        characterId: "test-char",
+        character,
+        generator: providerGenerator(provider, () => payload),
+        messagesPerBucket: 3,
+      });
+      textsByProvider.push(
+        ALL_BUCKET_KEYS.map((key) => state.pool.buckets[key].map((m) => m.text)),
+      );
+    }
+
+    const expected = ALL_BUCKET_KEYS.map(() => ["がんばれ!", "いい調子", "ファイト"]);
+    for (const texts of textsByProvider) expect(texts).toEqual(expected);
   });
 });

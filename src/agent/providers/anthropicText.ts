@@ -5,6 +5,8 @@
 // seed パラメータは存在しない。
 
 import type { TextGenerator, TextGenerationRequest } from "../../core/providers/types.js";
+import { TEXT_RESPONSE_SCHEMA } from "../../core/textResponse.js";
+import { requireTextResponseMessages } from "./textResponseGuard.js";
 
 export interface AnthropicTextConfig {
   apiKey: string;
@@ -15,6 +17,7 @@ export interface AnthropicTextConfig {
 
 const DEFAULT_ENDPOINT = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
+const RESPONSE_TOOL_NAME = "submit_cheer_messages";
 
 // シナリオ: max_tokens を要求量から決める [境界]
 // 1 文 30 字以内(docs/integrations.md 文字数契約)× 日本語のトークン化係数 2 + 記号分の余裕。
@@ -26,14 +29,9 @@ export function computeMaxTokens(count: number): number {
   return count * ANTHROPIC_TOKENS_PER_MESSAGE + ANTHROPIC_MAX_TOKENS_MARGIN;
 }
 
-// openaiText と同じ規則(行頭の箇条書き記号・番号を除去)
-function stripBullet(line: string): string {
-  return line.replace(/^\s*(?:\d+[.)]\s*|[-*・]\s*)/, "").trim();
-}
-
 interface AnthropicContentBlock {
   type?: string;
-  text?: string;
+  input?: unknown;
 }
 
 export function createAnthropicTextGenerator(config: AnthropicTextConfig): TextGenerator {
@@ -60,9 +58,19 @@ export function createAnthropicTextGenerator(config: AnthropicTextConfig): TextG
             messages: [
               {
                 role: "user",
-                content: `${request.scenarioKey} の応援メッセージを ${request.count} 件、1 行 1 件で出力してください。`,
+                content: `${request.scenarioKey} の応援メッセージを ${request.count} 件、${RESPONSE_TOOL_NAME} で返してください。`,
               },
             ],
+            // S0024_03 応答スキーマを tool で要求する。tool_choice で強制しないと、
+            // モデルがツールを使わずテキストで返す余地が残る
+            tools: [
+              {
+                name: RESPONSE_TOOL_NAME,
+                description: "応援メッセージの配列を返す",
+                input_schema: TEXT_RESPONSE_SCHEMA,
+              },
+            ],
+            tool_choice: { type: "tool", name: RESPONSE_TOOL_NAME },
             // シナリオ: Anthropic はシードを受け付けない [境界]
             // Messages API に seed は存在しないため request.seed は送らない。
           }),
@@ -72,14 +80,9 @@ export function createAnthropicTextGenerator(config: AnthropicTextConfig): TextG
           throw new Error(`Anthropic HTTP ${res.status}: ${await res.text()}`);
         }
         const data = (await res.json()) as { content?: AnthropicContentBlock[] };
-        const text = (data.content ?? [])
-          .filter((block) => block.type === "text")
-          .map((block) => block.text ?? "")
-          .join("\n");
-        return text
-          .split("\n")
-          .map(stripBullet)
-          .filter((l) => l.length > 0);
+        // text 要素(前置きなど)は読まない。tool_use が無ければ形式違反として throw する
+        const toolUse = (data.content ?? []).find((block) => block.type === "tool_use");
+        return requireTextResponseMessages(toolUse?.input, "anthropic");
       } finally {
         clearTimeout(timer);
       }

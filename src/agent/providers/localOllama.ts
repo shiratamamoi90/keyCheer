@@ -3,16 +3,13 @@
 // 通信先は localhost の Ollama のみ。fetch は注入可能(テスト・タイムアウト制御のため)。
 
 import type { TextGenerator, TextGenerationRequest } from "../../core/providers/types.js";
+import { TEXT_RESPONSE_SCHEMA } from "../../core/textResponse.js";
+import { requireTextResponseMessages } from "./textResponseGuard.js";
 
 export interface OllamaConfig {
   endpoint: string; // 例: "http://localhost:11434"(system.ollamaEndpoint)
   model: string; // 例: "gemma2:2b"(system.ollamaModel)
   fetchFn?: typeof fetch;
-}
-
-// 行頭の番号・箇条書き記号("1. " / "2) " / "- " / "・")を剥がす
-function stripBullet(line: string): string {
-  return line.replace(/^\s*(?:\d+[.)]\s*|[-*・]\s*)/, "").trim();
 }
 
 export function createOllamaTextGenerator(config: OllamaConfig): TextGenerator {
@@ -31,6 +28,8 @@ export function createOllamaTextGenerator(config: OllamaConfig): TextGenerator {
             model,
             prompt: request.systemPrompt,
             stream: false,
+            // S0024_01 応答スキーマを format で要求する(制約付きデコードで形を保証させる)
+            format: TEXT_RESPONSE_SCHEMA,
             options: request.seed !== undefined ? { seed: request.seed } : {},
           }),
           signal: controller.signal,
@@ -38,9 +37,8 @@ export function createOllamaTextGenerator(config: OllamaConfig): TextGenerator {
         if (!res.ok) {
           throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`);
         }
-        const data = (await res.json()) as { response?: string };
-        const lines = (data.response ?? "").split("\n").map(stripBullet);
-        return lines.filter((l) => l.length > 0);
+        const data = (await res.json()) as { response?: unknown };
+        return requireTextResponseMessages(data.response, "local-ollama");
       } finally {
         clearTimeout(timer);
       }

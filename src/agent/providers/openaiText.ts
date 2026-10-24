@@ -3,6 +3,8 @@
 // 失敗時は throw(自動リトライしない C6)。API キーは Authorization ヘッダにのみ乗せる。
 
 import type { TextGenerator, TextGenerationRequest } from "../../core/providers/types.js";
+import { TEXT_RESPONSE_SCHEMA } from "../../core/textResponse.js";
+import { requireTextResponseMessages } from "./textResponseGuard.js";
 
 export interface OpenAITextConfig {
   apiKey: string;
@@ -12,10 +14,7 @@ export interface OpenAITextConfig {
 }
 
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
-
-function stripBullet(line: string): string {
-  return line.replace(/^\s*(?:\d+[.)]\s*|[-*・]\s*)/, "").trim();
-}
+const RESPONSE_SCHEMA_NAME = "cheer_messages";
 
 export function createOpenAITextGenerator(config: OpenAITextConfig): TextGenerator {
   const { apiKey, model, endpoint = DEFAULT_ENDPOINT, fetchFn = fetch } = config;
@@ -34,6 +33,15 @@ export function createOpenAITextGenerator(config: OpenAITextConfig): TextGenerat
           body: JSON.stringify({
             model,
             messages: [{ role: "system", content: request.systemPrompt }],
+            // S0024_02 応答スキーマを strict json_schema で要求する(json_object では形を保証しない)
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: RESPONSE_SCHEMA_NAME,
+                strict: true,
+                schema: TEXT_RESPONSE_SCHEMA,
+              },
+            },
             // 呼び出し側がシードを固定したときだけ渡す(再現性の不変条件 — impl-rules.md)。
             // ベストエフォート:OpenAI 側も seed 固定での完全一致は保証しない。
             ...(request.seed !== undefined ? { seed: request.seed } : {}),
@@ -44,13 +52,9 @@ export function createOpenAITextGenerator(config: OpenAITextConfig): TextGenerat
           throw new Error(`OpenAI HTTP ${res.status}: ${await res.text()}`);
         }
         const data = (await res.json()) as {
-          choices?: { message?: { content?: string } }[];
+          choices?: { message?: { content?: unknown } }[];
         };
-        const content = data.choices?.[0]?.message?.content ?? "";
-        return content
-          .split("\n")
-          .map(stripBullet)
-          .filter((l) => l.length > 0);
+        return requireTextResponseMessages(data.choices?.[0]?.message?.content, "openai");
       } finally {
         clearTimeout(timer);
       }

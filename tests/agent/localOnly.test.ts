@@ -14,10 +14,13 @@ describe("providers / ローカル選択時は外部送信が発生しない [�
     const urls: string[] = [];
     const fetchFn = (async (input: RequestInfo | URL) => {
       urls.push(String(input));
-      return new Response(JSON.stringify({ response: "がんばれ" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ response: JSON.stringify({ messages: ["がんばれ"] }) }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
     }) as unknown as typeof fetch;
 
     const text = createOllamaTextGenerator({
