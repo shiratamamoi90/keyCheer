@@ -158,12 +158,12 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 - GIVEN `TextGenerationRequest`(`systemPrompt` / `scenarioKey` / `count` / `timeoutMs`)
 - WHEN `generateMessages` を呼ぶ
-- THEN `POST https://api.anthropic.com/v1/messages` へ送信し、応答本文を 1 行 1 文に分割して返す
+- THEN `POST https://api.anthropic.com/v1/messages` へ送信し、下の「テキスト応答のパース契約」に従って N 文を返す
   - ヘッダは `content-type: application/json` / `anthropic-version: 2023-06-01` / `x-api-key`
   - `systemPrompt` は**トップレベルの `system` パラメータ**に置く(`messages` 内の system ロールではない。OpenAI 実装と構造が異なる)
   - `messages` には最低 1 件の `user` ロールが必要なため、生成指示(`scenarioKey` と `count` を含む文)を user メッセージとして送る
-  - 応答本文は `content[]` のうち `type === "text"` の要素の `text` を連結して取る
-  - 行頭の箇条書き記号・番号は `openaiText` と同じ規則で除去し、空行は除去する
+  - 応答は `content[]` のうち `type === "tool_use"` の要素の `input` から取る(S0024_03。
+    旧規則「`type === "text"` の本文を 1 行 1 文に分割」は論点 0024 で置き換えた)
 
 ### S0016_20 Anthropic の max_tokens を要求量から決める [境界]
 
@@ -183,6 +183,115 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
   このプロバイダーは「同一シードで同一出力」を満たさない
   - テキスト生成の再現性はベストエフォート(既存の `openai` 実装も同様)。
     再現性の不変条件は画像生成(`local-sdcpp` / `stability-ai`)で担保する
+
+## テキスト応答のパース契約
+
+テキスト生成の 3 実装(`local-ollama` / `openai` / `anthropic`)は、応答を**共通の応答スキーマ**で
+返させ、同じ規則で N 文に落とす(論点 0024)。プロンプトの文言はこの契約に含まない
+(書式の指示を足すかは論点 0026 が計測で決める)。
+
+応答スキーマ(3 実装で共通):
+
+```json
+{
+  "type": "object",
+  "properties": { "messages": { "type": "array", "items": { "type": "string" } } },
+  "required": ["messages"],
+  "additionalProperties": false
+}
+```
+
+規則の適用順:**記号を落とす → 空要素を捨てる → N 件で打ち切る → 30 文字で切り詰める**。
+落とす記号は次の 4 種で、これ以外は本文として残す。
+
+| 種類 | 位置 | 例 |
+| --- | --- | --- |
+| 強調 `**` / `__` | 要素内のどこでも | `**頑張れ!**` → `頑張れ!` |
+| 見出し記号 `#`(1 個以上 + 空白) | 要素の先頭 | `## 応援` → `応援` |
+| 番号・箇条書き記号(`1.` `2)` `-` `*` `・`) | 要素の先頭 | `1. 頑張れ` → `頑張れ` |
+| 丸括弧の注記(半角 `()`・全角 `()`) | 要素の末尾 | `頑張れ!(normal)` → `頑張れ!` |
+
+### S0024_01 Ollama に応答スキーマを要求する
+
+- GIVEN `text = "local-ollama"` の `TextGenerationRequest`
+- WHEN リクエストボディを組み立てる
+- THEN `/api/generate` のボディの `format` に上の応答スキーマを渡す
+
+### S0024_02 OpenAI に応答スキーマを要求する
+
+- GIVEN `text = "openai"` の `TextGenerationRequest`
+- WHEN リクエストボディを組み立てる
+- THEN `response_format` に `{ type: "json_schema", json_schema: { name, strict: true, schema: <応答スキーマ> } }` を渡す
+
+### S0024_03 Anthropic に応答スキーマを tool で要求する
+
+- GIVEN `text = "anthropic"` の `TextGenerationRequest`
+- WHEN リクエストボディを組み立てる
+- THEN `tools` に `input_schema` = 応答スキーマのツールを 1 つ定義し、`tool_choice` でそのツールの使用を強制する。
+  応答は `content[]` の `tool_use` 要素の `input` から取る
+
+### S0024_04 配列の各要素を 1 文として返す
+
+- GIVEN 応答 `{ "messages": ["がんばれ!", "いい調子!"] }`
+- WHEN パースする
+- THEN `["がんばれ!", "いい調子!"]` を返す(要素を改行で分割し直さない)
+
+### S0024_05 強調記号を落とす
+
+- GIVEN 要素 `"**頑張れ!**"` / `"__いいね__"` / `"ここが**大事**だよ"`
+- WHEN パースする
+- THEN `"頑張れ!"` / `"いいね"` / `"ここが大事だよ"` になる
+
+### S0024_06 先頭の見出し記号と番号を落とす
+
+- GIVEN 要素 `"## 応援だよ"` / `"1. 頑張れ"` / `"- ファイト"` / `"・いけるよ"`
+- WHEN パースする
+- THEN `"応援だよ"` / `"頑張れ"` / `"ファイト"` / `"いけるよ"` になる
+
+### S0024_07 末尾の括弧注記を落とす
+
+- GIVEN 要素 `"頑張れ!(normal)"` / `"いい調子 (fast)"` / `"ゆっくりね(slow)"`
+- WHEN パースする
+- THEN `"頑張れ!"` / `"いい調子"` / `"ゆっくりね"` になる
+
+### S0024_08 記号を落としてから文字数契約を当てる [境界]
+
+- GIVEN 本文がちょうど 30 文字で、前後に `**` が付いた要素(全体 34 文字)
+- WHEN パースする
+- THEN 本文 30 文字がそのまま残る(記号の分だけ本文が切り詰められない)
+
+### S0024_09 記号を落として空になった要素は数えない [境界]
+
+- GIVEN `count = 2`、応答 `{ "messages": ["**", "がんばれ!", "(normal)", "いいね!"] }`
+- WHEN パースする
+- THEN `["がんばれ!", "いいね!"]` を返す(空になった要素は捨て、N 件の数に入れない)。
+  全要素が空になったらそのバケットは `failed`(S0016_15 の既存規則)
+
+### S0024_10 形式違反はそのバケットの failed [異常系]
+
+- GIVEN スキーマ準拠を保証する手段で要求したのに、応答が JSON として読めない / `messages` が無い /
+  配列でない / 文字列でない要素を含む
+- WHEN パースする
+- THEN そのバケットは `failed` になり、他のバケットの生成は続く。**行分割に退避しない**。
+  **別プロバイダーへ自動で切り替えない**(S0016_06)
+
+### S0024_11 文中の記号は本文として残す [否定]
+
+- GIVEN 要素 `"No.1を目指そう#勝利"` / `"100%(全力)で行こう!"` / `"3*3=9だね"`
+- WHEN パースする
+- THEN どれも**変化しない**(見出し・番号は先頭だけ、括弧の注記は末尾だけ、単独の `*` は落とさない)
+
+### S0024_12 3 実装で同じ応答なら同じ結果 [不変条件]
+
+- GIVEN 同じ `messages` 配列を、3 実装それぞれの応答の形(`format` の本文 / `response_format` の本文 / `tool_use.input`)で受け取る
+- WHEN パースする
+- THEN 3 実装とも同じ N 文の配列を返す
+
+### S0024_13 パースは受け取った応答を変更しない [否定]
+
+- GIVEN 応答の `messages` 配列
+- WHEN パースする
+- THEN 渡した配列と各要素は**変化しない**(新しい配列を返す)
 
 ## 音声(TTS — キャラ作成時のみ)
 

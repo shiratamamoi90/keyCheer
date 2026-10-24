@@ -1,0 +1,11 @@
+# 1論点 = 1変数のみ変更:プロンプトに書式の禁止を指示するか
+variant: format_directive # baseline は no_directive
+model: gemma2:2b
+temperature: 0.8
+seed: 42
+characters: 3
+buckets: 24
+generations_per_case: 5
+max_chars: 30
+structured_output: false # 0024 の層 1 が決まったら両案とも true に揃えて測り直す
+baseline: no_directive
