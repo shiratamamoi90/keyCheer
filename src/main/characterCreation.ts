@@ -9,6 +9,7 @@ import { generatePool, isPoolComplete, type PoolGenerationState } from "../agent
 import { synthesizePoolVoices } from "../agent/voiceSynth.js";
 import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
 import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
+import type { GeneratedBy } from "../core/shared/types.js";
 import { savePool, createWavWriter, clearVoices, type CharacterFs } from "./characterStore.js";
 
 export type GenerationPhase = "text" | "voice";
@@ -34,12 +35,16 @@ export interface StartGenerationInput {
   timeoutMsPerMessage?: number;
 }
 
+// completed: 欠損なく完了した種別と、実際に使ったプロバイダー ID(論点 0022)。
+// 保存は呼び出し側(store.recordGeneratedBy)。runner は store を知らない。
 export type GenerationResult =
-  | { ok: true; pool: MessagePool; synthesized: number; missing: number }
+  | { ok: true; pool: MessagePool; synthesized: number; missing: number; completed: GeneratedBy }
   | {
       ok: false;
       reason: "text-generation-failed" | "cancelled" | "already-running";
       state?: PoolGenerationState;
+      // already-running では生成を始めていないので持たない(記録の対象外)
+      completed?: GeneratedBy;
     };
 
 export interface GenerationRunner {
@@ -100,6 +105,8 @@ export function createGenerationRunner(): GenerationRunner {
             ok: false,
             reason: shouldCancel() ? "cancelled" : "text-generation-failed",
             state,
+            // S0022_07 全種別が失敗したら記録しない — テキストが揃わなければ音声にも進まない
+            completed: {},
           };
         }
 
@@ -119,11 +126,22 @@ export function createGenerationRunner(): GenerationRunner {
 
         // シナリオ: VOICEVOX 未起動で音声だけ失敗した / 音声の部分失敗を許容する [境界]
         // wav が 1 本も取れなくてもプールは有効。応援はテキストのみで成立する。
+        // S0022_01 テキスト生成の完了で text を記録 / S0022_02 音声合成の完了で voice を記録
+        // S0022_03 欠損のある種別は記録しない — 1 本でも欠けたら voice は記録しない。
+        // generatedBy は再生成時の参照用なので、欠損したまま「このプロバイダーで作った」と
+        // 残すと同じ欠損を再現する余地が残る(論点 0022 理由)。
+        // ID は選択値ではなく、実際に呼んだ生成器から取る(S0022_04)。
+        const completed: GeneratedBy =
+          missing.length === 0
+            ? { text: input.textGenerator.id, voice: input.synthesizer.id }
+            : { text: input.textGenerator.id };
+
         return {
           ok: true,
           pool: state.pool,
           synthesized: synthesized.length,
           missing: missing.length,
+          completed,
         };
       } finally {
         running = false;

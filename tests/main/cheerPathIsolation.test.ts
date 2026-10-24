@@ -66,3 +66,15 @@ describe("発動経路の分離 / メインウィンドウは発動経路と独�
     expect(sources.filter((s) => /mainWindow/i.test(s))).toEqual([]);
   });
 });
+
+describe("発動経路の分離 / 応援発動経路は生成元を参照しない [否定]", () => {
+  it("S0022_08 発動経路のどのファイルも generatedBy を読まない", () => {
+    // import ではなくフィールド参照の要件なので、ソース中の出現そのものを見る。
+    // 経路が Character を受け取らない(setActiveCharacter は id と pool だけ)ことの回帰ガード。
+    const readers = CHEER_PATH_FILES.filter((file) =>
+      /generatedBy/.test(readFileSync(join(ROOT, file), "utf8")),
+    );
+
+    expect(readers).toEqual([]);
+  });
+});

@@ -119,6 +119,8 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
     if (runner.isRunning()) {
       // 実行中に完了を待たず応答を返す。進捗と結果は GenerationProgress で流す。
       void started.then((result) => {
+        // 生成元の記録(論点 0022)。失敗時も completed を渡す — 空なら何も変わらない。
+        if (result.completed !== undefined) deps.store.recordGeneratedBy(result.completed);
         if (result.ok) {
           // シナリオ: 生成直後は再起動なしで応援に反映される
           deps.onPoolReady(character.id, result.pool);

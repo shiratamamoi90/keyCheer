@@ -231,3 +231,71 @@ describe("characterCreation / 生成中に再度生成を開始できない [境
     expect(runner.isRunning()).toBe(false);
   });
 });
+
+// 生成元の記録(論点 0022)。runner は「欠損なく完了した種別」と実際に使ったプロバイダー ID を
+// `completed` として返し、保存は呼び出し側(store.recordGeneratedBy)が行う。
+// 既定のローカル ID と区別するため、ここでは外部の ID を持つ偽物を使う
+// (ID を実装側でベタ書きしていても緑になってしまうのを防ぐ)。
+describe("characterCreation / 生成元の記録", () => {
+  it("S0022_01 records the text provider once every bucket is generated", async () => {
+    const fs = fakeFs();
+    const textGenerator: TextGenerator = { ...okText(), id: "anthropic" };
+
+    const result = await createGenerationRunner().start(baseInput(fs, { textGenerator }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.completed.text).toBe("anthropic");
+  });
+
+  it("S0022_02 records the voice provider when no wav is missing", async () => {
+    const fs = fakeFs();
+    const synthesizer: VoiceSynthesizer = { ...okVoice(), id: "elevenlabs" };
+
+    const result = await createGenerationRunner().start(baseInput(fs, { synthesizer }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.missing).toBe(0);
+    expect(result.completed.voice).toBe("elevenlabs");
+  });
+
+  it("S0022_03 does not record voice when a wav is missing but still records text", async () => {
+    const fs = fakeFs();
+    let n = 0;
+    const synthesizer: VoiceSynthesizer = {
+      id: "elevenlabs",
+      synthesize: vi.fn(async () => {
+        n += 1;
+        if (n === 1) throw new Error("synthesis failed");
+        return new Uint8Array([1, 2]);
+      }),
+    };
+    const textGenerator: TextGenerator = { ...okText(), id: "anthropic" };
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, { textGenerator, synthesizer }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.missing).toBe(1);
+    expect(result.completed).toEqual({ text: "anthropic" });
+  });
+
+  it("S0022_07 records no kind when text generation does not complete", async () => {
+    const fs = fakeFs();
+    const textGenerator: TextGenerator = {
+      id: "anthropic",
+      generateMessages: vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    };
+
+    const result = await createGenerationRunner().start(baseInput(fs, { textGenerator }));
+
+    expect(result).toEqual(
+      expect.objectContaining({ ok: false, reason: "text-generation-failed", completed: {} }),
+    );
+  });
+});

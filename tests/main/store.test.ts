@@ -284,3 +284,45 @@ describe("store / 除外設定はスキーマだけ用意しカウントには�
     expect(readers).toEqual([]);
   });
 });
+
+// 生成元の記録(論点 0022)。`generatedBy` は「実際に作った」プロバイダーで、
+// `providers` の選択値とは別物。選択値をここへ流し込まない。
+const SAVED_CHARACTER = {
+  id: "char-1",
+  name: "チア",
+  personality: "元気いっぱい",
+  imagePaths: {},
+  voicevoxSpeakerId: 3,
+};
+const SELECTED_PROVIDERS = { text: "openai", voice: "openai-tts", image: "stability-ai" };
+
+describe("store / 生成していない種別は未設定のまま [否定]", () => {
+  it("S0022_04 does not write the selected image provider into generatedBy", () => {
+    const backing = fakeStore({ character: SAVED_CHARACTER, providers: SELECTED_PROVIDERS });
+    const store = createAppStore(backing);
+
+    store.recordGeneratedBy({ text: "local-ollama", voice: "local-voicevox" });
+
+    const generatedBy = store.loadCharacter()?.generatedBy;
+    expect(generatedBy).toEqual({ text: "local-ollama", voice: "local-voicevox" });
+    expect(generatedBy).not.toHaveProperty("image");
+  });
+});
+
+describe("store / generatedBy は既定値で補完しない [境界]", () => {
+  it("S0022_09 leaves missing kinds unset instead of filling them from providers", () => {
+    const partial = createAppStore(
+      fakeStore({
+        character: { ...SAVED_CHARACTER, generatedBy: { text: "anthropic" } },
+        providers: SELECTED_PROVIDERS,
+      }),
+    );
+    expect(partial.loadCharacter()?.generatedBy).toEqual({ text: "anthropic" });
+
+    // 旧バージョン JSON(generatedBy そのものが無い)でも選択値で埋めない
+    const legacy = createAppStore(
+      fakeStore({ character: SAVED_CHARACTER, providers: SELECTED_PROVIDERS }),
+    );
+    expect(legacy.loadCharacter()?.generatedBy ?? {}).toEqual({});
+  });
+});

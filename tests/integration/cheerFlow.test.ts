@@ -283,3 +283,30 @@ describe("総合: 発動経路は外部と通信しない", () => {
     expect(raw.reads).toContain("stats"); // 記録は行われている = 計測が生きている
   });
 });
+
+describe("総合: 生成 → 生成元の記録 → 次回起動で読める", () => {
+  it("生成で実際に使ったプロバイダーが記録され、選択値とは混ざらない", async () => {
+    // 選択値はすべて外部。生成は(偽物の)ローカルで行う — 記録が選択値から来ていれば落ちる。
+    const raw = fakeStore({
+      character: { id: CHAR_ID, ...CHARACTER, imagePaths: {}, voicevoxSpeakerId: 3 },
+      providers: { text: "openai", voice: "openai-tts", image: "stability-ai" },
+    });
+    const store = createAppStore(raw);
+
+    const result = await createGenerationRunner().start({
+      characterId: CHAR_ID,
+      character: CHARACTER,
+      userDataDir: USER_DATA,
+      fs: fakeFs(),
+      textGenerator: fakeTextGenerator(),
+      synthesizer: fakeVoiceSynthesizer(),
+      speakerId: 3,
+    });
+    // characterCreationIpc.ts の完了ハンドラと同じ受け渡し
+    if (result.completed !== undefined) store.recordGeneratedBy(result.completed);
+
+    // 次回起動:永続化された JSON だけから読み直す
+    const reloaded = createAppStore(fakeStore(raw.raw)).loadCharacter();
+    expect(reloaded?.generatedBy).toEqual({ text: "local-ollama", voice: "local-voicevox" });
+  });
+});

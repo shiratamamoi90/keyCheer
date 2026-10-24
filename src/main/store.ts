@@ -10,6 +10,7 @@ import {
   migrateLegacyDefaults,
   DEFAULT_TRIGGER_CONFIG,
 } from "../core/index.js";
+import { applyGeneratedBy, validateGeneratedBy } from "../core/generatedBy.js";
 import {
   EMPTY_STATS,
   DEFAULT_ONBOARDING,
@@ -18,6 +19,7 @@ import {
   type Stats,
   type CheerHistoryEntry,
   type Character,
+  type GeneratedBy,
   type Onboarding,
   type SystemConfig,
 } from "../core/shared/types.js";
@@ -52,6 +54,8 @@ export interface AppStore {
   // 論点 0019: フォームが保存するのはプロフィールのみ(プール・wav・画像は別の論点)。
   // 論点 0020: 初回保存時に不変の characterId を採番する。
   saveCharacter(profile: Pick<Character, "name" | "personality" | "voicevoxSpeakerId">): void;
+  // 論点 0022: 欠損なく完了した種別だけを generatedBy に記録する(他の種別は残す)。
+  recordGeneratedBy(completed: GeneratedBy): void;
   loadSystem(): SystemConfig;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
@@ -141,8 +145,18 @@ export function createAppStore(store: StoreLike): AppStore {
       });
     },
 
+    // S0022_09 generatedBy は既定値で補完しない — 欠けた種別は未設定のまま返す。
+    // S0022_10 定義域外の値はエラーを出すだけで、直しも捨てもしない(人間の判断で確定。
+    // 2026-10-24)。黙って未設定へ落とすと「作った記録が消えた」理由が利用者から見えなくなる。
     loadCharacter() {
-      return store.get("character") as Character | undefined;
+      const character = store.get("character") as Character | undefined;
+      if (character?.generatedBy !== undefined) {
+        const errors = validateGeneratedBy(character.generatedBy);
+        if (errors.length > 0) {
+          console.error("[keycheer] character.generatedBy に不正な値があります", errors);
+        }
+      }
+      return character;
     },
 
     // 論点 0019: プロフィールのみを書く。既存のキャラは上書きする(1 キャラのみ)。
@@ -158,6 +172,16 @@ export function createAppStore(store: StoreLike): AppStore {
         name: profile.name,
         personality: profile.personality,
         voicevoxSpeakerId: profile.voicevoxSpeakerId,
+      });
+    },
+
+    // キャラ未保存なら何もしない(保存先の characterId が無い。生成は保存済みキャラに対してのみ)。
+    recordGeneratedBy(completed) {
+      const current = store.get("character") as Character | undefined;
+      if (current === undefined) return;
+      store.set("character", {
+        ...current,
+        generatedBy: applyGeneratedBy(current.generatedBy, completed),
       });
     },
 

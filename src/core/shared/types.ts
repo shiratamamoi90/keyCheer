@@ -103,11 +103,17 @@ export interface Character {
   personality: string;
   imagePaths: Record<string, string>;
   voicevoxSpeakerId: number;
-  generatedBy: {
-    text: TextProviderId;
-    voice: VoiceProviderId;
-    image: ImageProviderId;
-  };
+  // 生成を一度も完了していないキャラ(旧バージョン JSON を含む)は持たない(S0022_09)。
+  generatedBy?: GeneratedBy;
+}
+
+// 生成元プロバイダー(論点 0022)。欠損なく完了した種別だけが現れる。
+// `ProviderSelection` と形が似ているが別物 — こちらは「作った」、あちらは「選んだ」。
+// 全フィールド任意なのは、画像生成が未実装でも text / voice を記録できるようにするため。
+export interface GeneratedBy {
+  text?: TextProviderId;
+  voice?: VoiceProviderId;
+  image?: ImageProviderId;
 }
 
 // オンボーディング状態(論点 0018)。
