@@ -18,7 +18,7 @@ npm run dev       # build 後に electron dist/main/index.js を起動
 
 ```bash
 npm run services:up      # CPU で Ollama(:11434)と VOICEVOX(:50021)を起動
-npm run services:model   # gemma2:2b を取得(初回のみ。約 1.6 GB)
+npm run services:model   # sarashina2.2-3b-instruct を取り込む(初回のみ。約 6.7 GB を取得し、取り込み後に削除。論点 0029)
 npm run services:status  # 稼働確認
 npm run services:down    # 停止
 ```

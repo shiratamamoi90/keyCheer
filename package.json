@@ -16,7 +16,7 @@
     "eval": "tsx src/eval/index.ts",
     "services:up": "docker compose --profile cpu up -d",
     "services:down": "docker compose --profile cpu --profile gpu down",
-    "services:model": "docker compose --profile cpu exec ollama ollama pull gemma2:2b",
+    "services:model": "bash scripts/import-sarashina.sh",
     "services:status": "docker compose --profile cpu --profile gpu ps"
   },
   "dependencies": {

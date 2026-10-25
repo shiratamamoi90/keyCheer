@@ -65,5 +65,5 @@ services:
               capabilities: [gpu]
 
 volumes:
-  # gemma2:2b の重みはここに残す。`.gitignore` 区分2がリポジトリ側への持ち込みを止めている。
+  # 取り込んだ sarashina2.2-3b-instruct の重みはここに残す(論点 0029)。`.gitignore` 区分2がリポジトリ側への持ち込みを止めている。
   ollama-models:
