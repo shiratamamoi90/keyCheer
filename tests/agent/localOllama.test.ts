@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createOllamaTextGenerator } from "../../src/agent/providers/localOllama.js";
+import { DEFAULT_SYSTEM_CONFIG } from "../../src/core/shared/types.js";
 
 // 要件: docs/integrations.md(Ollama ローカルの呼び出し契約 / 未起動のフォールバック /
 //        自動リトライしない C6)/ decisions/0002-local-llm-ollama.md
@@ -27,7 +28,7 @@ describe("local-ollama / 呼び出し契約", () => {
     );
     const gen = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
-      model: "gemma2:2b",
+      model: "sarashina2.2-3b-instruct",
       fetchFn,
     });
     const messages = await gen.generateMessages({
@@ -44,7 +45,7 @@ describe("local-ollama / 呼び出し契約", () => {
     expect(url).toBe("http://localhost:11434/api/generate");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
-    expect(body.model).toBe("gemma2:2b");
+    expect(body.model).toBe("sarashina2.2-3b-instruct");
     expect(body.stream).toBe(false);
     expect(body.prompt).toContain("system prompt here");
     expect(body.options.seed).toBe(42); // 再現性: シード固定(impl-rules.md)
@@ -57,7 +58,7 @@ describe("local-ollama / 呼び出し契約", () => {
     );
     const gen = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
-      model: "gemma2:2b",
+      model: "sarashina2.2-3b-instruct",
       fetchFn,
     });
     await gen.generateMessages({
@@ -76,7 +77,7 @@ describe("local-ollama / 呼び出し契約", () => {
     const fetchFn = vi.fn(async () => okJson({ response: "がんばれ!\nいい調子!" }));
     const gen = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
-      model: "gemma2:2b",
+      model: "sarashina2.2-3b-instruct",
       fetchFn,
     });
     await expect(
@@ -98,7 +99,7 @@ describe("local-ollama / 未起動のフォールバック [異常系]", () => {
     });
     const gen = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
-      model: "gemma2:2b",
+      model: "sarashina2.2-3b-instruct",
       fetchFn,
     });
     await expect(
@@ -128,5 +129,29 @@ describe("local-ollama / 未起動のフォールバック [異常系]", () => {
       }),
     ).rejects.toThrow(/404/);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("local-ollama / 移行先のモデルが Ollama に無い [異常系]", () => {
+  it("S0028_06 rejects once for the default model without falling back to gemma2:2b", async () => {
+    const fetchFn = vi.fn(async () => new Response('{"error":"model not found"}', { status: 404 }));
+    const gen = createOllamaTextGenerator({
+      endpoint: "http://localhost:11434",
+      model: DEFAULT_SYSTEM_CONFIG.ollamaModel,
+      fetchFn,
+    });
+
+    await expect(
+      gen.generateMessages({
+        systemPrompt: "p",
+        scenarioKey: "slow_regular_morning",
+        count: 8,
+        timeoutMs: 5_000,
+      }),
+    ).rejects.toThrow(/404/);
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).model).toBe("sarashina2.2-3b-instruct");
   });
 });

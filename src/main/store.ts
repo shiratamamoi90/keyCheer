@@ -74,6 +74,11 @@ function normalizeStringList(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+// S0028_02 旧既定値 gemma2:2b を移行する(論点 0028)
+// Gemma は使わない方針なので、この値は利用者が意図して選んだかどうかを区別せずに移す。
+// 一致したときだけ移すのは、利用者が自分で入れた別のモデルを壊さないため(S0028_03)。
+const LEGACY_DEFAULT_OLLAMA_MODEL = "gemma2:2b";
+
 export function newCharacterId(): string {
   const random = Math.random().toString(36).slice(2, 10);
   return `char-${Date.now().toString(36)}-${random}`;
@@ -187,7 +192,14 @@ export function createAppStore(store: StoreLike): AppStore {
 
     // シナリオ: system 設定の読み込みと既定値補完
     loadSystem() {
-      const stored = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
+      const raw = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
+      let stored = raw;
+      if (raw.ollamaModel === LEGACY_DEFAULT_OLLAMA_MODEL) {
+        // 保存し直すのは保存されていた項目だけ。既定値で補完した値まで書き込むと、
+        // 以後の既定値の変更が効かなくなる(S0028_05 は他の項目を変えないことを縛る)
+        stored = { ...raw, ollamaModel: DEFAULT_SYSTEM_CONFIG.ollamaModel };
+        store.set("system", stored);
+      }
       return {
         ...DEFAULT_SYSTEM_CONFIG,
         ...stored,

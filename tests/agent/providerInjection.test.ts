@@ -59,7 +59,7 @@ describe("providers / 実 API を叩かずにテストできる", () => {
           fetchFn,
           gen: createOllamaTextGenerator({
             endpoint: "http://localhost:11434",
-            model: "gemma2:2b",
+            model: "sarashina2.2-3b-instruct",
             fetchFn,
           }),
         };

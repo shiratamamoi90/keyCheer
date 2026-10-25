@@ -8,7 +8,7 @@ import { requireTextResponseMessages } from "./textResponseGuard.js";
 
 export interface OllamaConfig {
   endpoint: string; // 例: "http://localhost:11434"(system.ollamaEndpoint)
-  model: string; // 例: "gemma2:2b"(system.ollamaModel)
+  model: string; // 例: "sarashina2.2-3b-instruct"(system.ollamaModel)
   fetchFn?: typeof fetch;
 }
 

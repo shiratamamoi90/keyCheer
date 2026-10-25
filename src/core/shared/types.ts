@@ -141,7 +141,8 @@ export interface SystemConfig {
 }
 
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
-  ollamaModel: "gemma2:2b",
+  // 論点 0027 で採ったモデル。Ollama 上の名前(公式の重みを取り込んだときに付けた名前)
+  ollamaModel: "sarashina2.2-3b-instruct",
   ollamaEndpoint: "http://localhost:11434",
   voicevoxEndpoint: "http://localhost:50021",
   excludedApps: [],

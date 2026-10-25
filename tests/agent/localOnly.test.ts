@@ -25,7 +25,7 @@ describe("providers / ローカル選択時は外部送信が発生しない [�
 
     const text = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
-      model: "gemma2:2b",
+      model: "sarashina2.2-3b-instruct",
       fetchFn,
     });
     await text.generateMessages({

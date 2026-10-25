@@ -232,7 +232,6 @@ describe("store / system 設定の読み込みと既定値補完", () => {
     const system = store.loadSystem();
     expect(system.ollamaEndpoint).toBe("http://localhost:11434");
     expect(system.voicevoxEndpoint).toBe("http://localhost:50021");
-    expect(system.ollamaModel).toBe("gemma2:2b");
   });
 
   it("keeps values already present and fills only the missing ones", () => {
@@ -324,5 +323,72 @@ describe("store / generatedBy は既定値で補完しない [境界]", () => {
       fakeStore({ character: SAVED_CHARACTER, providers: SELECTED_PROVIDERS }),
     );
     expect(legacy.loadCharacter()?.generatedBy ?? {}).toEqual({});
+  });
+});
+
+// 既定モデルの変更と旧既定値の移行(論点 0028)。
+// 「保存し直さない」は set の呼び出しで見る — 値が同じでも書き戻していれば移行の判定が誤っている。
+function countSystemWrites(fake: ReturnType<typeof fakeStore>): { count: () => number } {
+  let writes = 0;
+  const originalSet = fake.set;
+  fake.set = ((key: string, value: unknown) => {
+    if (key === "system") writes += 1;
+    (originalSet as (k: string, v: unknown) => void)(key, value);
+  }) as StoreLike["set"];
+  return { count: () => writes };
+}
+
+describe("store / system.ollamaModel の既定値と移行", () => {
+  it("S0028_01 defaults ollamaModel to sarashina2.2-3b-instruct", () => {
+    const system = createAppStore(fakeStore()).loadSystem();
+
+    expect(system.ollamaModel).toBe("sarashina2.2-3b-instruct");
+  });
+
+  it("S0028_02 migrates the legacy default gemma2:2b and saves it back", () => {
+    const fake = fakeStore({ system: { ollamaModel: "gemma2:2b" } });
+
+    const system = createAppStore(fake).loadSystem();
+
+    expect(system.ollamaModel).toBe("sarashina2.2-3b-instruct");
+    expect((fake.raw.system as { ollamaModel?: string }).ollamaModel).toBe(
+      "sarashina2.2-3b-instruct",
+    );
+  });
+
+  it("S0028_03 keeps a model the user set themselves and does not save", () => {
+    const fake = fakeStore({ system: { ollamaModel: "llama3.2:3b" } });
+    const writes = countSystemWrites(fake);
+
+    const system = createAppStore(fake).loadSystem();
+
+    expect(system.ollamaModel).toBe("llama3.2:3b");
+    expect(writes.count()).toBe(0);
+  });
+
+  it("S0028_04 does not rewrite an already migrated value", () => {
+    const fake = fakeStore({ system: { ollamaModel: "sarashina2.2-3b-instruct" } });
+    const writes = countSystemWrites(fake);
+
+    const system = createAppStore(fake).loadSystem();
+
+    expect(system.ollamaModel).toBe("sarashina2.2-3b-instruct");
+    expect(writes.count()).toBe(0);
+  });
+
+  it("S0028_05 leaves the other system settings unchanged when migrating", () => {
+    const stored = {
+      ollamaModel: "gemma2:2b",
+      ollamaEndpoint: "http://127.0.0.1:12345",
+      voicevoxEndpoint: "http://127.0.0.1:23456",
+      excludedApps: ["code.exe"],
+      excludedKeys: ["F13"],
+    };
+    const fake = fakeStore({ system: { ...stored } });
+
+    const system = createAppStore(fake).loadSystem();
+
+    expect(system).toEqual({ ...stored, ollamaModel: "sarashina2.2-3b-instruct" });
+    expect(fake.raw.system).toEqual({ ...stored, ollamaModel: "sarashina2.2-3b-instruct" });
   });
 });
