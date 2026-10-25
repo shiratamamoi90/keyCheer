@@ -1,6 +1,6 @@
 # 1論点 = 1変数のみ変更:プロンプトにゾーン/アクティブ時間を含めるか
 variant: zone_aware_prompt # baseline は zone_blind_prompt
-model: gemma2:2b
+model: sarashina2.2-3b-instruct
 temperature: 0.8
 seed: 42
 samples: 30

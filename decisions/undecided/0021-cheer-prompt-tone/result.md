@@ -13,4 +13,4 @@
 
 ## 再現条件
 
-model=gemma2:2b, temperature=0.8, seed=42, deps=package-lock.json(固定)
+model=sarashina2.2-3b-instruct, temperature=0.8, seed=42, deps=package-lock.json(固定)

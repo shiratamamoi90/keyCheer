@@ -21,7 +21,7 @@
 ## 測り方
 
 - 評価データ: 代表的な状況サンプル 30 件(count / type / timeOfDay / kpm / zone の組み合わせ)
-- モデル: gemma2:2b(固定)、temperature 0.8 固定、seed 42 固定、依存は `package-lock.json` で固定
+- モデル: sarashina2.2-3b-instruct(固定。論点 0027 で gemma2:2b から変更、Gemma は使わない方針)、temperature 0.8 固定、seed 42 固定、依存は `package-lock.json` で固定
 - 試行: 各サンプル 5 生成 = 150 メッセージ
 - 指標: 状況適合度(人手 1〜5 スコアの平均)/ 多様性(同一サンプル内のユニーク率)/
   1メッセージあたり生成レイテンシ(ms)/ 契約違反率(30文字超過・空・複数文)

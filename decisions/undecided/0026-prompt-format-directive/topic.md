@@ -28,7 +28,7 @@
 ## 測り方
 
 - 評価データ: 24 バケット × キャラ 3 種(性格の異なる固定プロフィール)
-- モデル: gemma2:2b(固定)、temperature 0.8 固定、seed 42 固定、依存は `package-lock.json` で固定。
+- モデル: sarashina2.2-3b-instruct(固定。論点 0027 で gemma2:2b から変更、Gemma は使わない方針)、temperature 0.8 固定、seed 42 固定、依存は `package-lock.json` で固定。
   実行環境は論点 0023 の既定(CPU のコンテナ)
 - 試行: 各組み合わせ 5 回 = 360 応答
 - 指標:

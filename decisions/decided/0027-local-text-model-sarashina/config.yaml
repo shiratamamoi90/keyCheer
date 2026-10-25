@@ -1,0 +1,19 @@
+# 1論点 = 1変数のみ変更:ローカルのテキスト生成モデル
+variant: sarashina2.2-3b-instruct-v0.1 # 人間の方針(2026-10-25)。1b は案B 中止時の次候補
+model: sarashina2.2-3b-instruct-v0.1 # 自前変換:公式 safetensors → ollama create --quantize q4_K_M
+source: sbintuitions/sarashina2.2-3b-instruct-v0.1@4f3626fb1b64b3e97c908e67f27b2d627ba2a999
+quantize: q4_K_M
+gguf_layer_sha256: 60e33bab403b69d923fef2bbbaf798adf1ba47cd897dfdf815bf85f433b6b959
+modelfile_template: "{{ if .System }}<|system|>{{ .System }}</s>{{ end }}<|user|>{{ .Prompt }}</s><|assistant|>" # stop: </s>, <|user|>
+ollama_model: sarashina2.2-3b-instruct # Ollama 上の名前(上の model を取り込んだもの)
+baseline: gemma2:2b
+temperature: 0.8
+seed: 42 # 試行 i(0 始まり)は seed + i。同じシードの繰り返しは同じ出力になり試行にならないため
+characters: 3
+buckets: 24
+generations_per_case: 5
+max_chars: 30
+timeout_ms_per_bucket: 120000 # CPU で 3B を回すため、アプリ既定(60000)より長く取る。超過は失敗バケットに数える
+structured_output: true # 論点 0024 の層 1。全案で揃える
+prompt: build_system_prompt_current # 論点 0026 の指示は入れない
+runtime: compose.yaml の ollama イメージ(digest 固定)、CPU プロファイル

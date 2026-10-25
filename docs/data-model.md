@@ -42,7 +42,7 @@
     },
   },
   "system": {
-    "ollamaModel": "gemma2:2b",
+    "ollamaModel": "sarashina2.2-3b-instruct", // 既定値(論点 0028)。旧既定値 "gemma2:2b" は読み込み時に移行する
     "ollamaEndpoint": "http://localhost:11434",
     "voicevoxEndpoint": "http://localhost:50021",
     "imageGen": { "useGpu": true, "steps": 4, "width": 512, "height": 768 },
@@ -252,6 +252,46 @@
 - GIVEN `generatedBy` に記録された値
 - WHEN 設定を読み込む
 - THEN 各種別の値は S0015_05 と同じ閉じた union に属する(未設定は許すが、定義域外の文字列は不正)
+
+### S0028_01 `system.ollamaModel` の既定値 [境界]
+
+- GIVEN `system.ollamaModel` が保存されていない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `system.ollamaModel` は `"sarashina2.2-3b-instruct"` になる(S0015_01 の既定値補完)
+
+### S0028_02 旧既定値 `gemma2:2b` を移行する
+
+- GIVEN 保存値 `system.ollamaModel = "gemma2:2b"`
+- WHEN 起動時に読み込む
+- THEN `system.ollamaModel` は `"sarashina2.2-3b-instruct"` になり、その値が保存し直される
+  (次回の起動では移行済みの値が読まれる)。`gemma2:2b` はサポートしないので、利用者が意図して
+  選んだかどうかは区別しない
+
+### S0028_03 利用者が入れた別のモデルは移行しない [否定]
+
+- GIVEN 保存値 `system.ollamaModel` が `"gemma2:2b"` でも既定値でもない文字列(例 `"llama3.2:3b"`)
+- WHEN 起動時に読み込む
+- THEN `system.ollamaModel` は**変化せず**、設定も保存し直さない
+
+### S0028_04 移行済みの値は再び書き換えない [境界]
+
+- GIVEN 保存値 `system.ollamaModel = "sarashina2.2-3b-instruct"`
+- WHEN 起動時に読み込む
+- THEN 値は変化せず、設定も保存し直さない
+
+### S0028_05 移行は他の設定項目に波及しない [否定]
+
+- GIVEN 保存値 `system.ollamaModel = "gemma2:2b"` と、既定値と異なる `system.ollamaEndpoint` /
+  `system.voicevoxEndpoint` / `system.excludedApps` / `system.excludedKeys`
+- WHEN 起動時に読み込んで移行する
+- THEN `system.ollamaModel` 以外の値は**変化しない**
+
+### S0028_06 移行先のモデルが Ollama に無い [異常系]
+
+- GIVEN 移行後の `system.ollamaModel = "sarashina2.2-3b-instruct"`、Ollama にそのモデルが無い
+- WHEN プール生成を要求する
+- THEN S0016_18 と同じく、エラーを表示してキャラ作成を完了させない(クラッシュしない)。
+  **`gemma2:2b` へ自動で戻さない**、別プロバイダーへも切り替えない
 
 ## 検討事項 [要確認](β 以降に確定)
 
