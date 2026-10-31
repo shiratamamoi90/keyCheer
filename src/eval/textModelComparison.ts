@@ -1,16 +1,17 @@
-// textModelComparison: ローカルのテキストモデルを baseline と比べる計測(論点 0027)。
+// textModelComparison: テキスト生成の案を baseline と比べる計測(論点 0027 はモデル、0026 はプロンプト)。
 //
-// アプリと同じ経路で呼ぶ:プロンプトは buildSystemPrompt、呼び出しは createOllamaTextGenerator
-// (応答スキーマ付き。論点 0024)、後処理は buildMessageTexts。経路を eval 側で組み直すと、
-// 測った値がアプリの挙動と食い違う。振るのはモデル名だけ(1 論点 = 1 変数)。
+// アプリと同じ経路で呼ぶ:呼び出しは createOllamaTextGenerator(応答スキーマ付き。論点 0024)、
+// 後処理は buildMessageTexts。経路を eval 側で組み直すと、測った値がアプリの挙動と食い違う。
+// 振るのはモデル名かプロンプトのどちらか 1 つだけ(1 論点 = 1 変数。組み合わせは index.ts が作る)。
 // temperature は渡さない — アプリも渡しておらず、両モデルとも Modelfile で上書きしていないので
 // Ollama 既定(0.8 = config.yaml の temperature)が効く。
 
-import { buildSystemPrompt, MESSAGES_PER_BUCKET } from "../agent/poolGenerator.js";
+import { MESSAGES_PER_BUCKET } from "../agent/poolGenerator.js";
 import { createOllamaTextGenerator } from "../agent/providers/localOllama.js";
 import { ALL_BUCKET_KEYS, type BucketKey } from "../core/messagePool.js";
 import { buildMessageTexts, MAX_MESSAGE_LENGTH } from "../core/textResponse.js";
 import type { CharacterProfile } from "../agent/poolGenerator.js";
+import type { PromptBuilder } from "./promptVariant.js";
 
 // 評価データ:性格の異なる固定プロフィール 3 種(論点 0026 / 0027 の「キャラ 3 種」)。
 // 変えると過去の計測と比べられなくなるので固定する(@.claude/rules/experiment-rules.md「規律」)。
@@ -22,7 +23,10 @@ export const EVAL_CHARACTERS: readonly CharacterProfile[] = [
 
 export interface ComparisonSettings {
   endpoint: string;
+  // 集計の見出し。モデルを振るならモデル名、プロンプトを振るなら案の名前
+  variant: string;
   model: string;
+  buildPrompt: PromptBuilder;
   baseSeed: number;
   generationsPerCase: number;
   timeoutMsPerBucket: number;
@@ -30,6 +34,7 @@ export interface ComparisonSettings {
 }
 
 export interface BucketRecord {
+  variant: string;
   model: string;
   character: string;
   bucket: BucketKey;
@@ -43,7 +48,7 @@ export interface BucketRecord {
   error?: string;
 }
 
-export async function runModelTrials(
+export async function runTrials(
   settings: ComparisonSettings,
   onRecord: (record: BucketRecord) => void,
 ): Promise<BucketRecord[]> {
@@ -57,7 +62,7 @@ export async function runModelTrials(
   // 1 回目はモデルの読み込みを含むので、レイテンシに混ぜないよう捨てる
   await generator
     .generateMessages({
-      systemPrompt: buildSystemPrompt(characters[0]!, ALL_BUCKET_KEYS[0]!, MESSAGES_PER_BUCKET),
+      systemPrompt: settings.buildPrompt(characters[0]!, ALL_BUCKET_KEYS[0]!, MESSAGES_PER_BUCKET),
       scenarioKey: ALL_BUCKET_KEYS[0]!,
       count: MESSAGES_PER_BUCKET,
       seed: settings.baseSeed,
@@ -74,7 +79,7 @@ export async function runModelTrials(
         let record: BucketRecord;
         try {
           const raw = await generator.generateMessages({
-            systemPrompt: buildSystemPrompt(character, bucket, MESSAGES_PER_BUCKET),
+            systemPrompt: settings.buildPrompt(character, bucket, MESSAGES_PER_BUCKET),
             scenarioKey: bucket,
             count: MESSAGES_PER_BUCKET,
             seed,
@@ -96,6 +101,7 @@ export async function runModelTrials(
 
         function base() {
           return {
+            variant: settings.variant,
             model: settings.model,
             character: character.name,
             bucket,
@@ -110,7 +116,7 @@ export async function runModelTrials(
   return records;
 }
 
-// --- 指標(論点 0027「測り方」)。どれも記録から決定的に計算する ---
+// --- 指標(論点 0027 / 0026「測り方」)。どれも記録から決定的に計算する ---
 
 const JAPANESE_CHAR = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー]/gu;
 const LATIN_CHAR = /[A-Za-z]/g;
@@ -131,7 +137,7 @@ export function hasFormatMarkers(raw: string): boolean {
 }
 
 export interface ComparisonSummary {
-  model: string;
+  variant: string;
   buckets: number;
   japaneseRatePct: number;
   failedBucketRatePct: number;
@@ -141,12 +147,15 @@ export interface ComparisonSummary {
   meanLatencyMs: number;
 }
 
-export function computeSummary(model: string, records: readonly BucketRecord[]): ComparisonSummary {
+export function computeSummary(
+  variant: string,
+  records: readonly BucketRecord[],
+): ComparisonSummary {
   const texts = records.flatMap((r) => r.texts);
   const raws = records.flatMap((r) => r.raw);
   const pct = (n: number, d: number): number => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10);
   return {
-    model,
+    variant,
     buckets: records.length,
     japaneseRatePct: pct(texts.filter(isJapaneseSentence).length, texts.length),
     failedBucketRatePct: pct(records.filter((r) => r.failed).length, records.length),
