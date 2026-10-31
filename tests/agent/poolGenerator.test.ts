@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildSystemPrompt,
   generatePool,
   emptyPoolState,
   isPoolComplete,
@@ -346,5 +347,56 @@ describe("poolGenerator / テキスト応答のパース契約", () => {
 
     const expected = ALL_BUCKET_KEYS.map(() => ["がんばれ!", "いい調子", "ファイト"]);
     for (const texts of textsByProvider) expect(texts).toEqual(expected);
+  });
+});
+
+// 期待する文は docs/integrations.md の表の写し(実装の定数から導かない)
+const SLOW_SENTENCE = "いまは打つのがゆっくりなときです。寄り添うように応援してください。";
+const NORMAL_SENTENCE = "いまはふつうの速さで打っているときです。いつもの調子で応援してください。";
+const FAST_SENTENCE = "いまは速く打っているときです。勢いを煽るように応援してください。";
+
+describe("poolGenerator / システムプロンプトの速度ゾーンの文", () => {
+  it("S0035_01 puts the sentence of the scenario's speed zone on the last line", () => {
+    const lastLine = (key: Parameters<typeof buildSystemPrompt>[1]) =>
+      buildSystemPrompt(character, key, 8).split("\n").at(-1);
+
+    expect(lastLine("slow_regular_morning")).toBe(SLOW_SENTENCE);
+    expect(lastLine("normal_milestone_evening")).toBe(NORMAL_SENTENCE);
+    expect(lastLine("fast_regular_night")).toBe(FAST_SENTENCE);
+  });
+
+  it("S0035_02 leaves out the other zones' sentences and the English zone names", () => {
+    const key = "slow_regular_morning";
+    const prompt = buildSystemPrompt(character, key, 8);
+    const otherLines = prompt.split("\n").filter((line) => !line.includes(`{${key}}`));
+
+    expect(prompt).not.toContain(NORMAL_SENTENCE);
+    expect(prompt).not.toContain(FAST_SENTENCE);
+    expect(prompt).not.toContain("速度ゾーンでテンション調整");
+    for (const line of otherLines) {
+      expect(line).not.toMatch(/slow|normal|fast/);
+    }
+  });
+
+  it("S0035_03 keeps every other line the same across speed zones", () => {
+    const keys = [
+      "slow_regular_morning",
+      "normal_regular_morning",
+      "fast_regular_morning",
+    ] as const;
+    const rest = keys.map((key) =>
+      buildSystemPrompt(character, key, 8)
+        .split("\n")
+        .filter((line) => !line.includes(`{${key}}`))
+        .slice(0, -1),
+    );
+
+    expect(rest[1]).toEqual(rest[0]);
+    expect(rest[2]).toEqual(rest[0]);
+    expect(rest[0]).toEqual([
+      "あなたは「チアちゃん」です。",
+      "性格: 元気いっぱい",
+      "キーボードを打っている人を応援する短いメッセージを返してください(各 30 文字以内)。",
+    ]);
   });
 });

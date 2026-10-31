@@ -4,9 +4,12 @@
 // 反映するのは決定後の作業(先に変えると、baseline が現行のプロンプトでなくなる)。
 // 案は現行のプロンプトに足す形にする — 現行を組み直すと、比べたい 1 行以外の差が混ざる。
 
-import { buildSystemPrompt, type CharacterProfile } from "../agent/poolGenerator.js";
+import {
+  buildSystemPrompt,
+  SPEED_ZONE_SENTENCES,
+  type CharacterProfile,
+} from "../agent/poolGenerator.js";
 import type { BucketKey } from "../core/messagePool.js";
-import type { SpeedZone } from "../core/shared/types.js";
 
 export type PromptBuilder = (
   character: CharacterProfile,
@@ -18,49 +21,36 @@ export type PromptBuilder = (
 export const FORMAT_DIRECTIVE =
   "応援の文だけを書き、強調(**)・見出し(#)・番号・括弧の注記は付けないでください。";
 
-// 論点 0021 で消す行の書き出し。現行の buildSystemPrompt の行と一致しなければ、消せないまま
-// baseline と同じプロンプトを測ってしまうので、組み立てのたびに確かめる。
-const ZONE_LINE_PREFIX = "速度ゾーンでテンション調整:";
+// 論点 0035 より前の buildSystemPrompt の最後の行。論点 0021 / 0026 / 0035 の baseline はこの行を持つ
+// プロンプトで測った。baseline は固定する決まり(@.claude/rules/experiment-rules.md)なので、アプリの
+// プロンプトが変わった後も、ここで旧プロンプトを組み直して過去の計測を再現できるようにしておく。
+const LEGACY_ZONE_LINE =
+  "速度ゾーンでテンション調整: slow=寄り添う / normal=標準 / fast=勢いを煽る";
 
-function replaceZoneLine(prompt: string, replacement: string | null): string {
+// 現行の最後の行(速度ゾーンの文)を差し替える。差し替える行が速度ゾーンの文でなければ、
+// 旧プロンプトを組めないまま別のプロンプトを測ってしまうので止める。
+function replaceLastLine(prompt: string, replacement: string | null): string {
   const lines = prompt.split("\n");
-  const index = lines.findIndex((line) => line.startsWith(ZONE_LINE_PREFIX));
-  const matchCount = lines.filter((line) => line.startsWith(ZONE_LINE_PREFIX)).length;
-  if (matchCount !== 1) {
-    throw new Error(
-      `プロンプトに「${ZONE_LINE_PREFIX}」の行がちょうど 1 行ない(ゾーンの行の案が組めない)`,
-    );
+  const last = lines.at(-1) ?? "";
+  if (!Object.values(SPEED_ZONE_SENTENCES).includes(last)) {
+    throw new Error("プロンプトの最後の行が速度ゾーンの文ではない(旧プロンプトを組めない)");
   }
-  const replaced = replacement === null ? [] : [replacement];
-  return [...lines.slice(0, index), ...replaced, ...lines.slice(index + 1)].join("\n");
+  return [...lines.slice(0, -1), ...(replacement === null ? [] : [replacement])].join("\n");
 }
 
-// 論点 0035 の文言。英語のゾーン名 slow / normal / fast をプロンプトに書かない — 現行の行では
-// その名前が応援文に漏れた(論点 0021 の result.md)。そのバケットのゾーンだけを書き、3 つは並べない
-export const ZONE_SENTENCES: Readonly<Record<SpeedZone, string>> = {
-  slow: "いまは打つのがゆっくりなときです。寄り添うように応援してください。",
-  normal: "いまはふつうの速さで打っているときです。いつもの調子で応援してください。",
-  fast: "いまは速く打っているときです。勢いを煽るように応援してください。",
-};
-
-function resolveSpeedZone(scenarioKey: BucketKey): SpeedZone {
-  return scenarioKey.split("_")[0] as SpeedZone;
-}
+const buildLegacySystemPrompt: PromptBuilder = (character, scenarioKey, count) =>
+  replaceLastLine(buildSystemPrompt(character, scenarioKey, count), LEGACY_ZONE_LINE);
 
 const PROMPT_VARIANTS: Readonly<Record<string, PromptBuilder>> = {
-  no_directive: buildSystemPrompt,
+  no_directive: buildLegacySystemPrompt,
   format_directive: (character, scenarioKey, count) =>
-    `${buildSystemPrompt(character, scenarioKey, count)}\n${FORMAT_DIRECTIVE}`,
-  // 論点 0021:現行(ゾーンの行あり)と、その 1 行だけを消した案。バケットキーは両案とも渡す
-  zone_line: buildSystemPrompt,
+    `${buildLegacySystemPrompt(character, scenarioKey, count)}\n${FORMAT_DIRECTIVE}`,
+  // 論点 0021:旧プロンプト(ゾーンの行あり)と、その 1 行だけを消した案。バケットキーは両案とも渡す
+  zone_line: buildLegacySystemPrompt,
   no_zone_line: (character, scenarioKey, count) =>
-    replaceZoneLine(buildSystemPrompt(character, scenarioKey, count), null),
-  // 論点 0035:ゾーンの行を、そのバケットのゾーンだけを日本語で書いた 1 文に置き換える
-  zone_sentence: (character, scenarioKey, count) =>
-    replaceZoneLine(
-      buildSystemPrompt(character, scenarioKey, count),
-      ZONE_SENTENCES[resolveSpeedZone(scenarioKey)],
-    ),
+    replaceLastLine(buildSystemPrompt(character, scenarioKey, count), null),
+  // 論点 0035:そのバケットの速度ゾーンだけを日本語の 1 文で書く(採用し、現行の buildSystemPrompt になった)
+  zone_sentence: buildSystemPrompt,
 };
 
 export function resolvePromptBuilder(name: string): PromptBuilder {

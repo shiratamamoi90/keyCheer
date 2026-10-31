@@ -11,6 +11,7 @@ import {
   type PoolMessage,
 } from "../core/messagePool.js";
 import type { TextGenerator } from "../core/providers/types.js";
+import type { SpeedZone } from "../core/shared/types.js";
 import { buildMessageTexts, MAX_MESSAGE_LENGTH } from "../core/textResponse.js";
 
 export type CompletionStatus = "complete" | "pending" | "failed";
@@ -61,8 +62,24 @@ export function buildSystemPrompt(
     `性格: ${character.personality}`,
     `キーボードを打っている人を応援する短いメッセージを返してください(各 ${MAX_MESSAGE_LENGTH} 文字以内)。`,
     `これから示すシナリオ {${scenarioKey}} に合わせて ${count} 個生成してください。`,
-    `速度ゾーンでテンション調整: slow=寄り添う / normal=標準 / fast=勢いを煽る`,
+    SPEED_ZONE_SENTENCES[resolveSpeedZone(scenarioKey)],
   ].join("\n");
+}
+
+// S0035_01 シナリオの速度ゾーンの文をシステムプロンプトに入れる
+//
+// なぜ英語のゾーン名で 3 つ並べないか:旧テンプレートの「slow=寄り添う / normal=… / fast=…」は、
+// ゾーン名 slow / normal / fast が 9.7% のバケットで応援文に写った(`-slow--` だけの文など)。
+// そのシナリオのゾーンだけを日本語で書くと写しが消え、ゾーンの差もむしろ強まった(論点 0021 / 0035 の result.md)。
+export const SPEED_ZONE_SENTENCES: Readonly<Record<SpeedZone, string>> = {
+  slow: "いまは打つのがゆっくりなときです。寄り添うように応援してください。",
+  normal: "いまはふつうの速さで打っているときです。いつもの調子で応援してください。",
+  fast: "いまは速く打っているときです。勢いを煽るように応援してください。",
+};
+
+function resolveSpeedZone(scenarioKey: BucketKey): SpeedZone {
+  // バケットキーの書式 `${SpeedZone}_${CheerType}_${TimeOfDay}`(core/messagePool)の先頭
+  return scenarioKey.split("_")[0] as SpeedZone;
 }
 
 // シナリオ: 文字数契約 [境界] — 30 文字超は切り詰め(再生成キューではなく切り詰め方式を採用)
