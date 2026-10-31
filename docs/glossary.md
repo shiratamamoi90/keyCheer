@@ -32,6 +32,7 @@
 | 定型文 | `baseline` | — | `cannedText` | 同梱の固定文。プール未生成・バケット欠損時に使う比較基準 |
 | マイルストーン | `milestone` | — | `milestoneList` | 節目の押下数。到達で `milestone` 種別の応援が出る |
 | キャラクター | `character` | — | `chara`, `charName` | 利用者が作る応援役。名前・性格・話者・生成物を持つ |
+| 使用中のキャラクター | `activeCharacter` | — | `currentCharacter`, `selectedCharacter` | 保存済みのキャラクターのうち応援に使う 1 件。`activeCharacterId` で指す(論点 0032) |
 | 話者 | `speaker` | — | `voiceActor`, `spk` | 音声プロバイダーが持つ声の種類 |
 | プロバイダー | `provider` | — | `prov` | 生成手段の差し替え単位(テキスト / 音声 / 画像) |
 | 同意 | `consent` | — | `consentFlag` | 外部プロバイダーへの送信を利用者が明示的に承認した状態 |

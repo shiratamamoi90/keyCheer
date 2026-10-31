@@ -8,18 +8,28 @@
 
 ```jsonc
 {
-  "character": {
-    "name": "チアちゃん",
-    "personality": "元気いっぱいで、いつもポジティブ。語尾に「だよ!」をつける。",
-    "imagePaths": { "normal": "...", "happy": "...", "excited": "..." },
-    "voicevoxSpeakerId": 3,
-    // 生成元プロバイダー(再生成時の参照用。論点 0022)。
-    // **実際に作った種別だけ**が現れる。各フィールドは任意で、未生成・未実装の種別は持たない
-    // (下の例は画像生成が未実装のため image が無い)。選択値は providers 側であって、ここではない
-    "generatedBy": {
-      "text": "local-ollama",
-      "voice": "local-voicevox",
+  // キャラクターは複数保存できる(論点 0032。旧形式の単数 `character` は読み込み時に移行する → S0032_24)。
+  // 並びは保存した順。最大 10 件
+  "characters": [
+    {
+      "id": "char-mvvr4ukc-ce53h95o", // 保存時に採番する不変 ID(論点 0020)
+      "name": "チアちゃん",
+      "personality": "元気いっぱいで、いつもポジティブ。語尾に「だよ!」をつける。",
+      "imagePaths": { "normal": "...", "happy": "...", "excited": "..." },
+      "voicevoxSpeakerId": 3,
+      // 生成元プロバイダー(再生成時の参照用。論点 0022)。
+      // **実際に作った種別だけ**が現れる。各フィールドは任意で、未生成・未実装の種別は持たない
+      // (下の例は画像生成が未実装のため image が無い)。選択値は providers 側であって、ここではない
+      "generatedBy": {
+        "text": "local-ollama",
+        "voice": "local-voicevox",
+      },
     },
+  ],
+  // 使用中のキャラクター(応援に使うキャラクター)の id。未設定・指す先が無い・プールが無いなら定型文で応援する
+  "activeCharacterId": "char-mvvr4ukc-ce53h95o",
+  "generation": {
+    "shouldActivateOnComplete": true, // 既定 true。生成が完了したらそのキャラクターを使用中にする(論点 0032)
   },
   "triggers": {
     "regular": 50, // 既定 50、1 ≦ N ≦ 10000(設定可能)
@@ -58,19 +68,16 @@
 
 ## `hasCharacter` の判定(→ docs/main-window.md)
 
-`character` が「作成済み」かどうかは、単なるキーの有無ではなく**プロフィール**の充足で判定する
-(`src/core/hasCharacter.ts`。純粋関数。main がメインウィンドウの自動表示判定に使う)。
+「作成済み」は **`characters` に 1 件以上のキャラクターがある**ことで判定する(論点 0032。
+`src/core/hasCharacter.ts`。純粋関数。main がメインウィンドウの自動表示判定に使う)。
+各キャラクターは保存時に必須項目(`name` / `personality` が非空文字列、`voicevoxSpeakerId` が数値)を
+検証済みなので、件数だけを見る。
 
-- `name` / `personality` が非空文字列であること
-- `voicevoxSpeakerId` が数値であること
+**`imagePaths` とメッセージプール、使用中のキャラクターの有無は判定に含めない**(2026-07-26 確定、
+論点 0032 で維持)。必須にすると生成が済むまで永久に「未作成」となり、起動のたびにメインウィンドウが
+自動表示されてしまう。生成物の有無は別軸で扱う:
 
-上記いずれか欠ける・`character` 自体が未保存の場合は「未作成」として扱う。
-
-**`imagePaths` とメッセージプールは判定に含めない**(2026-07-26 確定)。画像生成とプール生成は
-キャラ作成とは別 change で実装されるため、必須にすると生成が済むまで永久に「未作成」となり、
-起動のたびにメインウィンドウが自動表示されてしまう。生成物の有無は別軸で扱う:
-
-- プールがある → その文言で応援する / 無い → baseline 定型文で応援する
+- 使用中のキャラクターにプールがある → その文言で応援する / 無い → baseline 定型文で応援する
 - 画像がある → 表示する / 無い → 表示しない
 
 ## メッセージプール(キャラごとに別ファイル)
@@ -80,6 +87,9 @@
 {
   "characterId": "chia-2026-05-30",
   "version": 1,
+  // 生成したときのプロフィール(論点 0032)。今のプロフィールと比べて「生成後に変えた」を判定する。
+  // これを持たない旧いプールは「変えた」と判定しない(→ S0032_23)
+  "generatedProfile": { "name": "チアちゃん", "personality": "...", "voicevoxSpeakerId": 3 },
   "buckets": {
     // キー = "{zone}_{type}_{timeOfDay}"、値 = メッセージ配列
     "slow_regular_morning":  [{ "id": "slow_regular_morning-000", "text": "おはよう、ゆっくりでいいよ" }, ...],
@@ -191,6 +201,8 @@
 }
 ```
 
+> 論点 0032 以降、下のシナリオの `character.*` は `characters` の各要素を指す。
+
 ### S0015_01 既存設定の読み込みと既定値補完
 
 - GIVEN 一部キーが欠けた設定 JSON(`providers` / `triggers.activeThresholdSec` 等が無い旧バージョン含む)
@@ -292,6 +304,56 @@
 - WHEN プール生成を要求する
 - THEN S0016_18 と同じく、エラーを表示してキャラ作成を完了させない(クラッシュしない)。
   **`gemma2:2b` へ自動で戻さない**、別プロバイダーへも切り替えない
+
+### S0032_24 旧形式の `character` を読み込み時に移行する
+
+- GIVEN `character`(単数)だけを持ち `characters` が無い設定 JSON。そのキャラクターの `pool.json` がある
+- WHEN 起動時に読み込む
+- THEN `characters` はそのキャラクター 1 件の配列になり、`activeCharacterId` はその id になる。
+  移行後の値を保存し、`character` は残さない。`characters/{characterId}/` の生成物は動かさない
+
+### S0032_25 プールが無い旧形式のキャラクターは使用中にしない [境界]
+
+- GIVEN `character`(単数)だけを持ち、そのキャラクターの `pool.json` が無い設定 JSON
+- WHEN 起動時に読み込んで移行する
+- THEN `characters` はそのキャラクター 1 件の配列になり、`activeCharacterId` は設定しない
+
+### S0032_26 id を持たない旧形式のキャラクターには採番する [境界]
+
+- GIVEN `id` を持たない `character`(単数)
+- WHEN 起動時に読み込んで移行する
+- THEN 保存時と同じ規則で新しい `id` を採番し、`characters` の要素に付ける
+
+### S0032_27 移行済みのデータは書き換えない [否定]
+
+- GIVEN `characters` を持つ設定 JSON
+- WHEN 起動時に読み込む
+- THEN `characters` と `activeCharacterId` は**変化しない**(移行は一度きり)。`character` が併存していても
+  `characters` を正として扱い、`character` から作り直さない
+
+### S0032_28 上限を超える件数を読み込んでも切り詰めない [境界]
+
+- GIVEN `characters` が 11 件以上ある設定 JSON(手で編集した等)
+- WHEN 起動時に読み込む
+- THEN エラーを記録するだけで、全件をそのまま読み込む(**保存値を削らない**)。新規保存は S0032_03 により拒否される
+
+### S0032_29 1 件以上あれば作成済み
+
+- GIVEN `characters` に 1 件以上のキャラクターがある(使用中のキャラクターもプールも無くてよい)
+- WHEN `hasCharacter` を判定する
+- THEN `true` を返す
+
+### S0032_30 0 件なら未作成 [境界]
+
+- GIVEN `characters` が空配列、または `characters` も `character` も無い
+- WHEN `hasCharacter` を判定する
+- THEN `false` を返す
+
+### S0032_31 `generation.shouldActivateOnComplete` の既定値 [境界]
+
+- GIVEN `generation.shouldActivateOnComplete` が無い、または真偽値でない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0022_10 と同じ扱い)
 
 ## 検討事項 [要確認](β 以降に確定)
 
