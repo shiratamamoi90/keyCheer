@@ -15,7 +15,7 @@ import { createPopupWindow } from "./windows.js";
 import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
-import { registerAudioProtocol } from "./audioProtocol.js";
+import { registerAudioProtocol, registerAudioSchemePrivileges } from "./audioProtocol.js";
 import { createNodeCharacterFs } from "./nodeCharacterFs.js";
 import { loadPool } from "./characterStore.js";
 import { registerCharacterCreation } from "./characterCreationIpc.js";
@@ -27,6 +27,9 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 }
+
+// 音声スキームの特権登録は ready より前にしか効かないので、bootstrap ではなくここで行う。
+registerAudioSchemePrivileges();
 
 // 統計をディスクへ書き戻す間隔。キー 1 打ごとに書かない(docs/key-counter.md 不変条件)。
 const STATS_FLUSH_INTERVAL_MS = 10_000;
