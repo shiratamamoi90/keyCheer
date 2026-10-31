@@ -1,0 +1,14 @@
+# 1論点 = 1変数のみ変更:プロンプトの「速度ゾーンでテンション調整」の行の有無(2026-10-31 に書き直し)
+axis: prompt # 振るのはプロンプト(src/eval の axis)
+variant: no_zone_line # baseline は zone_line(現行の buildSystemPrompt)
+model: sarashina2.2-3b-instruct # Ollama 上の名前(論点 0029 で取り込んだもの)
+temperature: 0.8
+seed: 42
+characters: 3
+buckets: 24
+generations_per_case: 5
+max_chars: 30
+structured_output: true # 論点 0024 で決定済み。両案とも揃える
+timeout_ms_per_bucket: 120000 # 論点 0026 / 0027 と同じ(CPU で 3B を回すため)
+runtime: compose.yaml の ollama イメージ(digest 固定)、CPU プロファイル
+baseline: zone_line
