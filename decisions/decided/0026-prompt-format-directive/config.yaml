@@ -1,0 +1,14 @@
+# 1論点 = 1変数のみ変更:プロンプトに書式の禁止を指示するか
+axis: prompt # 振るのはプロンプト(src/eval の axis。0027 は model)
+variant: format_directive # baseline は no_directive
+model: sarashina2.2-3b-instruct # Ollama 上の名前(論点 0029 で取り込んだもの)
+temperature: 0.8
+seed: 42
+characters: 3
+buckets: 24
+generations_per_case: 5
+max_chars: 30
+structured_output: true # 論点 0024 で決定済み(層 1)。両案とも揃える
+timeout_ms_per_bucket: 120000 # 論点 0027 と同じ(CPU で 3B を回すため)
+runtime: compose.yaml の ollama イメージ(digest 固定)、CPU プロファイル
+baseline: no_directive
