@@ -10,9 +10,15 @@ export const IpcChannel = {
   UpdateTriggerConfig: "keycheer:update-trigger-config",
   GetStats: "keycheer:get-stats",
   // キャラ作成フォーム(論点 0019)。生成は含まず、プロフィールの保存と話者一覧のみ。
+  // id 付きなら編集、無ければ新規保存(論点 0032)
   SaveCharacter: "keycheer:save-character",
   GetSpeakers: "keycheer:get-speakers",
-  GetCharacter: "keycheer:get-character",
+  // キャラクターの一覧・削除・使用中の切り替え(論点 0032)と生成の設定(論点 0033)
+  ListCharacters: "keycheer:list-characters",
+  DeleteCharacter: "keycheer:delete-character",
+  ActivateCharacter: "keycheer:activate-character",
+  GetGenerationConfig: "keycheer:get-generation-config",
+  SetGenerationConfig: "keycheer:set-generation-config",
   // プール・wav の生成(論点 0020)。生成はローカルのみ(Ollama / VOICEVOX)。
   StartGeneration: "keycheer:start-generation",
   CancelGeneration: "keycheer:cancel-generation",
@@ -25,6 +31,8 @@ export const IpcChannel = {
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   ConfigMigrated: "keycheer:config-migrated",
+  // メインウィンドウが非表示から表示になった(最初の画面を決め直す合図。論点 0033 S0033_05)
+  MainWindowShown: "keycheer:main-window-shown",
 } as const;
 
 export type IpcChannel = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -67,6 +75,8 @@ export type StatsSnapshot = Stats;
 // renderer → main: キャラ作成フォームが保存するプロフィール(論点 0019)。
 // プール・wav・画像は含まない(生成は別の論点)。
 export interface SaveCharacterRequest {
+  // 編集するキャラクターの id。無ければ新規保存(論点 0032)
+  id?: string;
   name: string;
   personality: string;
   voicevoxSpeakerId: number;
@@ -92,14 +102,29 @@ export type GenerationProgressPayload =
   | { type: "done"; synthesized: number; missing: number }
   | { type: "failed"; reason: string };
 
-// renderer ← main: 保存済みキャラの要約(未保存なら null)。
-// 表示と生成に要る値だけ。imagePaths / generatedBy は渡さない。
-export interface CharacterSummaryPayload {
+// renderer ← main: 保存済みのキャラクターの一覧(論点 0032 / 0033)。画面ごとの選別は renderer が行う
+// (renderer/mainScreen.ts)。main が持つ事実だけを載せる。imagePaths / generatedBy は渡さない。
+export interface CharacterListItem {
   id: string;
   name: string;
   personality: string;
   voicevoxSpeakerId: number;
+  hasPool: boolean;
+  isGenerating: boolean;
+  isActive: boolean;
+  // 生成後に名前・性格・話者を変えた(core/generatedProfile.ts)
+  hasProfileChanged: boolean;
 }
+
+export type DeleteCharacterResult =
+  | { ok: true }
+  | { ok: false; reason: "not-found" | "generating" | "remove-failed" };
+
+export type ActivateCharacterResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid-request" | "not-found" | "no-pool" | "generating" };
+
+export type SaveGenerationConfigResult = { ok: true } | { ok: false; errors: string[] };
 
 // renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
 // 外部プロバイダーで止まった場合は、どのプロバイダーが何で止まったかを返す。

@@ -116,6 +116,22 @@ export interface GeneratedBy {
   image?: ImageProviderId;
 }
 
+// 生成したときのプロフィール(論点 0032)。pool.json の generatedProfile として残し、
+// 今のプロフィールと比べて「生成後に変えた」を判定する(core/generatedProfile.ts)。
+export type GeneratedProfile = Pick<Character, "name" | "personality" | "voicevoxSpeakerId">;
+
+// 保存できるキャラクターの上限(論点 0032)。新規保存だけを止め、読み込み時には切り詰めない(S0032_28)。
+export const MAX_CHARACTER_COUNT = 10;
+
+// 生成の設定(論点 0032)。生成が完了したらそのキャラクターを使用中にするか。
+export interface GenerationConfig {
+  shouldActivateOnComplete: boolean;
+}
+
+export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
+  shouldActivateOnComplete: true,
+};
+
 // オンボーディング状態(論点 0018)。
 // メインウィンドウの自動表示可否のみを持つ(キャラ作成の進捗そのものは character 側で判定)。
 export interface Onboarding {

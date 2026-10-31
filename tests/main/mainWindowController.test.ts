@@ -25,19 +25,19 @@ const SKIPPED: Onboarding = { skipMainWindowAutoShow: true };
 
 describe("mainWindowController / キャラクター未作成なら起動時にメインウィンドウを表示する", () => {
   it("S0018_01 returns true when no character exists and auto-show is not skipped", () => {
-    expect(shouldAutoShowMainWindow(undefined, NOT_SKIPPED)).toBe(true);
+    expect(shouldAutoShowMainWindow([], NOT_SKIPPED)).toBe(true);
   });
 });
 
 describe("mainWindowController / キャラクター作成済みなら起動時にメインウィンドウを表示しない", () => {
   it("S0018_02 returns false once a character exists", () => {
-    expect(shouldAutoShowMainWindow(COMPLETE, NOT_SKIPPED)).toBe(false);
+    expect(shouldAutoShowMainWindow([COMPLETE], NOT_SKIPPED)).toBe(false);
   });
 });
 
 describe("mainWindowController / スキップ済みなら未作成でも起動時に表示しない", () => {
   it("S0018_03 returns false when skipMainWindowAutoShow is true, even with no character", () => {
-    expect(shouldAutoShowMainWindow(undefined, SKIPPED)).toBe(false);
+    expect(shouldAutoShowMainWindow([], SKIPPED)).toBe(false);
   });
 });
 
@@ -80,7 +80,7 @@ describe("mainWindowController / トレイクリックで表示/非表示をト�
 describe("mainWindowController / スキップ済みでもトレイからは開ける", () => {
   it("S0018_08 shows a hidden window regardless of skipMainWindowAutoShow", () => {
     // スキップは自動表示のみを抑制する。手動オープンの経路は onboarding を参照しない。
-    expect(shouldAutoShowMainWindow(undefined, SKIPPED)).toBe(false);
+    expect(shouldAutoShowMainWindow([], SKIPPED)).toBe(false);
     const win = fakeHandle(false);
     toggleMainWindow(win);
     expect(win.calls).toEqual(["show", "focus"]);
@@ -90,13 +90,13 @@ describe("mainWindowController / スキップ済みでもトレイからは開�
 
 describe("mainWindowController / 作成済みなら閉じてもダイアログを出さない", () => {
   it("S0018_05 decides to hide directly when a character exists", () => {
-    expect(decideOnMainWindowClose(COMPLETE)).toBe("hide");
+    expect(decideOnMainWindowClose([COMPLETE])).toBe("hide");
   });
 });
 
 describe("mainWindowController / 未作成のまま閉じるとダイアログが出る", () => {
   it("S0018_06 decides to confirm when no character exists yet", () => {
-    expect(decideOnMainWindowClose(undefined)).toBe("confirm");
+    expect(decideOnMainWindowClose([])).toBe("confirm");
   });
 });
 

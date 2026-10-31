@@ -16,10 +16,10 @@ export interface MainWindowHandle {
 // シナリオ: キャラクター未作成なら起動時にメインウィンドウを表示する
 //         / キャラクター作成済みなら表示しない / スキップ済みなら未作成でも表示しない
 export function shouldAutoShowMainWindow(
-  character: Partial<Character> | undefined,
+  characters: readonly Character[],
   onboarding: Onboarding,
 ): boolean {
-  return !hasCharacter(character) && !onboarding.skipMainWindowAutoShow;
+  return !hasCharacter(characters) && !onboarding.skipMainWindowAutoShow;
 }
 
 // シナリオ: トレイクリックで表示する / 隠す(トグル)/ 重複表示の防止
@@ -36,8 +36,8 @@ export function toggleMainWindow(win: MainWindowHandle): void {
 // シナリオ: 作成済みなら閉じてもダイアログを出さない / 未作成のまま閉じるとダイアログが出る
 export type CloseDecision = "hide" | "confirm";
 
-export function decideOnMainWindowClose(character: Partial<Character> | undefined): CloseDecision {
-  return hasCharacter(character) ? "hide" : "confirm";
+export function decideOnMainWindowClose(characters: readonly Character[]): CloseDecision {
+  return hasCharacter(characters) ? "hide" : "confirm";
 }
 
 // シナリオ: ダイアログでチェックして/せず閉じた場合。

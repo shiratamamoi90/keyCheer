@@ -7,9 +7,12 @@
 
 import { IpcChannel } from "../core/shared/ipc.js";
 import type {
+  ActivateCharacterResult,
   CheerFiredPayload,
-  CharacterSummaryPayload,
+  CharacterListItem,
   ConfigMigratedPayload,
+  DeleteCharacterResult,
+  SaveGenerationConfigResult,
   GenerationProgressPayload,
   GetSpeakersResult,
   SaveCharacterRequest,
@@ -19,7 +22,12 @@ import type {
   UpdateTriggerConfigRequest,
   ConsentSnapshot,
 } from "../core/shared/ipc.js";
-import type { TriggerConfig, ProviderId, ProviderSelection } from "../core/shared/types.js";
+import type {
+  TriggerConfig,
+  ProviderId,
+  ProviderSelection,
+  GenerationConfig,
+} from "../core/shared/types.js";
 
 // 保存結果の型は providerStore が正本。preload は形だけ再宣言せず構造で受ける
 // (main の実装を preload から import しないため — 発動経路/プロセス境界を跨がせない)。
@@ -43,12 +51,20 @@ export interface KeyCheerApi {
   getTriggerConfig(): Promise<TriggerConfig>;
   updateTriggerConfig(config: UpdateTriggerConfigRequest): Promise<UpdateTriggerConfigResult>;
   getStats(): Promise<StatsSnapshot>;
-  // キャラ作成フォーム(論点 0019)。生成は含まない。
+  // キャラ作成フォーム(論点 0019)。生成は含まない。id 付きなら編集(論点 0032)。
   saveCharacter(profile: SaveCharacterRequest): Promise<SaveCharacterResult>;
   getSpeakers(): Promise<GetSpeakersResult>;
-  getCharacter(): Promise<CharacterSummaryPayload | null>;
+  // キャラクターの一覧・削除・使用中の切り替え(論点 0032)
+  listCharacters(): Promise<CharacterListItem[]>;
+  deleteCharacter(characterId: string): Promise<DeleteCharacterResult>;
+  activateCharacter(characterId: string): Promise<ActivateCharacterResult>;
+  // 設定画面(論点 0033)
+  getGenerationConfig(): Promise<GenerationConfig>;
+  setGenerationConfig(config: GenerationConfig): Promise<SaveGenerationConfigResult>;
+  // メインウィンドウが非表示から表示になった(最初の画面を決め直す。論点 0033)
+  onMainWindowShown(listener: () => void): () => void;
   // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
-  startGeneration(): Promise<StartGenerationResult>;
+  startGeneration(characterId: string): Promise<StartGenerationResult>;
   cancelGeneration(): Promise<void>;
   onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
   // 外部プロバイダーの同意(論点 0016)。grantConsent は同意ダイアログを
@@ -77,9 +93,18 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
     saveCharacter: (profile) =>
       ipc.invoke(IpcChannel.SaveCharacter, profile) as Promise<SaveCharacterResult>,
     getSpeakers: () => ipc.invoke(IpcChannel.GetSpeakers) as Promise<GetSpeakersResult>,
-    getCharacter: () =>
-      ipc.invoke(IpcChannel.GetCharacter) as Promise<CharacterSummaryPayload | null>,
-    startGeneration: () => ipc.invoke(IpcChannel.StartGeneration) as Promise<StartGenerationResult>,
+    listCharacters: () => ipc.invoke(IpcChannel.ListCharacters) as Promise<CharacterListItem[]>,
+    deleteCharacter: (characterId) =>
+      ipc.invoke(IpcChannel.DeleteCharacter, characterId) as Promise<DeleteCharacterResult>,
+    activateCharacter: (characterId) =>
+      ipc.invoke(IpcChannel.ActivateCharacter, characterId) as Promise<ActivateCharacterResult>,
+    getGenerationConfig: () =>
+      ipc.invoke(IpcChannel.GetGenerationConfig) as Promise<GenerationConfig>,
+    setGenerationConfig: (config) =>
+      ipc.invoke(IpcChannel.SetGenerationConfig, config) as Promise<SaveGenerationConfigResult>,
+    onMainWindowShown: (listener) => subscribe(ipc, IpcChannel.MainWindowShown, () => listener()),
+    startGeneration: (characterId) =>
+      ipc.invoke(IpcChannel.StartGeneration, characterId) as Promise<StartGenerationResult>,
     cancelGeneration: () => ipc.invoke(IpcChannel.CancelGeneration) as Promise<void>,
     onGenerationProgress: (listener) => subscribe(ipc, IpcChannel.GenerationProgress, listener),
     getProviders: () => ipc.invoke(IpcChannel.GetProviders) as Promise<ProviderSelection>,

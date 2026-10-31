@@ -17,14 +17,15 @@ import {
   type MainWindowHandle,
 } from "./mainWindowController.js";
 import { PRELOAD_PATH } from "./preloadPath.js";
+import { IpcChannel } from "../core/shared/ipc.js";
 import type { Character, Onboarding } from "../core/shared/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAIN_INDEX = join(__dirname, "../renderer/main.html");
 
 export interface MainWindowDeps {
-  // 呼び出しの都度ストアから読む(キャラ作成フロー本体が書き込むまでは常に undefined / 既定値)。
-  getCharacter: () => Character | undefined;
+  // 呼び出しの都度ストアから読む(保存・削除のたびに「作成済み」が変わるため)。
+  getCharacters: () => Character[];
   getOnboarding: () => Onboarding;
   saveOnboarding: (onboarding: Onboarding) => void;
 }
@@ -53,9 +54,13 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
     },
   });
 
+  // 既定のメニュー(File / Edit …)は外す。操作はタブとボタンで完結させる。
+  // 入力欄のコピー・貼り付け(Ctrl+C / Ctrl+V)は Chromium 側が持つのでメニューが無くても効く。
+  win.removeMenu();
+
   // シナリオ: ウィンドウを閉じても常駐は続く / 未作成のまま閉じるとダイアログが出る
   win.on("close", (event) => {
-    const decision = decideOnMainWindowClose(deps.getCharacter());
+    const decision = decideOnMainWindowClose(deps.getCharacters());
     if (decision === "hide") {
       win.hide();
       return;
@@ -80,6 +85,13 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
       });
   });
 
+  // S0033_05 最初の画面を決め直すのは非表示から表示にしたときだけ
+  // Electron の show は非表示 → 表示の遷移でだけ発火する。表示中に重ねた表示要求(S0018_09)では
+  // 発火しないので、開いている画面は変わらない。中身(一覧・最初の画面)は renderer が組み立てる。
+  win.on("show", () => {
+    if (!win.isDestroyed()) win.webContents.send(IpcChannel.MainWindowShown);
+  });
+
   win.loadFile(MAIN_INDEX).catch((err: unknown) => {
     // シナリオ: メインウィンドウの読み込みに失敗した場合 [異常系]
     // 発動経路(キー押下 → ポップアップ)には影響させない。ログのみ残す。
@@ -96,7 +108,7 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
   return {
     win,
     showIfNeeded() {
-      if (shouldAutoShowMainWindow(deps.getCharacter(), deps.getOnboarding())) {
+      if (shouldAutoShowMainWindow(deps.getCharacters(), deps.getOnboarding())) {
         win.show();
         win.focus();
       }

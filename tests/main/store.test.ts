@@ -2,7 +2,7 @@
 // 要件: docs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular = 100 のマイグレーション [境界]」
 // electron-store は StoreLike で注入できるため、main 層でもここは決定的にテストできる。
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createAppStore, type StoreLike } from "../../src/main/store.js";
@@ -23,6 +23,9 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
     set: ((key: string, value: unknown) => {
       raw[key] = value;
     }) as StoreLike["set"],
+    delete: ((key: string) => {
+      delete raw[key];
+    }) as StoreLike["delete"],
   };
 }
 
@@ -113,25 +116,6 @@ describe("store / 統計の追記", () => {
   });
 });
 
-describe("store / character の読み込み(論点 0018)", () => {
-  it("returns undefined when no character has been saved yet", () => {
-    const store = createAppStore(fakeStore());
-    expect(store.loadCharacter()).toBeUndefined();
-  });
-
-  it("returns the saved character as-is", () => {
-    const character = {
-      name: "チア",
-      personality: "元気いっぱい",
-      imagePaths: { normal: "n.png" },
-      voicevoxSpeakerId: 3,
-      generatedBy: { text: "local-ollama", voice: "local-voicevox", image: "local-sdcpp" },
-    };
-    const store = createAppStore(fakeStore({ character }));
-    expect(store.loadCharacter()).toEqual(character);
-  });
-});
-
 describe("store / onboarding の読み書き(論点 0018)", () => {
   it("defaults skipMainWindowAutoShow to false when unset", () => {
     const store = createAppStore(fakeStore());
@@ -146,42 +130,57 @@ describe("store / onboarding の読み書き(論点 0018)", () => {
   });
 });
 
-// spec: 論点 0019
-//   「保存するとプロフィールが永続化される」「保存に失敗した場合 [異常系]」
-describe("store / 保存するとプロフィールが永続化される", () => {
-  it("S0019_08 persists the profile so the next load reads it back", () => {
-    const backing = fakeStore();
-    const store = createAppStore(backing);
+// 複数のキャラクターの保存・編集(論点 0032)。docs/character-creation.md「複数のキャラクターの保存・編集・削除」、
+// docs/data-model.md の移行と既定値。1 キャラのみ・上書きの旧シナリオは論点 0032 で欠番。
+const PROFILE_A = { name: "チア", personality: "元気いっぱい", voicevoxSpeakerId: 3 };
+const PROFILE_B = { name: "ミズ", personality: "落ち着いている", voicevoxSpeakerId: 8 };
 
-    store.saveCharacter({ name: "チア", personality: "元気いっぱい", voicevoxSpeakerId: 3 });
+function savedCharacter(id: string, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    name: `名前-${id}`,
+    personality: "元気",
+    imagePaths: {},
+    voicevoxSpeakerId: 3,
+    ...over,
+  };
+}
 
-    expect(store.loadCharacter()).toMatchObject({
-      name: "チア",
-      personality: "元気いっぱい",
-      voicevoxSpeakerId: 3,
-    });
+// 「保存し直さない」は set の呼び出しで見る(値が同じでも書き戻していれば判定が誤っている)
+function countWrites(fake: ReturnType<typeof fakeStore>, keys: string[]): { count: () => number } {
+  let writes = 0;
+  const originalSet = fake.set;
+  fake.set = ((key: string, value: unknown) => {
+    if (keys.includes(key)) writes += 1;
+    (originalSet as (k: string, v: unknown) => void)(key, value);
+  }) as StoreLike["set"];
+  return { count: () => writes };
+}
+
+describe("store / 新規保存でキャラクターが追加される", () => {
+  it("S0032_01 appends a character with a new id and the profile only", () => {
+    const fake = fakeStore({ characters: [savedCharacter("char-old")] });
+    const store = createAppStore(fake, { newId: () => "char-new" });
+
+    const saved = store.addCharacter(PROFILE_A);
+
+    expect(saved).toEqual({ ok: true, id: "char-new" });
+    // 次回起動時も読み出せる(同じ backing から別インスタンスで読む)
+    const characters = createAppStore(fake).loadCharacters();
+    expect(characters.map((c) => c.id)).toEqual(["char-old", "char-new"]);
+    expect(characters[1]).toEqual({ id: "char-new", ...PROFILE_A, imagePaths: {} });
+    expect(characters[1]).not.toHaveProperty("generatedBy");
   });
 
-  it("overwrites the previous character (1 キャラのみ)", () => {
+  it("uses an id that is safe as a directory name", () => {
     const store = createAppStore(fakeStore());
 
-    store.saveCharacter({ name: "A", personality: "p1", voicevoxSpeakerId: 1 });
-    store.saveCharacter({ name: "B", personality: "p2", voicevoxSpeakerId: 2 });
+    const saved = store.addCharacter({ ...PROFILE_A, name: "チア / 危険\\名前" });
 
-    expect(store.loadCharacter()).toMatchObject({ name: "B", voicevoxSpeakerId: 2 });
+    // パス区切り・Windows で使えない文字を含まない(pool.json / voices/ のディレクトリ名になる)
+    expect(saved.ok && saved.id).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  it("does not invent image paths (画像は別の論点)", () => {
-    const store = createAppStore(fakeStore());
-
-    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
-
-    const saved = store.loadCharacter();
-    expect(saved?.imagePaths ?? {}).toEqual({});
-  });
-});
-
-describe("store / 保存に失敗した場合 [異常系]", () => {
   it("S0019_09 propagates the write failure instead of reporting success", () => {
     const backing = fakeStore();
     backing.set = (() => {
@@ -189,40 +188,155 @@ describe("store / 保存に失敗した場合 [異常系]", () => {
     }) as StoreLike["set"];
     const store = createAppStore(backing);
 
-    expect(() =>
-      store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 }),
-    ).toThrow();
+    expect(() => store.addCharacter(PROFILE_A)).toThrow("EACCES");
   });
 });
 
-// spec: 論点 0020
-//   「characterId はキャラ保存時に決まる」「characterId は名前を変えても変わらない [不変条件]」
-describe("store / characterId はキャラ保存時に決まる", () => {
-  it("assigns an id on the first save", () => {
-    const store = createAppStore(fakeStore());
-    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
-    const saved = store.loadCharacter();
-    expect(typeof saved?.id).toBe("string");
-    expect(saved?.id.length).toBeGreaterThan(0);
-  });
+describe("store / 新規保存しても既存のキャラクターは変わらない [否定]", () => {
+  it("S0032_02 leaves existing characters and activeCharacterId unchanged", () => {
+    const existing = savedCharacter("char-1", { generatedBy: { text: "local-ollama" } });
+    const fake = fakeStore({ characters: [existing], activeCharacterId: "char-1" });
+    const store = createAppStore(fake, { newId: () => "char-2" });
 
-  it("uses an id that is safe as a directory name", () => {
-    const store = createAppStore(fakeStore());
-    store.saveCharacter({ name: "チア / 危険\\名前", personality: "元気", voicevoxSpeakerId: 3 });
-    // パス区切り・Windows で使えない文字を含まない(pool.json / voices/ のディレクトリ名になる)
-    expect(store.loadCharacter()?.id).toMatch(/^[A-Za-z0-9_-]+$/);
+    store.addCharacter(PROFILE_B);
+
+    expect(store.loadCharacters()[0]).toEqual(existing);
+    expect(store.loadActiveCharacterId()).toBe("char-1");
   });
 });
 
-describe("store / characterId は名前を変えても変わらない [不変条件]", () => {
-  it("keeps the id across profile updates", () => {
-    const store = createAppStore(fakeStore());
-    store.saveCharacter({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
-    const first = store.loadCharacter()?.id;
+describe("store / 上限の 10 件に達していたら新規保存しない [境界]", () => {
+  it("S0032_03 refuses the 11th character and keeps characters unchanged", () => {
+    const ten = Array.from({ length: 10 }, (_, i) => savedCharacter(`char-${i}`));
+    const fake = fakeStore({ characters: ten });
+    const store = createAppStore(fake);
 
-    store.saveCharacter({ name: "別の名前", personality: "冷静", voicevoxSpeakerId: 8 });
-    expect(store.loadCharacter()?.id).toBe(first);
-    expect(store.loadCharacter()?.name).toBe("別の名前");
+    const saved = store.addCharacter(PROFILE_A);
+
+    expect(saved).toEqual({ ok: false, reason: "limit-reached" });
+    expect(store.loadCharacters()).toEqual(ten);
+  });
+});
+
+describe("store / 既存のキャラクターを編集して保存する", () => {
+  it("S0032_04 updates the profile and keeps the id and generatedBy", () => {
+    const existing = savedCharacter("char-1", {
+      generatedBy: { text: "local-ollama", voice: "local-voicevox" },
+    });
+    const store = createAppStore(fakeStore({ characters: [existing] }));
+
+    const updated = store.updateCharacter("char-1", PROFILE_B);
+
+    expect(updated).toEqual({ ok: true });
+    expect(store.loadCharacters()).toEqual([
+      {
+        ...existing,
+        ...PROFILE_B,
+        id: "char-1",
+        generatedBy: { text: "local-ollama", voice: "local-voicevox" },
+      },
+    ]);
+  });
+});
+
+describe("store / 存在しないキャラクターの編集は拒否する [異常系]", () => {
+  it("S0032_05 returns not-found and neither updates nor adds", () => {
+    const existing = savedCharacter("char-1");
+    const store = createAppStore(fakeStore({ characters: [existing] }));
+
+    const updated = store.updateCharacter("char-missing", PROFILE_B);
+
+    expect(updated).toEqual({ ok: false, reason: "not-found" });
+    expect(store.loadCharacters()).toEqual([existing]);
+  });
+});
+
+describe("store / 旧形式の `character` を読み込み時に移行する", () => {
+  it("S0032_24 moves the legacy character into characters and makes it active when it has a pool", () => {
+    const legacy = savedCharacter("char-legacy");
+    const fake = fakeStore({ character: legacy });
+    const store = createAppStore(fake, { hasPool: (id) => id === "char-legacy" });
+
+    const characters = store.loadCharacters();
+
+    expect(characters).toEqual([legacy]);
+    expect(store.loadActiveCharacterId()).toBe("char-legacy");
+    expect(fake.raw.characters).toEqual([legacy]);
+    expect(fake.raw.activeCharacterId).toBe("char-legacy");
+    expect(fake.raw.character).toBeUndefined();
+  });
+});
+
+describe("store / プールが無い旧形式のキャラクターは使用中にしない [境界]", () => {
+  it("S0032_25 migrates the legacy character without setting activeCharacterId", () => {
+    const legacy = savedCharacter("char-legacy");
+    const fake = fakeStore({ character: legacy });
+    const store = createAppStore(fake, { hasPool: () => false });
+
+    expect(store.loadCharacters()).toEqual([legacy]);
+    expect(store.loadActiveCharacterId()).toBeUndefined();
+    expect(fake.raw.activeCharacterId).toBeUndefined();
+  });
+});
+
+describe("store / id を持たない旧形式のキャラクターには採番する [境界]", () => {
+  it("S0032_26 assigns a new id to a legacy character without one", () => {
+    const { id: _omitted, ...withoutId } = savedCharacter("unused");
+    const fake = fakeStore({ character: withoutId });
+    const store = createAppStore(fake, { hasPool: () => false, newId: () => "char-assigned" });
+
+    expect(store.loadCharacters()).toEqual([{ ...withoutId, id: "char-assigned" }]);
+  });
+});
+
+describe("store / 移行済みのデータは書き換えない [否定]", () => {
+  it("S0032_27 keeps characters as the source of truth even when a legacy character remains", () => {
+    const characters = [savedCharacter("char-1"), savedCharacter("char-2")];
+    const fake = fakeStore({
+      characters,
+      activeCharacterId: "char-2",
+      character: savedCharacter("char-legacy"),
+    });
+    const writes = countWrites(fake, ["characters", "activeCharacterId"]);
+    const store = createAppStore(fake, { hasPool: () => true });
+
+    expect(store.loadCharacters()).toEqual(characters);
+    expect(store.loadActiveCharacterId()).toBe("char-2");
+    expect(writes.count()).toBe(0);
+  });
+});
+
+describe("store / 上限を超える件数を読み込んでも切り詰めない [境界]", () => {
+  it("S0032_28 logs an error and loads every character without saving", () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => savedCharacter(`char-${i}`));
+    const fake = fakeStore({ characters: eleven });
+    const writes = countWrites(fake, ["characters"]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const characters = createAppStore(fake).loadCharacters();
+
+    expect(characters).toEqual(eleven);
+    expect(error).toHaveBeenCalled();
+    expect(writes.count()).toBe(0);
+    error.mockRestore();
+  });
+});
+
+describe("store / `generation.shouldActivateOnComplete` の既定値 [境界]", () => {
+  it("S0032_31 treats a missing or non-boolean value as true without rewriting it", () => {
+    expect(createAppStore(fakeStore()).loadGeneration()).toEqual({
+      shouldActivateOnComplete: true,
+    });
+
+    const fake = fakeStore({ generation: { shouldActivateOnComplete: "no" } });
+    const writes = countWrites(fake, ["generation"]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(createAppStore(fake).loadGeneration()).toEqual({ shouldActivateOnComplete: true });
+    expect(fake.raw.generation).toEqual({ shouldActivateOnComplete: "no" });
+    expect(writes.count()).toBe(0);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 
@@ -297,12 +411,12 @@ const SELECTED_PROVIDERS = { text: "openai", voice: "openai-tts", image: "stabil
 
 describe("store / 生成していない種別は未設定のまま [否定]", () => {
   it("S0022_04 does not write the selected image provider into generatedBy", () => {
-    const backing = fakeStore({ character: SAVED_CHARACTER, providers: SELECTED_PROVIDERS });
+    const backing = fakeStore({ characters: [SAVED_CHARACTER], providers: SELECTED_PROVIDERS });
     const store = createAppStore(backing);
 
-    store.recordGeneratedBy({ text: "local-ollama", voice: "local-voicevox" });
+    store.recordGeneratedBy("char-1", { text: "local-ollama", voice: "local-voicevox" });
 
-    const generatedBy = store.loadCharacter()?.generatedBy;
+    const generatedBy = store.loadCharacters()[0]?.generatedBy;
     expect(generatedBy).toEqual({ text: "local-ollama", voice: "local-voicevox" });
     expect(generatedBy).not.toHaveProperty("image");
   });
@@ -312,17 +426,17 @@ describe("store / generatedBy は既定値で補完しない [境界]", () => {
   it("S0022_09 leaves missing kinds unset instead of filling them from providers", () => {
     const partial = createAppStore(
       fakeStore({
-        character: { ...SAVED_CHARACTER, generatedBy: { text: "anthropic" } },
+        characters: [{ ...SAVED_CHARACTER, generatedBy: { text: "anthropic" } }],
         providers: SELECTED_PROVIDERS,
       }),
     );
-    expect(partial.loadCharacter()?.generatedBy).toEqual({ text: "anthropic" });
+    expect(partial.loadCharacters()[0]?.generatedBy).toEqual({ text: "anthropic" });
 
     // 旧バージョン JSON(generatedBy そのものが無い)でも選択値で埋めない
     const legacy = createAppStore(
-      fakeStore({ character: SAVED_CHARACTER, providers: SELECTED_PROVIDERS }),
+      fakeStore({ characters: [SAVED_CHARACTER], providers: SELECTED_PROVIDERS }),
     );
-    expect(legacy.loadCharacter()?.generatedBy ?? {}).toEqual({});
+    expect(legacy.loadCharacters()[0]?.generatedBy ?? {}).toEqual({});
   });
 });
 
@@ -390,5 +504,35 @@ describe("store / system.ollamaModel の既定値と移行", () => {
 
     expect(system).toEqual({ ...stored, ollamaModel: "sarashina2.2-3b-instruct" });
     expect(fake.raw.system).toEqual({ ...stored, ollamaModel: "sarashina2.2-3b-instruct" });
+  });
+});
+
+// 設定画面での変更(論点 0033)。docs/main-window.md「メインウィンドウの画面」
+describe("store / 設定画面で生成後に自動で使用中にするかを変える", () => {
+  it("S0033_13 persists shouldActivateOnComplete = false so the next load reads it back", () => {
+    const fake = fakeStore({ generation: { shouldActivateOnComplete: true } });
+
+    createAppStore(fake).saveGeneration({ shouldActivateOnComplete: false });
+
+    expect(createAppStore(fake).loadGeneration()).toEqual({ shouldActivateOnComplete: false });
+  });
+});
+
+describe("store / 設定の変更は他の保存データを変えない [否定]", () => {
+  it("S0033_14 leaves characters, activeCharacterId, triggers and stats unchanged", () => {
+    const initial = {
+      characters: [savedCharacter("char-1")],
+      activeCharacterId: "char-1",
+      triggers: { ...DEFAULT_TRIGGER_CONFIG, regular: 70 },
+      stats: { ...EMPTY_STATS, totalKeyCount: 1234 },
+    };
+    const fake = fakeStore(structuredClone(initial));
+
+    createAppStore(fake).saveGeneration({ shouldActivateOnComplete: false });
+
+    expect(fake.raw.characters).toEqual(initial.characters);
+    expect(fake.raw.activeCharacterId).toBe("char-1");
+    expect(fake.raw.triggers).toEqual(initial.triggers);
+    expect(fake.raw.stats).toEqual(initial.stats);
   });
 });

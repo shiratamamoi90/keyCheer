@@ -7,9 +7,13 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   createGenerationRunner,
+  saveGenerationResult,
   type GenerationProgress,
+  type GenerationResult,
 } from "../../src/main/characterCreation.js";
-import { loadPool, type CharacterFs } from "../../src/main/characterStore.js";
+import { loadPool, loadGeneratedProfile, type CharacterFs } from "../../src/main/characterStore.js";
+import { createAppStore, type StoreLike } from "../../src/main/store.js";
+import type { MessagePool } from "../../src/core/messagePool.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
 import { MESSAGES_PER_BUCKET } from "../../src/agent/poolGenerator.js";
@@ -297,5 +301,168 @@ describe("characterCreation / 生成元の記録", () => {
     expect(result).toEqual(
       expect.objectContaining({ ok: false, reason: "text-generation-failed", completed: {} }),
     );
+  });
+});
+
+// 生成時のプロフィールの記録(論点 0032。docs/data-model.md「メッセージプール」の generatedProfile)。
+// 「生成後に変えた」の判定(core/generatedProfile)が比べる元になる。
+describe("characterCreation / 生成時のプロフィールを pool.json に残す", () => {
+  it("writes the profile used for generation as generatedProfile", async () => {
+    const fs = fakeFs();
+
+    await createGenerationRunner().start(baseInput(fs));
+
+    expect(loadGeneratedProfile(fs, USER_DATA, CHAR_ID)).toEqual({
+      name: "チア",
+      personality: "元気いっぱい",
+      voicevoxSpeakerId: 3,
+    });
+  });
+});
+
+// 複数のキャラクターがあるときの生成(論点 0032)。docs/pool-generation.md
+// 生成結果の保存(生成元の記録・使用中の更新)は saveGenerationResult が行う。store は偽物の StoreLike。
+function fakeAppStore(initial: Record<string, unknown>) {
+  const raw: Record<string, unknown> = { ...initial };
+  const backing: StoreLike = {
+    get: ((key: string) => raw[key]) as StoreLike["get"],
+    set: ((key: string, value: unknown) => {
+      raw[key] = value;
+    }) as StoreLike["set"],
+    delete: ((key: string) => {
+      delete raw[key];
+    }) as StoreLike["delete"],
+  };
+  return { raw, store: createAppStore(backing) };
+}
+
+function savedCharacter(id: string) {
+  return { id, name: `名前-${id}`, personality: "元気", imagePaths: {}, voicevoxSpeakerId: 3 };
+}
+
+const POOL_C: MessagePool = {
+  characterId: "char-c",
+  version: 1,
+  buckets: {} as MessagePool["buckets"],
+};
+const POOL_D: MessagePool = {
+  characterId: "char-d",
+  version: 1,
+  buckets: {} as MessagePool["buckets"],
+};
+
+const COMPLETED_C: GenerationResult = {
+  ok: true,
+  pool: POOL_C,
+  synthesized: 10,
+  missing: 0,
+  completed: { text: "local-ollama", voice: "local-voicevox" },
+};
+
+// C と D を保存した状態。D は生成済み(プールあり)
+function setupResult(over: { activeCharacterId?: string; shouldActivateOnComplete?: boolean }) {
+  const { raw, store } = fakeAppStore({
+    characters: [savedCharacter("char-c"), savedCharacter("char-d")],
+    ...(over.activeCharacterId !== undefined ? { activeCharacterId: over.activeCharacterId } : {}),
+    ...(over.shouldActivateOnComplete !== undefined
+      ? { generation: { shouldActivateOnComplete: over.shouldActivateOnComplete } }
+      : {}),
+  });
+  const onActiveCharacterChanged = vi.fn();
+  const deps = {
+    store,
+    loadPool: (id: string) => (id === "char-d" ? POOL_D : null),
+    onActiveCharacterChanged,
+  };
+  return { raw, store, onActiveCharacterChanged, deps };
+}
+
+describe("characterCreation / 生成は選んだキャラクターに対して行う", () => {
+  it("S0032_18 writes only the chosen character's files and generatedBy", async () => {
+    const fs = fakeFs();
+    fs.files["/userdata/characters/char-d/pool.json"] = "D のプール";
+    fs.files["/userdata/characters/char-d/voices/m-001.wav"] = new Uint8Array([9]);
+    const { store, deps } = setupResult({});
+
+    const result = await createGenerationRunner().start(baseInput(fs, { characterId: "char-c" }));
+    saveGenerationResult(deps, "char-c", result);
+
+    const written = Object.keys(fs.files).filter((p) => !p.includes("/char-d/"));
+    expect(written.length).toBeGreaterThan(0);
+    expect(written.every((p) => p.startsWith("/userdata/characters/char-c/"))).toBe(true);
+    expect(fs.files["/userdata/characters/char-d/pool.json"]).toBe("D のプール");
+    expect(
+      Array.from(fs.files["/userdata/characters/char-d/voices/m-001.wav"] as Uint8Array),
+    ).toEqual([9]);
+    expect(store.loadCharacters()[0]?.generatedBy).toEqual({
+      text: "local-ollama",
+      voice: "local-voicevox",
+    });
+    expect(store.loadCharacters()[1]).toEqual(savedCharacter("char-d"));
+  });
+});
+
+describe("characterCreation / 生成が完了したらそのキャラクターを使用中にする", () => {
+  it("S0032_19 saves the completed character as active and hands its pool to the cheer path", () => {
+    const { store, onActiveCharacterChanged, deps } = setupResult({ activeCharacterId: "char-d" });
+
+    saveGenerationResult(deps, "char-c", COMPLETED_C);
+
+    expect(store.loadActiveCharacterId()).toBe("char-c");
+    expect(onActiveCharacterChanged).toHaveBeenCalledWith("char-c", POOL_C);
+  });
+});
+
+describe("characterCreation / 自動で使用中にしない設定なら使用中を変えない [否定]", () => {
+  it("S0032_20 keeps the active character when shouldActivateOnComplete is false", () => {
+    const { store, onActiveCharacterChanged, deps } = setupResult({
+      activeCharacterId: "char-d",
+      shouldActivateOnComplete: false,
+    });
+
+    saveGenerationResult(deps, "char-c", COMPLETED_C);
+
+    expect(store.loadActiveCharacterId()).toBe("char-d");
+    expect(onActiveCharacterChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("characterCreation / 自動で使用中にしない設定でも、使用中が無ければ使用中にする [境界]", () => {
+  it("S0032_21 activates the completed character when there is no usable active character", () => {
+    // 使用中が無い = 未設定 / 指す先が一覧に無い(どちらも定型文で応援している状態)
+    const unset = setupResult({ shouldActivateOnComplete: false });
+    const missing = setupResult({
+      activeCharacterId: "char-gone",
+      shouldActivateOnComplete: false,
+    });
+
+    saveGenerationResult(unset.deps, "char-c", COMPLETED_C);
+    saveGenerationResult(missing.deps, "char-c", COMPLETED_C);
+
+    expect(unset.store.loadActiveCharacterId()).toBe("char-c");
+    expect(missing.store.loadActiveCharacterId()).toBe("char-c");
+  });
+});
+
+describe("characterCreation / 中断・失敗した生成では使用中を変えない [否定]", () => {
+  it("S0032_32 keeps the active character after a cancelled or failed generation", () => {
+    const cancelled = setupResult({ activeCharacterId: "char-d" });
+    const failed = setupResult({ activeCharacterId: "char-d" });
+
+    saveGenerationResult(cancelled.deps, "char-c", {
+      ok: false,
+      reason: "cancelled",
+      completed: {},
+    });
+    saveGenerationResult(failed.deps, "char-c", {
+      ok: false,
+      reason: "text-generation-failed",
+      completed: {},
+    });
+
+    expect(cancelled.store.loadActiveCharacterId()).toBe("char-d");
+    expect(failed.store.loadActiveCharacterId()).toBe("char-d");
+    expect(cancelled.onActiveCharacterChanged).not.toHaveBeenCalled();
+    expect(failed.onActiveCharacterChanged).not.toHaveBeenCalled();
   });
 });

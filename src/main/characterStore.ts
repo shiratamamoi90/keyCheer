@@ -9,6 +9,7 @@
 import { isValidPool, countMessages, type MessagePool } from "../core/messagePool.js";
 import { resolveWavPath } from "../agent/cheerPlayer.js";
 import type { PoolGenerationState } from "../agent/poolGenerator.js";
+import type { GeneratedProfile } from "../core/shared/types.js";
 
 // main が実 fs を、テストがインメモリの偽物を差し込む最小の面。
 export interface CharacterFs {
@@ -36,11 +37,13 @@ export function voicesDir(userDataDir: string, characterId: string): string {
 
 // シナリオ: ローカル生成でプールと wav が揃う
 // completion も一緒に保存する(中断・再開のため。docs/data-model.md)。
+// generatedProfile は「生成後に変えた」の比べる元(論点 0032)。無ければ書かない。
 export function savePool(
   fs: CharacterFs,
   userDataDir: string,
   characterId: string,
   state: PoolGenerationState,
+  generatedProfile?: GeneratedProfile,
 ): void {
   fs.mkdirRecursive(characterDir(userDataDir, characterId));
   fs.writeFile(
@@ -49,6 +52,7 @@ export function savePool(
       {
         characterId,
         version: POOL_VERSION,
+        ...(generatedProfile !== undefined ? { generatedProfile } : {}),
         buckets: state.pool.buckets,
         completion: state.completion,
       },
@@ -85,6 +89,29 @@ export function loadPool(
   // 応援は baseline 定型文へ落とす(1 文でもあれば中断の途中経過として活かす)。
   if (countMessages(pool) === 0) return null;
   return pool;
+}
+
+// 生成したときのプロフィールを読む(論点 0032)。旧いプール・壊れた pool.json・形の合わない値は
+// undefined — 比べる元が無いものとして扱う(S0032_23)。
+export function loadGeneratedProfile(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+): GeneratedProfile | undefined {
+  const raw = fs.readFile(poolPath(userDataDir, characterId));
+  if (raw === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const profile = (parsed as { generatedProfile?: unknown } | null)?.generatedProfile;
+  if (typeof profile !== "object" || profile === null) return undefined;
+  const { name, personality, voicevoxSpeakerId } = profile as Record<string, unknown>;
+  if (typeof name !== "string" || typeof personality !== "string") return undefined;
+  if (typeof voicevoxSpeakerId !== "number") return undefined;
+  return { name, personality, voicevoxSpeakerId };
 }
 
 // シナリオ: 保存先のパス契約 [境界]

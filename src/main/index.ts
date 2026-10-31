@@ -18,6 +18,7 @@ import { registerIpcHandlers } from "./ipc.js";
 import { registerAudioProtocol, registerAudioSchemePrivileges } from "./audioProtocol.js";
 import { createNodeCharacterFs } from "./nodeCharacterFs.js";
 import { loadPool } from "./characterStore.js";
+import { loadActiveCharacterPool } from "./characterSelection.js";
 import { registerCharacterCreation } from "./characterCreationIpc.js";
 import { IpcChannel } from "../core/shared/ipc.js";
 
@@ -35,8 +36,12 @@ registerAudioSchemePrivileges();
 const STATS_FLUSH_INTERVAL_MS = 10_000;
 
 function bootstrap(): void {
+  const characterFs = createNodeCharacterFs();
   const rawStore = createStore();
-  const store = createAppStore(rawStore);
+  // 旧形式の 1 キャラを移すときに、プールがあれば使用中にする(論点 0032)
+  const store = createAppStore(rawStore, {
+    hasPool: (characterId) => loadPool(characterFs, app.getPath("userData"), characterId) !== null,
+  });
   const { config, migrated } = store.loadTriggerConfig();
   const stats = store.loadStats();
 
@@ -46,7 +51,7 @@ function bootstrap(): void {
   // メインウィンドウ(将来キャラ作成 UI を載せる場所)。キャラ未作成 かつ 自動表示未スキップなら
   // 起動時に自動表示する(論点 0018)。
   const mainWindow = createMainWindow({
-    getCharacter: () => store.loadCharacter(),
+    getCharacters: () => store.loadCharacters(),
     getOnboarding: () => store.loadOnboarding(),
     saveOnboarding: (onboarding) => store.saveOnboarding(onboarding),
   });
@@ -81,15 +86,13 @@ function bootstrap(): void {
     { initialCount: stats.totalKeyCount },
   );
 
-  // 起動時に既存キャラのプールを読み込んで発動経路へ紐付ける(論点 0020)。
-  // プールが無い / 壊れている場合は null のまま = baseline 定型文で応援する。
-  const characterFs = createNodeCharacterFs();
-  const savedCharacter = store.loadCharacter();
-  const savedPool =
-    savedCharacter?.id !== undefined
-      ? loadPool(characterFs, app.getPath("userData"), savedCharacter.id)
-      : null;
-  cheerRuntime.setActiveCharacter(savedCharacter?.id ?? null, savedPool);
+  // 起動時に使用中のキャラクターのプールを読み込んで発動経路へ紐付ける(論点 0020 / 0032)。
+  // 使用中が無い・指す先が一覧に無い・プールが無い / 壊れている場合は null = baseline 定型文で応援する。
+  const active = loadActiveCharacterPool({
+    store,
+    loadPool: (characterId) => loadPool(characterFs, app.getPath("userData"), characterId),
+  });
+  cheerRuntime.setActiveCharacter(active?.characterId ?? null, active?.pool ?? null);
 
   // キーフック:押下ごとにカウント記録 + 発動判定。keycode は読まない(privacy)。
   // カウンタはメモリ上で加算し、ディスクへは定期 flush する(docs/key-counter.md 不変条件)。
@@ -114,7 +117,9 @@ function bootstrap(): void {
     fs: characterFs,
     userDataDir: app.getPath("userData"),
     // シナリオ: 生成直後は再起動なしで応援に反映される
-    onPoolReady: (characterId, pool) => cheerRuntime.setActiveCharacter(characterId, pool),
+    onActiveCharacterChanged: (characterId, pool) =>
+      cheerRuntime.setActiveCharacter(characterId, pool),
+    onActiveCharacterRemoved: () => cheerRuntime.setActiveCharacter(null, null),
     getWindow: () => mainWindow.win,
   });
 

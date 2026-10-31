@@ -79,6 +79,9 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
     set: ((key: string, value: unknown) => {
       raw[key] = value;
     }) as StoreLike["set"],
+    delete: ((key: string) => {
+      delete raw[key];
+    }) as StoreLike["delete"],
   };
 }
 
@@ -288,7 +291,7 @@ describe("総合: 生成 → 生成元の記録 → 次回起動で読める", (
   it("生成で実際に使ったプロバイダーが記録され、選択値とは混ざらない", async () => {
     // 選択値はすべて外部。生成は(偽物の)ローカルで行う — 記録が選択値から来ていれば落ちる。
     const raw = fakeStore({
-      character: { id: CHAR_ID, ...CHARACTER, imagePaths: {}, voicevoxSpeakerId: 3 },
+      characters: [{ id: CHAR_ID, ...CHARACTER, imagePaths: {}, voicevoxSpeakerId: 3 }],
       providers: { text: "openai", voice: "openai-tts", image: "stability-ai" },
     });
     const store = createAppStore(raw);
@@ -303,10 +306,10 @@ describe("総合: 生成 → 生成元の記録 → 次回起動で読める", (
       speakerId: 3,
     });
     // characterCreationIpc.ts の完了ハンドラと同じ受け渡し
-    if (result.completed !== undefined) store.recordGeneratedBy(result.completed);
+    if (result.completed !== undefined) store.recordGeneratedBy(CHAR_ID, result.completed);
 
     // 次回起動:永続化された JSON だけから読み直す
-    const reloaded = createAppStore(fakeStore(raw.raw)).loadCharacter();
+    const reloaded = createAppStore(fakeStore(raw.raw)).loadCharacters()[0];
     expect(reloaded?.generatedBy).toEqual({ text: "local-ollama", voice: "local-voicevox" });
   });
 });

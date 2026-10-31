@@ -34,19 +34,25 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
     const api = createKeyCheerApi(fakeIpc());
     // 0010 で saveCharacter / getSpeakers を追加(キャラ作成フォーム用)。
     // 追加してもなお Node / Electron のオブジェクトは露出させない。
+    // 0032 / 0033 で一覧・削除・切り替え・生成の設定・表示の通知を追加し、getCharacter を外した。
     expect(Object.keys(api).sort()).toEqual([
+      "activateCharacter",
       "cancelGeneration",
-      "getCharacter",
+      "deleteCharacter",
       "getConsent",
+      "getGenerationConfig",
       "getProviders",
       "getSpeakers",
       "getStats",
       "getTriggerConfig",
       "grantConsent",
+      "listCharacters",
       "onCheerFired",
       "onConfigMigrated",
       "onGenerationProgress",
+      "onMainWindowShown",
       "saveCharacter",
+      "setGenerationConfig",
       "setProviders",
       "startGeneration",
       "updateTriggerConfig",

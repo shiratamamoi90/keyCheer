@@ -10,6 +10,8 @@ import { synthesizePoolVoices } from "../agent/voiceSynth.js";
 import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
 import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
 import type { GeneratedBy } from "../core/shared/types.js";
+import type { AppStore } from "./store.js";
+import { loadActiveCharacterPool, type ActiveCharacterPoolDeps } from "./characterSelection.js";
 import { savePool, createWavWriter, clearVoices, type CharacterFs } from "./characterStore.js";
 
 export type GenerationPhase = "text" | "voice";
@@ -96,7 +98,17 @@ export function createGenerationRunner(): GenerationRunner {
         });
 
         // 部分結果は必ず残す(再開のため)。完成扱いにはしない。
-        savePool(input.fs, input.userDataDir, input.characterId, state);
+        // 生成時のプロフィールも残す — 「生成後に変えた」の比べる元(論点 0032)。話者が無い呼び出しでは
+        // 比べる元として不完全なので書かない(書かなければ「変えた」と判定しない = S0032_23)。
+        savePool(
+          input.fs,
+          input.userDataDir,
+          input.characterId,
+          state,
+          input.speakerId !== undefined
+            ? { ...input.character, voicevoxSpeakerId: input.speakerId }
+            : undefined,
+        );
 
         if (!isPoolComplete(state)) {
           // シナリオ: 生成を中断して再開する / Ollama 未起動で生成を開始した [異常系]
@@ -148,4 +160,40 @@ export function createGenerationRunner(): GenerationRunner {
       }
     },
   };
+}
+
+export interface GenerationResultDeps {
+  store: Pick<
+    AppStore,
+    | "loadCharacters"
+    | "loadActiveCharacterId"
+    | "saveActiveCharacterId"
+    | "recordGeneratedBy"
+    | "loadGeneration"
+  >;
+  loadPool: ActiveCharacterPoolDeps["loadPool"];
+  // 発動経路へプールを渡す(再起動なしで使わせる。S0020_10)
+  onActiveCharacterChanged: (characterId: string, pool: MessagePool) => void;
+}
+
+// 生成結果の保存:生成元の記録(論点 0022)と、完了時の使用中の更新(論点 0032)。
+// S0032_18 記録も使用中も、生成したキャラクターの id にだけ書く
+export function saveGenerationResult(
+  deps: GenerationResultDeps,
+  characterId: string,
+  result: GenerationResult,
+): void {
+  // 失敗時も completed を渡す — 空なら何も変わらない
+  if (result.completed !== undefined) deps.store.recordGeneratedBy(characterId, result.completed);
+  // S0032_32 中断・失敗した生成では使用中を変えない [否定]
+  if (!result.ok) return;
+
+  // S0032_19 生成が完了したらそのキャラクターを使用中にする
+  // S0032_20 設定が「しない」なら変えない / S0032_21 ただし使用中が無ければ使用中にする
+  // 使用中が無いまま生成を終えると、作ったばかりのキャラクターが使われず定型文のまま応援が続くため。
+  const hasUsableActive = loadActiveCharacterPool(deps) !== null;
+  if (deps.store.loadGeneration().shouldActivateOnComplete || !hasUsableActive) {
+    deps.store.saveActiveCharacterId(characterId);
+    deps.onActiveCharacterChanged(characterId, result.pool);
+  }
 }

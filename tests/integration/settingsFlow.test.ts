@@ -43,6 +43,9 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
     set: ((key: string, value: unknown) => {
       raw[key] = value;
     }) as StoreLike["set"],
+    delete: ((key: string) => {
+      delete raw[key];
+    }) as StoreLike["delete"],
   };
 }
 

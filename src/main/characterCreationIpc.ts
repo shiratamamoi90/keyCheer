@@ -13,12 +13,20 @@
 import { ipcMain, safeStorage, type BrowserWindow } from "electron";
 import Store from "electron-store";
 import { createSecretStore } from "../agent/secrets.js";
-import { createGenerationRunner } from "./characterCreation.js";
+import { createGenerationRunner, saveGenerationResult } from "./characterCreation.js";
 import { createTextGeneratorFor, createVoiceSynthesizerFor } from "./providerFactory.js";
 import { checkGenerationGate } from "../core/providers/gate.js";
-import { loadPool, type CharacterFs } from "./characterStore.js";
+import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
+import { deleteCharacter } from "./characterDeletion.js";
+import { activateCharacter, loadCharacterList } from "./characterSelection.js";
 import { IpcChannel } from "../core/shared/ipc.js";
-import type { GenerationProgressPayload, StartGenerationResult } from "../core/shared/ipc.js";
+import type {
+  ActivateCharacterResult,
+  CharacterListItem,
+  DeleteCharacterResult,
+  GenerationProgressPayload,
+  StartGenerationResult,
+} from "../core/shared/ipc.js";
 import type { MessagePool } from "../core/messagePool.js";
 import type { ProviderId } from "../core/shared/types.js";
 import type { AppStore } from "./store.js";
@@ -33,8 +41,10 @@ export interface CharacterCreationDeps {
   secrets?: SecretAccess;
   fs: CharacterFs;
   userDataDir: string;
-  // 生成完了時に発動経路へ反映する(再起動なしでプールを使わせる)
-  onPoolReady: (characterId: string, pool: MessagePool) => void;
+  // 使用中になったキャラクターのプールを発動経路へ渡す(再起動なしで使わせる)
+  onActiveCharacterChanged: (characterId: string, pool: MessagePool) => void;
+  // 使用中のキャラクターを削除したことを発動経路へ伝える(baseline 定型文に戻す。S0032_07)
+  onActiveCharacterRemoved: () => void;
   // 進捗の送り先(メインウィンドウ)
   getWindow: () => BrowserWindow | null;
 }
@@ -66,6 +76,15 @@ function createDefaultSecretAccess(): SecretAccess {
 
 export function registerCharacterCreation(deps: CharacterCreationDeps): void {
   const runner = createGenerationRunner();
+  // どのキャラクターを生成中か。削除(S0032_08)・切り替え(S0032_13)・一覧(S0033_11)が見る。
+  // runner は id を知らない(生成の中身だけを持つ)ので、IPC の側で持つ。
+  let generatingCharacterId: string | null = null;
+  const generation = {
+    isGenerating: (characterId: string) =>
+      runner.isRunning() && generatingCharacterId === characterId,
+  };
+  const loadPoolOf = (characterId: string): MessagePool | null =>
+    loadPool(deps.fs, deps.userDataDir, characterId);
   const secrets = deps.secrets ?? createDefaultSecretAccess();
 
   const emit = (payload: GenerationProgressPayload): void => {
@@ -75,74 +94,127 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
     }
   };
 
-  ipcMain.handle(IpcChannel.StartGeneration, async (): Promise<StartGenerationResult> => {
-    const character = deps.store.loadCharacter();
-    // シナリオ: 生成は保存済みキャラに対してのみ(characterId が無いと保存先が決まらない)
-    if (character === undefined || character.id === undefined) {
-      return { ok: false, reason: "no-character" };
-    }
+  // S0032_18 生成は選んだキャラクターに対して行う
+  ipcMain.handle(
+    IpcChannel.StartGeneration,
+    async (_event, characterId: unknown): Promise<StartGenerationResult> => {
+      const character = deps.store.loadCharacters().find((c) => c.id === characterId);
+      // シナリオ: 生成は保存済みキャラに対してのみ(characterId が無いと保存先が決まらない)
+      // renderer から届いた id は一覧にあるものだけを受け付ける(S0033_09 を main 側でも守る)
+      if (character === undefined) {
+        return { ok: false, reason: "no-character" };
+      }
 
-    const system = deps.store.loadSystem();
-    const selection = deps.providers.loadProviders();
+      const system = deps.store.loadSystem();
+      const selection = deps.providers.loadProviders();
 
-    // シナリオ: 外部選択時は同意ダイアログを経る / APIキー未設定で外部を選んだ場合 [異常系]
-    // ここを通らない限り外部への送信は起こらない(組み立てにも進まない)。
-    const gate = checkGenerationGate({
-      selection,
-      consent: deps.providers.loadConsent(),
-      hasApiKey: (id) => secrets.apiKeyFor(id) !== null,
-    });
-    if (!gate.ok) return { ok: false, reason: gate.reason, provider: gate.provider };
-
-    const factoryDeps = { system, apiKeyFor: secrets.apiKeyFor, voiceIdFor: secrets.voiceIdFor };
-    const text = createTextGeneratorFor(selection.text, factoryDeps);
-    if (!text.ok) return { ok: false, reason: text.reason, provider: selection.text };
-    const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
-    if (!voice.ok) return { ok: false, reason: voice.reason, provider: selection.voice };
-
-    // 再開:既存の完了状態があれば未完了バケットだけを続行する。
-    // (pool.json には completion も保存している — characterStore.savePool)
-    const resumeFrom = readResumeState(deps.fs, deps.userDataDir, character.id);
-
-    const started = runner.start({
-      characterId: character.id,
-      character: { name: character.name, personality: character.personality },
-      userDataDir: deps.userDataDir,
-      fs: deps.fs,
-      textGenerator: text.generator,
-      synthesizer: voice.synthesizer,
-      speakerId: character.voicevoxSpeakerId,
-      ...(resumeFrom !== undefined ? { resumeFrom } : {}),
-      onProgress: (p) => emit({ type: "progress", phase: p.phase, done: p.done, total: p.total }),
-    });
-
-    if (runner.isRunning()) {
-      // 実行中に完了を待たず応答を返す。進捗と結果は GenerationProgress で流す。
-      void started.then((result) => {
-        // 生成元の記録(論点 0022)。失敗時も completed を渡す — 空なら何も変わらない。
-        if (result.completed !== undefined) deps.store.recordGeneratedBy(result.completed);
-        if (result.ok) {
-          // シナリオ: 生成直後は再起動なしで応援に反映される
-          deps.onPoolReady(character.id, result.pool);
-          emit({ type: "done", synthesized: result.synthesized, missing: result.missing });
-        } else {
-          emit({ type: "failed", reason: result.reason });
-        }
+      // シナリオ: 外部選択時は同意ダイアログを経る / APIキー未設定で外部を選んだ場合 [異常系]
+      // ここを通らない限り外部への送信は起こらない(組み立てにも進まない)。
+      const gate = checkGenerationGate({
+        selection,
+        consent: deps.providers.loadConsent(),
+        hasApiKey: (id) => secrets.apiKeyFor(id) !== null,
       });
-      return { ok: true };
-    }
+      if (!gate.ok) return { ok: false, reason: gate.reason, provider: gate.provider };
 
-    // start が即座に返った = already-running
-    const result = await started;
-    if (!result.ok && result.reason === "already-running") {
-      return { ok: false, reason: "already-running" };
-    }
-    return { ok: true };
-  });
+      const factoryDeps = { system, apiKeyFor: secrets.apiKeyFor, voiceIdFor: secrets.voiceIdFor };
+      const text = createTextGeneratorFor(selection.text, factoryDeps);
+      if (!text.ok) return { ok: false, reason: text.reason, provider: selection.text };
+      const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
+      if (!voice.ok) return { ok: false, reason: voice.reason, provider: selection.voice };
+
+      // 再開:既存の完了状態があれば未完了バケットだけを続行する。
+      // (pool.json には completion も保存している — characterStore.savePool)
+      const resumeFrom = readResumeState(deps.fs, deps.userDataDir, character.id);
+
+      if (!runner.isRunning()) generatingCharacterId = character.id;
+      const started = runner.start({
+        characterId: character.id,
+        character: { name: character.name, personality: character.personality },
+        userDataDir: deps.userDataDir,
+        fs: deps.fs,
+        textGenerator: text.generator,
+        synthesizer: voice.synthesizer,
+        speakerId: character.voicevoxSpeakerId,
+        ...(resumeFrom !== undefined ? { resumeFrom } : {}),
+        onProgress: (p) => emit({ type: "progress", phase: p.phase, done: p.done, total: p.total }),
+      });
+
+      if (runner.isRunning()) {
+        // 実行中に完了を待たず応答を返す。進捗と結果は GenerationProgress で流す。
+        void started.then((result) => {
+          generatingCharacterId = null;
+          // 生成元の記録と、完了時の使用中の更新(論点 0022 / 0032)
+          saveGenerationResult(
+            {
+              store: deps.store,
+              loadPool: loadPoolOf,
+              onActiveCharacterChanged: deps.onActiveCharacterChanged,
+            },
+            character.id,
+            result,
+          );
+          if (result.ok) {
+            emit({ type: "done", synthesized: result.synthesized, missing: result.missing });
+          } else {
+            emit({ type: "failed", reason: result.reason });
+          }
+        });
+        return { ok: true };
+      }
+
+      // start が即座に返った = already-running
+      const result = await started;
+      if (!result.ok && result.reason === "already-running") {
+        return { ok: false, reason: "already-running" };
+      }
+      return { ok: true };
+    },
+  );
 
   ipcMain.handle(IpcChannel.CancelGeneration, () => {
     runner.cancel();
   });
+
+  ipcMain.handle(IpcChannel.ListCharacters, (): CharacterListItem[] =>
+    loadCharacterList({
+      store: deps.store,
+      loadPool: loadPoolOf,
+      generation,
+      loadGeneratedProfile: (id) => loadGeneratedProfile(deps.fs, deps.userDataDir, id),
+    }),
+  );
+
+  ipcMain.handle(
+    IpcChannel.DeleteCharacter,
+    (_event, characterId: unknown): DeleteCharacterResult => {
+      if (typeof characterId !== "string") return { ok: false, reason: "not-found" };
+      return deleteCharacter(
+        {
+          store: deps.store,
+          fs: deps.fs,
+          userDataDir: deps.userDataDir,
+          isGenerating: generation.isGenerating,
+          onActiveCharacterRemoved: deps.onActiveCharacterRemoved,
+        },
+        characterId,
+      );
+    },
+  );
+
+  ipcMain.handle(
+    IpcChannel.ActivateCharacter,
+    (_event, characterId: unknown): ActivateCharacterResult =>
+      activateCharacter(
+        {
+          store: deps.store,
+          loadPool: loadPoolOf,
+          generation,
+          onActiveCharacterChanged: deps.onActiveCharacterChanged,
+        },
+        characterId,
+      ),
+  );
 }
 
 // pool.json に残した completion から再開状態を組み立てる。

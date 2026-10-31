@@ -14,6 +14,7 @@ const { created, state } = vi.hoisted(() => ({
     shows: number;
     hides: number;
     focuses: number;
+    menuRemoved: boolean;
   }[],
   state: { loadFileRejection: null as Error | null },
 }));
@@ -24,10 +25,14 @@ vi.mock("electron", () => ({
     shows = 0;
     hides = 0;
     focuses = 0;
+    menuRemoved = false;
     constructor() {
       created.push(this);
     }
     on(): void {}
+    removeMenu(): void {
+      this.menuRemoved = true;
+    }
     show(): void {
       this.visible = true;
       this.shows += 1;
@@ -51,12 +56,12 @@ vi.mock("electron", () => ({
 
 const { createMainWindow } = await import("../../src/main/mainWindow.js");
 
-const NO_CHARACTER: Character | undefined = undefined; // 未作成 = 自動表示の対象
+const NO_CHARACTERS: Character[] = []; // 未作成 = 自動表示の対象
 const ONBOARDING: Onboarding = { skipMainWindowAutoShow: false };
 
 function deps() {
   return {
-    getCharacter: () => NO_CHARACTER,
+    getCharacters: () => NO_CHARACTERS,
     getOnboarding: () => ONBOARDING,
     saveOnboarding: () => {},
   };
@@ -99,5 +104,14 @@ describe("mainWindow / メインウィンドウの読み込みに失敗した場
     expect(errorLog).toHaveBeenCalledTimes(1); // ログのみ。ユーザーへの通知はしない
     expect(() => mainWindow.showIfNeeded()).not.toThrow(); // 落ちない = 発動経路も止まらない
     expect(created).toHaveLength(1);
+  });
+});
+
+// 既定のメニュー(File / Edit …)は使わない。画面の操作はタブとボタンで完結させる。
+describe("mainWindow / メニューを出さない", () => {
+  it("removes the default menu bar from the main window", () => {
+    createMainWindow(deps());
+
+    expect(created[0]?.menuRemoved).toBe(true);
   });
 });

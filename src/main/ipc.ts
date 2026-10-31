@@ -11,12 +11,15 @@ import type { TriggerConfig, ProviderSelection } from "../core/shared/types.js";
 import type {
   GetSpeakersResult,
   SaveCharacterResult,
+  SaveGenerationConfigResult,
   ConsentSnapshot,
 } from "../core/shared/ipc.js";
+import type { GenerationConfig } from "../core/shared/types.js";
 import { isConsentableProviderId } from "../core/shared/providerDisclosure.js";
 import { fetchSpeakers } from "./speakerCatalog.js";
 // 信頼境界の検証は electron 非依存の別モジュールに置く(テストで縛るため)。
-import { validateCharacterProfile, toCharacterSummary } from "./characterInput.js";
+import { validateCharacterProfile } from "./characterInput.js";
+import { validateGenerationConfig } from "../core/generationConfig.js";
 
 export interface IpcDeps {
   store: AppStore;
@@ -44,11 +47,21 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle(IpcChannel.GetStats, () => deps.store.loadStats());
 
   // 論点 0019: キャラ作成フォームの保存。生成は行わない(別の論点)。
+  // 論点 0032: id 付きなら編集(S0032_04 / S0032_05)、無ければ新規保存(S0032_01 / S0032_03)。
   ipcMain.handle(IpcChannel.SaveCharacter, (_event, raw: unknown): SaveCharacterResult => {
     const validated = validateCharacterProfile(raw);
     if (!validated.ok) return { ok: false, errors: validated.errors };
+    const id = (raw as { id?: unknown }).id;
+    if (id !== undefined && typeof id !== "string") {
+      return { ok: false, errors: ["id must be a string"] };
+    }
     try {
-      deps.store.saveCharacter(validated.value);
+      if (id !== undefined) {
+        const updated = deps.store.updateCharacter(id, validated.value);
+        return updated.ok ? { ok: true } : { ok: false, errors: ["character not found"] };
+      }
+      const added = deps.store.addCharacter(validated.value);
+      if (!added.ok) return { ok: false, errors: ["character limit reached"] };
       return { ok: true };
     } catch (error) {
       // シナリオ: 保存に失敗した場合 [異常系] — クラッシュせず失敗を返す
@@ -57,8 +70,21 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
   });
 
-  // 論点 0020: 保存済みキャラの読み出し(「保存だけして後で生成できる」を成立させる)。
-  ipcMain.handle(IpcChannel.GetCharacter, () => toCharacterSummary(deps.store.loadCharacter()));
+  // 論点 0033: 設定画面の「生成が完了したら使用中にする」
+  ipcMain.handle(
+    IpcChannel.GetGenerationConfig,
+    (): GenerationConfig => deps.store.loadGeneration(),
+  );
+  ipcMain.handle(
+    IpcChannel.SetGenerationConfig,
+    (_event, raw: unknown): SaveGenerationConfigResult => {
+      // S0033_15 renderer からの設定の変更は main 側で検証する
+      const validated = validateGenerationConfig(raw);
+      if (!validated.ok) return { ok: false, errors: validated.errors };
+      deps.store.saveGeneration(validated.value);
+      return { ok: true };
+    },
+  );
 
   // 論点 0019: 話者一覧。VOICEVOX 未起動でも unavailable を返すだけで落ちない。
   ipcMain.handle(

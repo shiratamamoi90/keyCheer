@@ -83,6 +83,51 @@
       .status {
         margin: 0;
       }
+      /* タブと一覧(論点 0033)。見た目は仕様外 — どの画面を開いているかが分かるだけを満たす。 */
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid #888;
+      }
+      .tabs .tab {
+        align-self: auto;
+        padding: 6px 12px;
+        border: 1px solid #888;
+        border-bottom: none;
+        border-radius: 6px 6px 0 0;
+        background: transparent;
+      }
+      .tabs .tab.active {
+        font-weight: bold;
+        background: rgba(0, 0, 0, 0.06);
+      }
+      .list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid #888;
+        border-radius: 6px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .list li {
+        padding: 6px 10px;
+        cursor: pointer;
+      }
+      .list li + li {
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+      }
+      .list li.selected {
+        font-weight: bold;
+        background: rgba(0, 0, 0, 0.08);
+      }
+      .chips,
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
     </style>
   </head>
   <body>
