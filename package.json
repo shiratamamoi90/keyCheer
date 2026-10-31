@@ -17,7 +17,25 @@
     "services:up": "docker compose --profile cpu up -d",
     "services:down": "docker compose --profile cpu --profile gpu down",
     "services:model": "bash scripts/import-sarashina.sh",
-    "services:status": "docker compose --profile cpu --profile gpu ps"
+    "services:status": "docker compose --profile cpu --profile gpu ps",
+    "package:win": "npm run build && electron-builder --win --dir",
+    "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh"
+  },
+  "build": {
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**/*"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": "dir"
+    }
   },
   "dependencies": {
     "electron-store": "10.0.1",

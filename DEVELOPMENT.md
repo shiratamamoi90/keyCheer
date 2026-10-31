@@ -62,6 +62,24 @@ export XMODIFIERS=@im=fcitx
 Electron は WSLg 上で X11(XWayland)として動くため、IME は XIM 経由で繋がる。
 Wayland で動かす場合のみ `--enable-wayland-ime` が別途要る(現状は不要)。
 
+### Windows 実機で確かめる(WSL2 でビルドする)
+
+キーフック(uiohook-napi)は WSLg では Windows の打鍵を拾えないので、応援の発動は Windows 実機で確かめる。
+ビルドは WSL2 で行い、展開済みフォルダを Windows 側へ置く(論点 0025)。
+
+```bash
+npm run services:up    # Ollama / VOICEVOX(WSL2 のコンテナ)
+npm run deploy:win     # build → electron-builder --win --dir → Windows の「ドキュメント\keyCheer」へコピー
+```
+
+Windows で `ドキュメント\keyCheer\keycheer.exe` を実行する。
+
+- 接続先は既定の `127.0.0.1` のままでよい。Windows のアプリから WSL2 のコンテナの :11434 / :50021 に届く。
+- 置き場を変えるときは `KEYCHEER_WIN_DEPLOY_DIR=/mnt/c/... npm run deploy:win`。
+- Windows 側でアプリが起動したままだとコピーに失敗する。終了してから再実行する。
+- 古いファイルは消さずに上書きする。きれいにしたいときは Windows 側でフォルダを消してから実行する。
+- インストーラ(NSIS)はここでは作らない(wine が要る。論点 0010 / 0031)。
+
 ## テスト
 
 ```bash
