@@ -123,7 +123,7 @@
 
 - GIVEN 保存済みのキャラクター C(生成中ではない)
 - WHEN C を削除する
-- THEN `characters` から C を除き、`characters/{C の id}/`(プール・wav)を削除する
+- THEN `characters` から C を除き、`characters/{C の id}/`(プール・wav・キャラ画像)を削除する
 
 ### S0032_07 使用中のキャラクターを削除すると定型文に戻る
 

@@ -40,6 +40,10 @@
 | ポップアップ | `popup` | — | `toast` | 応援を表示する小さなウィンドウ |
 | 音声ファイル | `wav` | — | `wavFile`, `voicePath` | 事前合成した応援音声。プールの各文に対応する |
 | プール生成 | `poolGeneration` | — | `genPool` | キャラ作成時にプールと `wav` をまとめて作る処理 |
+| キャラ画像 | `characterImage` | — | `charImage`, `standingImage` | キャラ作成時に生成するキャラの絵。1 キャラ 3 枚(待機画像・`regular`・`milestone`。論点 0036) |
+| 待機画像 | `idleImage` | — | `normalImage`, `defaultImage` | 応援が出ていないときに表示するキャラ画像(画像の種類 `idle`) |
+| 画像タグ | `imageTag` | — | `imageKeyword` | 画像のプロンプトに入れる英語の短い語句。テキストプロバイダーに出させる |
+| 常時表示 | `alwaysShow` | — | `residentMode` | キャラの窓を常に画面に出しておく表示方法。設定 `popup.shouldAlwaysShow`(既定 true) |
 
 > 名詞形は**概念・データ・型の名前**。関数名にするときは N-3 の接頭辞を付ける(例と理由は N-3)。
 

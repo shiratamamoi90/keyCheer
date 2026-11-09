@@ -15,11 +15,11 @@
       "id": "char-mvvr4ukc-ce53h95o", // 保存時に採番する不変 ID(論点 0020)
       "name": "チアちゃん",
       "personality": "元気いっぱいで、いつもポジティブ。語尾に「だよ!」をつける。",
-      "imagePaths": { "normal": "...", "happy": "...", "excited": "..." },
       "voicevoxSpeakerId": 3,
       // 生成元プロバイダー(再生成時の参照用。論点 0022)。
       // **実際に作った種別だけ**が現れる。各フィールドは任意で、未生成・未実装の種別は持たない
-      // (下の例は画像生成が未実装のため image が無い)。選択値は providers 側であって、ここではない
+      // (下の例は画像を作っていないため image が無い)。選択値は providers 側であって、ここではない
+      // キャラ画像のパスは持たない。id と画像の種類から決まる(下の「画像ファイル」。論点 0036)
       "generatedBy": {
         "text": "local-ollama",
         "voice": "local-voicevox",
@@ -36,7 +36,12 @@
     "milestones": [1000, 5000, 10000, 50000, 100000], // 設定可能、各値 1 以上・昇順・重複なし、最大 20、空配列許容(milestone OFF)
     "activeThresholdSec": 60, // 既定 60、5 ≦ s ≦ 600(設定可能、KPM 窓とは独立)
   },
-  "popup": { "position": "bottom-right", "duration": 5000, "opacity": 0.95 },
+  "popup": {
+    "position": "bottom-right",
+    "duration": 5000,
+    "opacity": 0.95,
+    "shouldAlwaysShow": true, // 既定 true。キャラの窓を常に出し待機画像を表示する(論点 0036 → docs/popup.md)
+  },
   "providers": {
     "text": "local-ollama", // "local-ollama" | "openai" | "anthropic"
     "voice": "local-voicevox", // "local-voicevox" | "openai-tts" | "elevenlabs"
@@ -73,12 +78,12 @@
 各キャラクターは保存時に必須項目(`name` / `personality` が非空文字列、`voicevoxSpeakerId` が数値)を
 検証済みなので、件数だけを見る。
 
-**`imagePaths` とメッセージプール、使用中のキャラクターの有無は判定に含めない**(2026-07-26 確定、
-論点 0032 で維持)。必須にすると生成が済むまで永久に「未作成」となり、起動のたびにメインウィンドウが
+**キャラ画像とメッセージプール、使用中のキャラクターの有無は判定に含めない**(2026-07-26 確定、
+論点 0032 / 0036 で維持)。必須にすると生成が済むまで永久に「未作成」となり、起動のたびにメインウィンドウが
 自動表示されてしまう。生成物の有無は別軸で扱う:
 
 - 使用中のキャラクターにプールがある → その文言で応援する / 無い → baseline 定型文で応援する
-- 画像がある → 表示する / 無い → 表示しない
+- 画像がある → 表示する / 無い → 表示しない(→ docs/popup.md S0036_18〜22)
 
 ## メッセージプール(キャラごとに別ファイル)
 
@@ -93,9 +98,9 @@
   "buckets": {
     // キー = "{zone}_{type}_{timeOfDay}"、値 = メッセージ配列
     "slow_regular_morning":  [{ "id": "slow_regular_morning-000", "text": "おはよう、ゆっくりでいいよ" }, ...],
-    "normal_regular_morning":[ /* 20 件 */ ],
-    "fast_regular_morning":  [ /* 20 件 */ ],
-    "slow_milestone_morning":[ /* 20 件 */ ],
+    "normal_regular_morning":[ /* 3 件 */ ],
+    "fast_regular_morning":  [ /* 3 件 */ ],
+    "slow_milestone_morning":[ /* 1 件 */ ],
     // ... 計 24 シナリオ
   },
   // 中断時の状態
@@ -107,7 +112,7 @@
 ```
 
 - キーの定義域: `zone ∈ {slow, normal, fast}` × `type ∈ {regular, milestone}` × `timeOfDay ∈ {morning, afternoon, evening, night}` = **24 シナリオ**
-- 各バケットの目標サイズ: 8 文(`integrations.md` 参照。2026-07-26 に 20 文から引き下げ)
+- 各バケットの目標サイズ: **`regular` 3 文・`milestone` 1 文**(計 48 文。`integrations.md` 参照。論点 0007 で 20 → 8 文、論点 0037 で現行値に引き下げ)
 - 1 文 = 30 文字以内
 - **中身が空のプールは無効**として扱う(構造が妥当でも 1 文も無ければ読み込み時に破棄し
   baseline 定型文へ落とす)。生成失敗時も部分結果は再開のために保存するため、
@@ -135,6 +140,17 @@
 
 - メッセージ ID → wav パスは決定的に解決可能
 - 欠損時は発動経路でテキストのみフォールバック(→ cheer-trigger.md)
+
+## 画像ファイル(論点 0036)
+
+```
+{userData}/characters/{characterId}/images/{kind}.png    // kind ∈ { idle, regular, milestone }
+```
+
+- 1 キャラ最大 3 枚。`idle` = 待機画像、`regular` / `milestone` = その応援種別の画像
+- `characterId` と `kind` から決定的に解決する(wav と同じく、設定 JSON にパスを持たない)
+- 縦横比を保って 256x384 に収まる PNG(→ docs/pool-generation.md S0036_15)
+- 欠損時は表示で代わりを使う(→ docs/popup.md S0036_20 / S0036_21)
 
 ## Baseline 定型文(同梱)
 
@@ -265,6 +281,13 @@
 - WHEN 設定を読み込む
 - THEN 各種別の値は S0015_05 と同じ閉じた union に属する(未設定は許すが、定義域外の文字列は不正)
 
+### S0037_04 目標サイズより多い既存のプールは切り詰めない [否定]
+
+- GIVEN 論点 0037 より前に生成した、1 バケット 8 文の `pool.json`
+- WHEN 起動時に読み込む
+- THEN 妥当なプールとしてそのまま読み込み、応援に使う。**文を削らず、ファイルも保存し直さない**
+  (目標サイズは生成の要求数であって、読み込みの検証条件ではない。再生成したときに新しい数になる)
+
 ### S0028_01 `system.ollamaModel` の既定値 [境界]
 
 - GIVEN `system.ollamaModel` が保存されていない設定 JSON
@@ -354,6 +377,19 @@
 - GIVEN `generation.shouldActivateOnComplete` が無い、または真偽値でない設定 JSON
 - WHEN 起動時に読み込む
 - THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0022_10 と同じ扱い)
+
+### S0036_27 `popup.shouldAlwaysShow` の既定値 [境界]
+
+- GIVEN `popup.shouldAlwaysShow` が無い、または真偽値でない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0032_31 と同じ扱い)
+
+### S0036_28 旧形式の `imagePaths` は読まず、書き換えもしない [否定]
+
+- GIVEN キャラクターが旧形式の `imagePaths`(`normal` / `happy` / `excited`)を持つ設定 JSON
+- WHEN 起動時に読み込み、応援を表示する
+- THEN 表示には `imagePaths` の値を使わない(画像は「画像ファイル」の規則でだけ解決する)。
+  `imagePaths` を消したり書き換えたりせず、設定も保存し直さない
 
 ## 検討事項 [要確認](β 以降に確定)
 
