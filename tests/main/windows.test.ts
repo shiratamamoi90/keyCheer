@@ -17,15 +17,35 @@ interface WindowOptions {
 }
 
 const { created, state } = vi.hoisted(() => ({
-  created: [] as { options: WindowOptions; ignoreMouseEvents: boolean[] }[],
+  created: [] as {
+    options: WindowOptions;
+    ignoreMouseEvents: boolean[];
+    calls: string[];
+  }[],
   state: { loadFileRejection: null as Error | null },
 }));
 
 vi.mock("electron", () => ({
   BrowserWindow: class {
     ignoreMouseEvents: boolean[] = [];
+    calls: string[] = [];
     constructor(public options: WindowOptions) {
       created.push(this);
+    }
+    showInactive(): void {
+      this.calls.push("showInactive");
+    }
+    show(): void {
+      this.calls.push("show");
+    }
+    focus(): void {
+      this.calls.push("focus");
+    }
+    hide(): void {
+      this.calls.push("hide");
+    }
+    isDestroyed(): boolean {
+      return false;
     }
     setIgnoreMouseEvents(value: boolean): void {
       this.ignoreMouseEvents.push(value);
@@ -39,7 +59,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-const { createPopupWindow } = await import("../../src/main/windows.js");
+const { applyAlwaysShow, createPopupWindow } = await import("../../src/main/windows.js");
 
 beforeEach(() => {
   created.length = 0;
@@ -76,5 +96,27 @@ describe("windows / renderer の読み込みに失敗した場合", () => {
     // 拒否を捨て置くと未処理 rejection でプロセスごと落ち、統計の記録も止まる。
     expect(errorLog).toHaveBeenCalledTimes(1);
     expect(created).toHaveLength(1); // 窓自体は残る(次の発動で send しても落ちない)
+  });
+});
+
+describe("windows / 常時表示の窓も入力の邪魔をしない [不変条件]", () => {
+  it("S0036_25 shows the always-on window without focus and keeps it click-through", () => {
+    // GIVEN 常時表示でキャラの窓を出す
+    const win = createPopupWindow();
+
+    // WHEN 常時表示を当てる(起動時・設定の切り替え時)
+    applyAlwaysShow(win, true);
+
+    // THEN フォーカスを奪わずに出し、クリックも透過する(ポップアップの窓と同じ設定を維持)
+    const { options, ignoreMouseEvents, calls } = created[0]!;
+    expect(calls).toEqual(["showInactive"]);
+    expect(options.focusable).toBe(false);
+    expect(options.skipTaskbar).toBe(true);
+    expect(ignoreMouseEvents.every((v) => v)).toBe(true);
+    expect(ignoreMouseEvents.length).toBeGreaterThan(0);
+
+    // 切ったら隠す(応援が出ていない間は窓を出さない)
+    applyAlwaysShow(win, false);
+    expect(calls).toEqual(["showInactive", "hide"]);
   });
 });

@@ -19,6 +19,9 @@ export const IpcChannel = {
   ActivateCharacter: "keycheer:activate-character",
   GetGenerationConfig: "keycheer:get-generation-config",
   SetGenerationConfig: "keycheer:set-generation-config",
+  // 常時表示の設定(論点 0036)
+  GetPopupDisplay: "keycheer:get-popup-display",
+  SetPopupDisplay: "keycheer:set-popup-display",
   // プール・wav の生成(論点 0020)。生成はローカルのみ(Ollama / VOICEVOX)。
   StartGeneration: "keycheer:start-generation",
   CancelGeneration: "keycheer:cancel-generation",
@@ -30,6 +33,8 @@ export const IpcChannel = {
   GrantConsent: "keycheer:grant-consent",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
+  // 待機画像と常時表示の通知(論点 0036)。使用中のキャラクター・設定が変わるたびに送る
+  CharacterDisplay: "keycheer:character-display",
   ConfigMigrated: "keycheer:config-migrated",
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す合図。論点 0033 S0033_05)
   MainWindowShown: "keycheer:main-window-shown",
@@ -57,7 +62,18 @@ export interface CheerFiredPayload {
   message: string; // {milestone} 補間後の表示テキスト
   wavPath: string | null; // null = テキストのみ(wav 欠損 / baseline 定型文)
   popupDurationMs: number;
+  // その応援種別のキャラ画像(論点 0036)。null / 省略 = 無い(renderer は待機画像を出す。S0036_20)
+  imagePath?: string | null;
 }
+
+// main → renderer: ポップアップの窓に出す待機画像と、常時表示か(論点 0036)。
+// 画像のパスは保存済みのファイルだけ(実在しなければ null)。
+export interface CharacterDisplayPayload {
+  idleImagePath: string | null;
+  shouldAlwaysShow: boolean;
+}
+
+export type SavePopupDisplayResult = { ok: true } | { ok: false; errors: string[] };
 
 // main → renderer: 旧既定値(regular=100)からの移行通知(docs/data-model.md のマイグレーション)
 export interface ConfigMigratedPayload {
@@ -98,7 +114,7 @@ export type GetSpeakersResult =
 // main → renderer: 生成の進捗・完了・失敗(論点 0020)。
 // 応援発動経路とは無関係のチャンネル。プロバイダー実装の型は載せない。
 export type GenerationProgressPayload =
-  | { type: "progress"; phase: "text" | "voice"; done: number; total: number }
+  | { type: "progress"; phase: "text" | "voice" | "image"; done: number; total: number }
   | { type: "done"; synthesized: number; missing: number }
   | { type: "failed"; reason: string };
 

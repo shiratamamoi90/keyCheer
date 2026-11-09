@@ -275,3 +275,72 @@ describe("cheerRuntime / 生成直後は再起動なしで応援に反映され�
     expect(h.emitted[1]!.wavPath).not.toBeNull();
   });
 });
+
+// キャラ画像(論点 0036)。画像のパスは resolveImagePath の規則で解決し、実在するものだけを渡す。
+// 期待値はパスを直書きする(実装の関数で組み立てない)。
+function fullPool(characterId: string) {
+  return {
+    characterId,
+    version: 1,
+    buckets: Object.fromEntries(
+      ALL_BUCKET_KEYS.map((key) => [key, [{ id: `${key}-000`, text: `文:${key}` }]]),
+    ) as MessagePool["buckets"],
+  };
+}
+
+describe("cheerRuntime / 応援種別の画像を渡す", () => {
+  it("passes the image of the cheer type when it exists", () => {
+    const { deps, emitted } = harness({
+      imageExists: (p) => p === "/userData/characters/c/images/regular.png",
+    });
+    const runtime = createCheerRuntime(deps, CONFIG);
+    runtime.setActiveCharacter("c", fullPool("c"));
+
+    for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
+
+    expect(emitted[0]?.imagePath).toBe("/userData/characters/c/images/regular.png");
+  });
+});
+
+describe("cheerRuntime / 定型文の応援では待機画像を出す [境界]", () => {
+  it("S0036_22 sends no cheer-type image for a baseline cheer so the window keeps the idle image", () => {
+    // GIVEN 使用中のキャラクターに画像はあるがプールが無い(baseline 定型文で応援する)
+    const displays: { idleImagePath: string | null }[] = [];
+    const { deps, emitted } = harness({
+      imageExists: () => true,
+      emitCharacterDisplay: (d) => displays.push(d),
+    });
+    const runtime = createCheerRuntime(deps, CONFIG);
+    runtime.setActiveCharacter("c", null);
+
+    // WHEN 応援が発動する
+    for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
+
+    // THEN 応援種別の画像は渡さず(renderer は待機画像を出す)、待機画像は渡してある
+    expect(emitted[0]?.messageId.startsWith("baseline:")).toBe(true);
+    expect(emitted[0]?.imagePath).toBeNull();
+    expect(displays.at(-1)).toEqual({ idleImagePath: "/userData/characters/c/images/idle.png" });
+  });
+});
+
+describe("cheerRuntime / 使用中のキャラクターを切り替えたら待機画像も切り替わる", () => {
+  it("S0036_23 emits the new character's idle image (or none) when the active character changes", () => {
+    const displays: { idleImagePath: string | null }[] = [];
+    const { deps } = harness({
+      imageExists: (p) => p.startsWith("/userData/characters/c/"),
+      emitCharacterDisplay: (d) => displays.push(d),
+    });
+    const runtime = createCheerRuntime(deps, CONFIG);
+
+    runtime.setActiveCharacter("c", fullPool("c"));
+    expect(displays.at(-1)).toEqual({ idleImagePath: "/userData/characters/c/images/idle.png" });
+
+    // D には待機画像が無い → 画像なし
+    runtime.setActiveCharacter("d", fullPool("d"));
+    expect(displays.at(-1)).toEqual({ idleImagePath: null });
+
+    // 使用中が無くなっても画像なし
+    runtime.setActiveCharacter(null, null);
+    expect(displays.at(-1)).toEqual({ idleImagePath: null });
+  });
+});

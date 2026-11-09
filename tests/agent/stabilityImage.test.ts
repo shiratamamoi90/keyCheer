@@ -66,7 +66,7 @@ describe("stability-image / Stability AI (外部) の呼び出し契約", () => 
 });
 
 describe("stability-image / 同一シードで再現する", () => {
-  it("S0016_29 sends the same seed for every expression variant", async () => {
+  it("S0016_29 sends the same seed for every requested image", async () => {
     const fetchFn = vi.fn(async () => okImage([1]));
     const gen = createStabilityImageGenerator({ apiKey: "sk", fetchFn });
 

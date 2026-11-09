@@ -40,8 +40,13 @@ export const MESSAGE_COUNT_BY_CHEER_TYPE: Readonly<Record<CheerType, number>> = 
 };
 
 export function computeMessageCount(key: BucketKey): number {
-  // バケットキーの書式 `${SpeedZone}_${CheerType}_${TimeOfDay}` の 2 番目
-  return MESSAGE_COUNT_BY_CHEER_TYPE[key.split("_")[1] as CheerType];
+  return MESSAGE_COUNT_BY_CHEER_TYPE[computeCheerType(key)];
+}
+
+// バケットキーの書式 `${SpeedZone}_${CheerType}_${TimeOfDay}`(bucketKey)の 2 番目。
+// 書式の知識をここ 1 箇所に置く(文の数・画像タグの要求の両方が応援種別で分ける)
+export function computeCheerType(key: BucketKey): CheerType {
+  return key.split("_")[1] as CheerType;
 }
 
 // 24 シナリオの全列挙(zone × type × timeOfDay)

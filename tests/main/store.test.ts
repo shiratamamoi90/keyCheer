@@ -536,3 +536,53 @@ describe("store / 設定の変更は他の保存データを変えない [否定
     expect(fake.raw.stats).toEqual(initial.stats);
   });
 });
+
+// キャラ画像の常時表示(論点 0036)。docs/data-model.md / docs/main-window.md
+describe("store / `popup.shouldAlwaysShow` の既定値 [境界]", () => {
+  it("S0036_27 treats a missing or non-boolean value as true without rewriting it", () => {
+    expect(createAppStore(fakeStore()).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
+
+    const fake = fakeStore({ popup: { position: "bottom-right", shouldAlwaysShow: "yes" } });
+    const writes = countWrites(fake, ["popup"]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
+    expect(fake.raw.popup).toEqual({ position: "bottom-right", shouldAlwaysShow: "yes" });
+    expect(writes.count()).toBe(0);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("store / 旧形式の `imagePaths` は読まず、書き換えもしない [否定]", () => {
+  it("S0036_28 keeps the legacy imagePaths as they are and does not save", () => {
+    const legacy = { normal: "C:/old/normal.png", happy: "C:/old/happy.png", excited: "x" };
+    const characters = [savedCharacter("char-1", { imagePaths: legacy })];
+    const fake = fakeStore({ characters: structuredClone(characters) });
+    const writes = countWrites(fake, ["characters"]);
+
+    const loaded = createAppStore(fake).loadCharacters();
+
+    expect(loaded).toEqual(characters);
+    expect(writes.count()).toBe(0);
+  });
+});
+
+describe("store / 設定画面で常時表示を切り替える", () => {
+  it("S0036_29 persists shouldAlwaysShow and keeps the other popup settings", () => {
+    const fake = fakeStore({ popup: { position: "bottom-right", duration: 5000, opacity: 0.95 } });
+    const store = createAppStore(fake);
+
+    store.savePopupDisplay({ shouldAlwaysShow: false });
+    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: false });
+
+    store.savePopupDisplay({ shouldAlwaysShow: true });
+    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
+    expect(fake.raw.popup).toEqual({
+      position: "bottom-right",
+      duration: 5000,
+      opacity: 0.95,
+      shouldAlwaysShow: true,
+    });
+  });
+});

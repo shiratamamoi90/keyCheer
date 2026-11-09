@@ -9,10 +9,12 @@ import { IpcChannel } from "../core/shared/ipc.js";
 import type {
   ActivateCharacterResult,
   CheerFiredPayload,
+  CharacterDisplayPayload,
   CharacterListItem,
   ConfigMigratedPayload,
   DeleteCharacterResult,
   SaveGenerationConfigResult,
+  SavePopupDisplayResult,
   GenerationProgressPayload,
   GetSpeakersResult,
   SaveCharacterRequest,
@@ -27,6 +29,7 @@ import type {
   ProviderId,
   ProviderSelection,
   GenerationConfig,
+  PopupDisplayConfig,
 } from "../core/shared/types.js";
 
 // 保存結果の型は providerStore が正本。preload は形だけ再宣言せず構造で受ける
@@ -61,6 +64,10 @@ export interface KeyCheerApi {
   // 設定画面(論点 0033)
   getGenerationConfig(): Promise<GenerationConfig>;
   setGenerationConfig(config: GenerationConfig): Promise<SaveGenerationConfigResult>;
+  // 常時表示(論点 0036)。onCharacterDisplay はポップアップが待機画像と常時表示を受け取る口
+  getPopupDisplay(): Promise<PopupDisplayConfig>;
+  setPopupDisplay(config: PopupDisplayConfig): Promise<SavePopupDisplayResult>;
+  onCharacterDisplay(listener: (payload: CharacterDisplayPayload) => void): () => void;
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す。論点 0033)
   onMainWindowShown(listener: () => void): () => void;
   // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
@@ -102,6 +109,10 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       ipc.invoke(IpcChannel.GetGenerationConfig) as Promise<GenerationConfig>,
     setGenerationConfig: (config) =>
       ipc.invoke(IpcChannel.SetGenerationConfig, config) as Promise<SaveGenerationConfigResult>,
+    getPopupDisplay: () => ipc.invoke(IpcChannel.GetPopupDisplay) as Promise<PopupDisplayConfig>,
+    setPopupDisplay: (config) =>
+      ipc.invoke(IpcChannel.SetPopupDisplay, config) as Promise<SavePopupDisplayResult>,
+    onCharacterDisplay: (listener) => subscribe(ipc, IpcChannel.CharacterDisplay, listener),
     onMainWindowShown: (listener) => subscribe(ipc, IpcChannel.MainWindowShown, () => listener()),
     startGeneration: (characterId) =>
       ipc.invoke(IpcChannel.StartGeneration, characterId) as Promise<StartGenerationResult>,

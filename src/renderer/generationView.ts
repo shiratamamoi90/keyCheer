@@ -5,7 +5,7 @@
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは状態遷移と表示文言だけを持つ。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
-export type GenerationPhaseName = "idle" | "text" | "voice" | "done" | "failed";
+export type GenerationPhaseName = "idle" | "text" | "voice" | "image" | "done" | "failed";
 
 export interface GenerationViewState {
   phase: GenerationPhaseName;
@@ -17,7 +17,7 @@ export interface GenerationViewState {
 }
 
 export type GenerationEvent =
-  | { type: "progress"; phase: "text" | "voice"; done: number; total: number }
+  | { type: "progress"; phase: "text" | "voice" | "image"; done: number; total: number }
   | { type: "done"; synthesized: number; missing: number }
   | { type: "failed"; reason: string };
 
@@ -45,14 +45,14 @@ export function applyGenerationEvent(
   }
 }
 
-// 実行中(text / voice)は開始できない。キャラ未保存でも開始できない
+// 実行中(text / voice / image)は開始できない。キャラ未保存でも開始できない
 // (characterId が無いと保存先が決まらないため)。
 export function canStartGeneration(
   state: GenerationViewState,
   hasSavedCharacter: boolean,
 ): boolean {
   if (!hasSavedCharacter) return false;
-  return state.phase !== "text" && state.phase !== "voice";
+  return state.phase !== "text" && state.phase !== "voice" && state.phase !== "image";
 }
 
 const FAILURE_TEXT: Record<string, string> = {
@@ -70,6 +70,8 @@ export function progressLabel(state: GenerationViewState): string {
       return `メッセージを生成中… ${state.done} / ${state.total}`;
     case "voice":
       return `音声を合成中… ${state.done} / ${state.total}`;
+    case "image":
+      return `画像を生成中… ${state.done} / ${state.total}`;
     case "done":
       return state.missing > 0
         ? `完了しました(音声 ${state.synthesized} 本、${state.missing} 本は音声なし)`

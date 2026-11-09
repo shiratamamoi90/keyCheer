@@ -15,8 +15,16 @@ import { createOpenAITextGenerator } from "../agent/providers/openaiText.js";
 import { createAnthropicTextGenerator } from "../agent/providers/anthropicText.js";
 import { createOpenAITTSSynthesizer } from "../agent/providers/openaiTts.js";
 import { createElevenLabsSynthesizer } from "../agent/providers/elevenLabsTts.js";
-import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
+import { createOpenAIDalleGenerator } from "../agent/providers/openaiDalle.js";
+import { createStabilityImageGenerator } from "../agent/providers/stabilityImage.js";
 import type {
+  ImageGenerator,
+  ImageTagGenerator,
+  TextGenerator,
+  VoiceSynthesizer,
+} from "../core/providers/types.js";
+import type {
+  ImageProviderId,
   ProviderId,
   SystemConfig,
   TextProviderId,
@@ -28,6 +36,7 @@ const OPENAI_TEXT_MODEL = "gpt-4o-mini";
 const ANTHROPIC_TEXT_MODEL = "claude-haiku-4-5-20251001";
 const OPENAI_TTS_MODEL = "tts-1";
 const OPENAI_TTS_VOICE = "alloy";
+const OPENAI_IMAGE_MODEL = "dall-e-3";
 
 export interface ProviderFactoryDeps {
   system: SystemConfig;
@@ -38,10 +47,18 @@ export interface ProviderFactoryDeps {
 }
 
 export type BuildFailure = "missing-api-key" | "voice-id-required";
+// runtime-not-installed: sd.cpp の実行ファイルとモデル重みの同梱・取得が未実装(論点 0030 / 0034)。
+// 画像の失敗は生成を止めない(S0036_10)ので、文言・音声の BuildFailure とは別に持つ
+export type ImageBuildFailure = "missing-api-key" | "runtime-not-installed";
 
+// テキストプロバイダーは画像タグの要求も受け持つ(論点 0036)
 export type TextGeneratorResult =
-  | { ok: true; generator: TextGenerator }
+  | { ok: true; generator: TextGenerator & ImageTagGenerator }
   | { ok: false; reason: BuildFailure };
+
+export type ImageGeneratorResult =
+  | { ok: true; generator: ImageGenerator }
+  | { ok: false; reason: ImageBuildFailure };
 
 export type VoiceSynthesizerResult =
   | { ok: true; synthesizer: VoiceSynthesizer }
@@ -111,4 +128,24 @@ export function createVoiceSynthesizerFor(
     ok: true,
     synthesizer: createElevenLabsSynthesizer({ apiKey, defaultVoiceId: voiceId }),
   };
+}
+
+export function createImageGeneratorFor(
+  id: ImageProviderId,
+  deps: ProviderFactoryDeps,
+): ImageGeneratorResult {
+  // sd.cpp の実行ファイル・モデル重みの置き場は、同梱と初回取得(論点 0030 / 0034)が決まるまで無い。
+  // 組み立てられないので画像の工程に進ませない(生成は画像なしで完了する。S0036_10)。
+  if (id === "local-sdcpp") return { ok: false, reason: "runtime-not-installed" };
+
+  const apiKey = deps.apiKeyFor(id);
+  if (apiKey === null) return { ok: false, reason: "missing-api-key" };
+
+  if (id === "openai-dalle") {
+    return {
+      ok: true,
+      generator: createOpenAIDalleGenerator({ apiKey, model: OPENAI_IMAGE_MODEL }),
+    };
+  }
+  return { ok: true, generator: createStabilityImageGenerator({ apiKey }) };
 }

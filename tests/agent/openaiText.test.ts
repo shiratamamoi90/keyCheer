@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createOpenAITextGenerator } from "../../src/agent/providers/openaiText.js";
+import { buildImageTagText, validateImageTagResponse } from "../../src/core/characterImage.js";
 
 // spec: 論点 0016 / docs/integrations.md
 //   外部テキストプロバイダー(OpenAI)。HTTP 契約 + 自動リトライしない(C6)。
@@ -11,6 +12,14 @@ const RESPONSE_SCHEMA = {
   type: "object",
   properties: { messages: { type: "array", items: { type: "string" } } },
   required: ["messages"],
+  additionalProperties: false,
+};
+
+// 画像タグの応答スキーマ(docs/integrations.md「画像タグの要求」の写し。実装の定数から導かない)
+const TAG_SCHEMA = {
+  type: "object",
+  properties: { tags: { type: "array", items: { type: "string" } } },
+  required: ["tags"],
   additionalProperties: false,
 };
 
@@ -217,5 +226,26 @@ describe("openai-text / タイムアウト予算を超えたら中断する [境
     const assertion = expect(pending).rejects.toThrow(/aborted/);
     await vi.advanceTimersByTimeAsync(5_000);
     await assertion;
+  });
+});
+
+describe("openai-text / 画像タグの要求(論点 0036)", () => {
+  it("requests the image tag schema through strict json_schema and returns a response the core can read", async () => {
+    const fetchFn = vi.fn(async () =>
+      okJson({ choices: [{ message: { content: JSON.stringify({ tags: ["smiling"] }) } }] }),
+    );
+    const gen = createOpenAITextGenerator({ apiKey: "sk-test", model: "gpt-4o-mini", fetchFn });
+
+    const raw = await gen.generateImageTags({ prompt: "tag prompt", timeoutMs: 5_000 });
+
+    const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.messages[0].content).toContain("tag prompt");
+    expect(body.response_format.type).toBe("json_schema");
+    expect(body.response_format.json_schema.strict).toBe(true);
+    expect(body.response_format.json_schema.schema).toEqual(TAG_SCHEMA);
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer sk-test");
+    expect(validateImageTagResponse(raw)).toEqual([]);
+    expect(buildImageTagText(raw)).toBe("smiling");
   });
 });

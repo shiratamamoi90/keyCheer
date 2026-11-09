@@ -13,10 +13,11 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 
-/** 対象ファイルの import 文の from パスをすべて返す。 */
+/** 対象ファイルの import 文の from パスと、副作用だけの `import "x"` のパスをすべて返す。 */
 function readImportSources(relativePath: string): string[] {
   const source = readFileSync(join(ROOT, relativePath), "utf8");
-  return [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
+  // `import "x"` は from を持たないので別に拾う(拾わないと副作用 import で経路に紛れ込める)
+  return [...source.matchAll(/(?:\bfrom|^\s*import)\s+["']([^"']+)["']/gm)].map((m) => m[1]!);
 }
 
 // 応援発動経路を構成するファイル。新しく経路へ足したらここにも追加する。
@@ -76,5 +77,19 @@ describe("発動経路の分離 / 応援発動経路は生成元を参照しな�
     );
 
     expect(readers).toEqual([]);
+  });
+});
+
+describe("発動経路の分離 / 応援の発動で画像を作らない [否定]", () => {
+  it("S0036_26 発動経路と表示のどのファイルも画像の生成・画像タグの要求を import しない", () => {
+    // 発動経路に、表示側(ポップアップの renderer)も加えて見る
+    const files = [...CHEER_PATH_FILES, "src/renderer/popup.ts", "src/renderer/popupView.ts"];
+    const violations = files.flatMap((file) =>
+      readImportSources(file)
+        .filter((source) => /characterImage|providers\/|child_process/.test(source))
+        .map((source) => `${file} → ${source}`),
+    );
+
+    expect(violations).toEqual([]);
   });
 });

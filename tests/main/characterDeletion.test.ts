@@ -70,8 +70,9 @@ function setup(over: { activeCharacterId?: string; generatingId?: string } = {})
 }
 
 describe("characterDeletion / キャラクターを削除する", () => {
-  it("S0032_06 removes the character from characters and deletes its pool and wav", () => {
+  it("S0032_06 removes the character from characters and deletes its pool, wav and images", () => {
     const { store, fs, deps } = setup();
+    fs.files.add("/userdata/characters/char-c/images/idle.png"); // キャラ画像も消える(論点 0036)
 
     const deleted = deleteCharacter(deps, "char-c");
 

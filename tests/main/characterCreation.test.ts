@@ -16,7 +16,12 @@ import { createAppStore, type StoreLike } from "../../src/main/store.js";
 import type { MessagePool } from "../../src/core/messagePool.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
-import type { TextGenerator, VoiceSynthesizer } from "../../src/core/providers/types.js";
+import type {
+  ImageGenerator,
+  ImageTagGenerator,
+  TextGenerator,
+  VoiceSynthesizer,
+} from "../../src/core/providers/types.js";
 
 const USER_DATA = "/userdata";
 const CHAR_ID = "chia-abc123";
@@ -463,5 +468,290 @@ describe("characterCreation / 中断・失敗した生成では使用中を変�
     expect(failed.store.loadActiveCharacterId()).toBe("char-d");
     expect(cancelled.onActiveCharacterChanged).not.toHaveBeenCalled();
     expect(failed.onActiveCharacterChanged).not.toHaveBeenCalled();
+  });
+});
+
+// 生成でキャラ画像も作る(論点 0036)。docs/pool-generation.md / docs/integrations.md「生成元の記録」
+// どの画像の要求かを見分けるため、セリフにシナリオキーを入れる(_regular_ / _milestone_ を含む)。
+type ImageKind = "idle" | "regular" | "milestone";
+
+function labeledText(): TextGenerator {
+  return {
+    id: "local-ollama",
+    generateMessages: vi.fn(async ({ scenarioKey, count }) =>
+      Array.from({ length: count }, (_, i) => `${scenarioKey}#${i}`),
+    ),
+  };
+}
+
+function kindOfTagPrompt(prompt: string): ImageKind {
+  if (prompt.includes("_milestone_")) return "milestone";
+  if (prompt.includes("_regular_")) return "regular";
+  return "idle";
+}
+
+function fakeTags(): ImageTagGenerator {
+  return {
+    id: "local-ollama",
+    generateImageTags: vi.fn(async ({ prompt }) => ({ tags: [kindOfTagPrompt(prompt)] })),
+  };
+}
+
+// 画像タグ = 画像の種類名なので、プロンプトから種類が分かる。bytes[kind] を返し、failing の種類は throw する
+function fakeImages(
+  bytes: Record<ImageKind, number>,
+  failing: ImageKind[] = [],
+  id: ImageGenerator["id"] = "local-sdcpp",
+): ImageGenerator {
+  return {
+    id,
+    generateImages: vi.fn(async ({ prompt }) => {
+      const kind = prompt as ImageKind;
+      if (failing.includes(kind)) throw new Error(`${kind} failed`);
+      return [new Uint8Array([bytes[kind]])];
+    }),
+  };
+}
+
+function imageInput(generator: ImageGenerator, tagGenerator: ImageTagGenerator = fakeTags()) {
+  return { image: { generator, tagGenerator, seed: 42, width: 512, height: 768 } };
+}
+
+const BYTES_1 = { idle: 1, regular: 2, milestone: 3 };
+const BYTES_2 = { idle: 21, regular: 22, milestone: 23 };
+
+function imagePath(characterId: string, kind: ImageKind): string {
+  return `/userdata/characters/${characterId}/images/${kind}.png`;
+}
+
+function imageFiles(fs: { files: Record<string, string | Uint8Array> }, characterId = CHAR_ID) {
+  return Object.keys(fs.files)
+    .filter((p) => p.startsWith(`/userdata/characters/${characterId}/images/`))
+    .sort();
+}
+
+describe("characterCreation / 生成でプール・wav の後に画像 3 枚を保存する", () => {
+  it("S0036_07 saves the pool, the wavs and then the three images", async () => {
+    const fs = fakeFs();
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, { textGenerator: labeledText(), ...imageInput(fakeImages(BYTES_1)) }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(loadPool(fs, USER_DATA, CHAR_ID)).not.toBeNull();
+    expect(Object.keys(fs.files).filter((p) => p.endsWith(".wav"))).toHaveLength(48);
+    expect(imageFiles(fs)).toEqual([
+      imagePath(CHAR_ID, "idle"),
+      imagePath(CHAR_ID, "milestone"),
+      imagePath(CHAR_ID, "regular"),
+    ]);
+  });
+});
+
+describe("characterCreation / 進捗に画像の工程が含まれる", () => {
+  it("S0036_08 reports the image phase with done / 3", async () => {
+    const fs = fakeFs();
+    const progress: GenerationProgress[] = [];
+
+    await createGenerationRunner().start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1)),
+        onProgress: (p: GenerationProgress) => progress.push(p),
+      }),
+    );
+
+    expect(new Set(progress.map((p) => p.phase))).toEqual(new Set(["text", "voice", "image"]));
+    expect(progress.at(-1)).toEqual({ phase: "image", done: 3, total: 3 });
+  });
+});
+
+describe("characterCreation / 画像の一部が失敗しても生成は完了とする [境界]", () => {
+  it("S0036_09 completes and keeps the images that were made", async () => {
+    const fs = fakeFs();
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1, ["regular"])),
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(imageFiles(fs)).toEqual([imagePath(CHAR_ID, "idle"), imagePath(CHAR_ID, "milestone")]);
+  });
+});
+
+describe("characterCreation / 画像プロバイダーが使えなくても生成は完了とする [異常系]", () => {
+  it("S0036_10 completes without images and reports every image as missing", async () => {
+    const fs = fakeFs();
+    const generator: ImageGenerator = {
+      id: "local-sdcpp",
+      generateImages: vi.fn(async () => {
+        throw new Error("model weights not found");
+      }),
+    };
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, { textGenerator: labeledText(), ...imageInput(generator) }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(imageFiles(fs)).toEqual([]);
+    expect(result.images?.missing.slice().sort()).toEqual(["idle", "milestone", "regular"]);
+    expect(loadPool(fs, USER_DATA, CHAR_ID)).not.toBeNull();
+  });
+});
+
+describe("characterCreation / テキストが失敗したら画像に進まない [異常系]", () => {
+  it("S0036_11 neither asks for image tags nor generates images", async () => {
+    const fs = fakeFs();
+    const textGenerator: TextGenerator = {
+      id: "local-ollama",
+      generateMessages: vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    };
+    const tagGenerator = fakeTags();
+    const generator = fakeImages(BYTES_1);
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, { textGenerator, ...imageInput(generator, tagGenerator) }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(tagGenerator.generateImageTags).not.toHaveBeenCalled();
+    expect(generator.generateImages).not.toHaveBeenCalled();
+  });
+});
+
+describe("characterCreation / 中断して再開すると、保存済みの画像は作り直さない", () => {
+  it("S0036_12 resumes only the images that were not saved", async () => {
+    const fs = fakeFs();
+    const runner = createGenerationRunner();
+    // 待機画像を保存したところで中断する
+    const first = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1)),
+        shouldCancel: () => imagePath(CHAR_ID, "idle") in fs.files,
+      }),
+    );
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(imageFiles(fs)).toEqual([imagePath(CHAR_ID, "idle")]);
+
+    const generator = fakeImages(BYTES_2);
+    const second = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...imageInput(generator),
+        ...(first.state !== undefined ? { resumeFrom: first.state } : {}),
+      }),
+    );
+
+    expect(second.ok).toBe(true);
+    expect(generator.generateImages).toHaveBeenCalledTimes(2);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "idle")] as Uint8Array)).toEqual([1]);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "regular")] as Uint8Array)).toEqual([22]);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "milestone")] as Uint8Array)).toEqual([23]);
+  });
+});
+
+describe("characterCreation / 再生成で画像も作り直し、前の画像を残さない", () => {
+  it("S0036_13 replaces the images and leaves no image from the previous generation", async () => {
+    const fs = fakeFs();
+    const runner = createGenerationRunner();
+    await runner.start(
+      baseInput(fs, { textGenerator: labeledText(), ...imageInput(fakeImages(BYTES_1)) }),
+    );
+    expect(imageFiles(fs)).toHaveLength(3);
+
+    const result = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_2, ["milestone"])),
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "idle")] as Uint8Array)).toEqual([21]);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "regular")] as Uint8Array)).toEqual([22]);
+    expect(imagePath(CHAR_ID, "milestone") in fs.files).toBe(false);
+  });
+});
+
+describe("characterCreation / ほかのキャラクターの画像は変化しない [否定]", () => {
+  it("S0036_14 leaves another character's images untouched", async () => {
+    const fs = fakeFs();
+    fs.files[imagePath("char-d", "idle")] = new Uint8Array([99]);
+    fs.files[imagePath("char-d", "milestone")] = new Uint8Array([98]);
+
+    await createGenerationRunner().start(
+      baseInput(fs, {
+        characterId: "char-c",
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1, ["milestone"])),
+      }),
+    );
+
+    expect(imageFiles(fs, "char-d")).toEqual([
+      imagePath("char-d", "idle"),
+      imagePath("char-d", "milestone"),
+    ]);
+    expect(Array.from(fs.files[imagePath("char-d", "idle")] as Uint8Array)).toEqual([99]);
+    expect(Array.from(fs.files[imagePath("char-d", "milestone")] as Uint8Array)).toEqual([98]);
+  });
+});
+
+describe("characterCreation / 画像が 3 枚揃ったら image を記録", () => {
+  it("S0036_16 records the image provider that made all three images", async () => {
+    const fs = fakeFs();
+    const { store, deps } = setupResult({});
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, {
+        characterId: "char-c",
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1, [], "stability-ai")),
+      }),
+    );
+    saveGenerationResult(deps, "char-c", result);
+
+    expect(store.loadCharacters()[0]?.generatedBy).toEqual({
+      text: "local-ollama",
+      voice: "local-voicevox",
+      image: "stability-ai",
+    });
+  });
+});
+
+describe("characterCreation / 画像が欠けたら image を記録しない [異常系]", () => {
+  it("S0036_17 drops a previously recorded image provider and still records text and voice", async () => {
+    const fs = fakeFs();
+    const { raw, store } = fakeAppStore({
+      characters: [
+        { ...savedCharacter("char-c"), generatedBy: { image: "local-sdcpp" } },
+        savedCharacter("char-d"),
+      ],
+    });
+    const deps = { store, loadPool: () => null, onActiveCharacterChanged: vi.fn() };
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, {
+        characterId: "char-c",
+        textGenerator: labeledText(),
+        ...imageInput(fakeImages(BYTES_1, ["regular"], "stability-ai")),
+      }),
+    );
+    saveGenerationResult(deps, "char-c", result);
+
+    expect(raw.characters).toBeDefined();
+    expect(store.loadCharacters()[0]?.generatedBy).toEqual({
+      text: "local-ollama",
+      voice: "local-voicevox",
+    });
   });
 });

@@ -10,12 +10,19 @@
 // テスト対象外の I/O グルー。判定ロジックは characterCreation / characterStore 側にあり、
 // そちらで注入して縛っている。
 
-import { ipcMain, safeStorage, type BrowserWindow } from "electron";
+import { ipcMain, nativeImage, safeStorage, type BrowserWindow } from "electron";
 import Store from "electron-store";
 import { createSecretStore } from "../agent/secrets.js";
 import { createGenerationRunner, saveGenerationResult } from "./characterCreation.js";
-import { createTextGeneratorFor, createVoiceSynthesizerFor } from "./providerFactory.js";
+import {
+  createImageGeneratorFor,
+  createTextGeneratorFor,
+  createVoiceSynthesizerFor,
+} from "./providerFactory.js";
 import { checkGenerationGate } from "../core/providers/gate.js";
+import { checkGenerationPreconditions } from "../core/providers/consent.js";
+import { computeImageSize } from "../core/characterImage.js";
+import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
 import { deleteCharacter } from "./characterDeletion.js";
 import { activateCharacter, loadCharacterList } from "./characterSelection.js";
@@ -47,6 +54,23 @@ export interface CharacterCreationDeps {
   onActiveCharacterRemoved: () => void;
   // 進捗の送り先(メインウィンドウ)
   getWindow: () => BrowserWindow | null;
+}
+
+// 画像の生成の大きさとシード(docs/data-model.md `system.imageGen` の既定値 512x768)。
+// `system.imageGen` の読み込みは未実装なので既定値をここに置く。保存する大きさ(256x384)は別で、
+// core/characterImage の computeImageSize が持つ(S0036_15)。
+// シードは固定する(再現性の不変条件)。キャラごとに変える必要が出たら設定に出す。
+const IMAGE_GENERATION_WIDTH = 512;
+const IMAGE_GENERATION_HEIGHT = 768;
+const IMAGE_SEED = 42;
+
+// S0036_15 縮小して PNG で保存する — 縦横比を保って 256x384 に収める。
+// 読めない画像は throw し、その画像だけ失敗になる(characterImage のオーケストレーションが拾う)。
+function encodeCharacterImage(bytes: Uint8Array): Uint8Array {
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (image.isEmpty()) throw new Error("image could not be decoded");
+  const { width, height } = image.getSize();
+  return new Uint8Array(image.resize(computeImageSize(width, height)).toPNG());
 }
 
 // API キーと voice ID の解決だけを表す最小の口。値はここで保持しない。
@@ -123,6 +147,29 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
       const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
       if (!voice.ok) return { ok: false, reason: voice.reason, provider: selection.voice };
 
+      // 画像(論点 0036)。画像プロバイダーが使えないときは文言・音声を止めず、画像なしで生成する(S0036_10)。
+      // 外部の画像プロバイダーは同意とキーが揃わない限り組み立てない — ここを通らなければ送信は起こらない
+      // (checkGenerationGate は text / voice だけを見る)。
+      const imagePrecondition = checkGenerationPreconditions({
+        provider: selection.image,
+        hasApiKey: secrets.apiKeyFor(selection.image) !== null,
+        consent: deps.providers.loadConsent(),
+      });
+      const imageBuilt = imagePrecondition.ok
+        ? createImageGeneratorFor(selection.image, factoryDeps)
+        : null;
+      const image: ImageGenerationInput | undefined =
+        imageBuilt !== null && imageBuilt.ok
+          ? {
+              generator: imageBuilt.generator,
+              tagGenerator: text.generator,
+              seed: IMAGE_SEED,
+              width: IMAGE_GENERATION_WIDTH,
+              height: IMAGE_GENERATION_HEIGHT,
+              encode: encodeCharacterImage,
+            }
+          : undefined;
+
       // 再開:既存の完了状態があれば未完了バケットだけを続行する。
       // (pool.json には completion も保存している — characterStore.savePool)
       const resumeFrom = readResumeState(deps.fs, deps.userDataDir, character.id);
@@ -137,6 +184,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
         synthesizer: voice.synthesizer,
         speakerId: character.voicevoxSpeakerId,
         ...(resumeFrom !== undefined ? { resumeFrom } : {}),
+        ...(image !== undefined ? { image } : {}),
         onProgress: (p) => emit({ type: "progress", phase: p.phase, done: p.done, total: p.total }),
       });
 

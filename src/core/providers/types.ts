@@ -30,10 +30,25 @@ export interface VoiceSynthesizer {
   synthesize(request: VoiceSynthesisRequest): Promise<Uint8Array>; // wav バイト列
 }
 
+// 画像タグの要求(論点 0036)。テキストプロバイダーに、画像のプロンプトに入れる英語の短い語句を出させる。
+// セリフの生成(TextGenerator)と型を分けるのは、応答スキーマが違い({ tags } と { messages })、
+// セリフだけを使う呼び出し側(計測・既存の偽物)に画像タグの実装を強いないため。
+export interface ImageTagRequest {
+  prompt: string;
+  seed?: number;
+  timeoutMs: number;
+}
+
+export interface ImageTagGenerator {
+  readonly id: TextProviderId;
+  // 応答はそのまま返す(JSON 文字列または解析済みのオブジェクト)。検証と連結は core/characterImage が持つ
+  generateImageTags(request: ImageTagRequest): Promise<unknown>;
+}
+
 export interface ImageGenerationRequest {
   prompt: string;
   seed: number; // 同一シード + 同一プロンプト = 同一画像(docs/integrations.md)
-  count: number; // 表情差分の枚数(通常/喜び/激励 = 3)
+  count: number; // 同じプロンプトで作る枚数。キャラ画像は 1 枚ずつ要求する(論点 0036)
   width: number;
   height: number;
   timeoutMs: number;

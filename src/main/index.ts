@@ -11,7 +11,7 @@ import { createStore, createAppStore } from "./store.js";
 import { createProviderStore } from "./providerStore.js";
 import { createKeyHook } from "./keyHook.js";
 import { createCheerRuntime } from "./cheerRuntime.js";
-import { createPopupWindow } from "./windows.js";
+import { applyAlwaysShow, createPopupWindow } from "./windows.js";
 import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
@@ -59,17 +59,39 @@ function bootstrap(): void {
   // 表示中に次の発動が来たら上書き + 表示時間リセット(spec 0007 確定事項 #3)。
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // キャラ画像の常時表示(論点 0036)。待機画像と常時表示の設定を窓へ送り、窓を出す・隠す。
+  let popupDisplay = store.loadPopupDisplay();
+  let idleImagePath: string | null = null;
+  const sendCharacterDisplay = (): void => {
+    if (popupWindow.isDestroyed()) return;
+    popupWindow.webContents.send(IpcChannel.CharacterDisplay, {
+      idleImagePath,
+      shouldAlwaysShow: popupDisplay.shouldAlwaysShow,
+    });
+    if (hideTimer !== undefined) clearTimeout(hideTimer);
+    applyAlwaysShow(popupWindow, popupDisplay.shouldAlwaysShow);
+  };
+  // 起動直後は renderer の読み込みが終わっていないので、読み込み後にもう一度送る
+  popupWindow.webContents.on("did-finish-load", sendCharacterDisplay);
+
   // 発動経路の配線:onKeyPress → wav 解決 → ポップアップ IPC + 履歴記録。
   const cheerRuntime = createCheerRuntime(
     {
       userDataDir: app.getPath("userData"),
       popupDurationMs: 5000, // TODO: popup.duration 設定を反映
       wavExists: (path) => fsExistsSync(path),
+      imageExists: (path) => fsExistsSync(path),
+      emitCharacterDisplay: (display) => {
+        idleImagePath = display.idleImagePath;
+        sendCharacterDisplay();
+      },
       emitCheer: (payload) => {
         if (popupWindow.isDestroyed()) return;
         popupWindow.showInactive(); // フォーカスを奪わずに表示する
         popupWindow.webContents.send(IpcChannel.CheerFired, payload);
         if (hideTimer !== undefined) clearTimeout(hideTimer);
+        // 常時表示なら窓は消さない(文言だけ renderer が消す。S0036_19)
+        if (popupDisplay.shouldAlwaysShow) return;
         hideTimer = setTimeout(() => {
           if (!popupWindow.isDestroyed()) popupWindow.hide();
         }, payload.popupDurationMs);
@@ -107,6 +129,11 @@ function bootstrap(): void {
     // これに一切触れない — 応援はプール + wav だけで成立する(CLAUDE.md 不変条件)。
     providers: createProviderStore(rawStore),
     onConfigUpdated: (next) => cheerRuntime.setConfig(next),
+    // S0036_29 再起動しなくても窓を出す・隠す
+    onPopupDisplayUpdated: (next) => {
+      popupDisplay = next;
+      sendCharacterDisplay();
+    },
   });
 
   // キャラ作成(プール・wav 生成)の配線。providers を使うのはこのモジュールの中だけで、

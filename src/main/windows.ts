@@ -13,11 +13,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ビルド出力(dist/)基準のパス。dist/main/ から見た相対位置。
 const POPUP_INDEX = join(__dirname, "../renderer/popup.html");
 
-// 応援ポップアップ:枠なし・透過・常に最前面・タスクバー非表示。
+// 窓の大きさ。縦長にして 256x384 のキャラ画像と文言がおさまるようにする(論点 0036)。
+// 見た目の値で仕様では縛らない(docs/popup.md)。
+const POPUP_WIDTH = 320;
+const POPUP_HEIGHT = 520;
+
+// 応援ポップアップ(キャラの窓):枠なし・透過・常に最前面・タスクバー非表示。
 export function createPopupWindow(): BrowserWindow {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const popupWidth = 320;
-  const popupHeight = 180;
+  const popupWidth = POPUP_WIDTH;
+  const popupHeight = POPUP_HEIGHT;
   const win = new BrowserWindow({
     width: popupWidth,
     height: popupHeight,
@@ -48,4 +53,17 @@ export function createPopupWindow(): BrowserWindow {
     console.error("[keycheer] ポップアップの読み込みに失敗しました", err);
   });
   return win;
+}
+
+// S0036_25 常時表示の窓も入力の邪魔をしない / S0036_24 常時表示を切ると窓を出さない
+// show() / focus() を使わないのは、打鍵中に前面へ出たときフォーカスを奪うため(S0017_06 と同じ理由)。
+// クリック透過は表示し直すたびに当て直す(常に出ている窓が誤クリックを受けないように)。
+export function applyAlwaysShow(win: BrowserWindow, shouldAlwaysShow: boolean): void {
+  if (win.isDestroyed()) return;
+  if (shouldAlwaysShow) {
+    win.setIgnoreMouseEvents(true);
+    win.showInactive();
+  } else {
+    win.hide();
+  }
 }

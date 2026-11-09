@@ -12,11 +12,17 @@ import type { GeneratedBy } from "./shared/types.js";
 //
 // 完了した種別だけを上書きし、それ以外は current の値を残す。完了の判定は種別ごとに独立
 // (論点 0022 決定 2)なので、ここでは「渡された種別 = 欠損なく完了した種別」として扱う。
+// S0036_17 画像が欠けたら image を記録しない — 前の記録も消す
+// cleared は「作り直したが揃わなかった」種別。前の記録を残すと、今の画像を作っていないプロバイダーを
+// 「このキャラの画像を作った」と残すことになる(前の画像は再生成で消している。S0036_13)。
 export function applyGeneratedBy(
   current: GeneratedBy | undefined,
   completed: GeneratedBy,
+  cleared: readonly (keyof GeneratedBy)[] = [],
 ): GeneratedBy {
-  return { ...current, ...completed };
+  const next: GeneratedBy = { ...current, ...completed };
+  for (const kind of cleared) delete next[kind];
+  return next;
 }
 
 // S0022_10 値はプロバイダー識別子の定義域に従う

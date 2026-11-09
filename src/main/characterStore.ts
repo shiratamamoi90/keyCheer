@@ -7,7 +7,8 @@
 // 作ると「書いた場所」と「読む場所」がずれる余地が生まれるため。
 
 import { isValidPool, countMessages, type MessagePool } from "../core/messagePool.js";
-import { resolveWavPath } from "../agent/cheerPlayer.js";
+import { resolveImagePath, resolveWavPath } from "../agent/cheerPlayer.js";
+import type { CharacterImageKind } from "../core/characterImage.js";
 import type { PoolGenerationState } from "../agent/poolGenerator.js";
 import type { GeneratedProfile } from "../core/shared/types.js";
 
@@ -33,6 +34,29 @@ export function poolPath(userDataDir: string, characterId: string): string {
 
 export function voicesDir(userDataDir: string, characterId: string): string {
   return `${characterDir(userDataDir, characterId)}/voices`;
+}
+
+export function imagesDir(userDataDir: string, characterId: string): string {
+  return `${characterDir(userDataDir, characterId)}/images`;
+}
+
+// S0036_07 生成でプール・wav の後に画像 3 枚を保存する — 書き出し先は resolveImagePath と一本化
+// encode は縮小・PNG 化(main が Electron の nativeImage を渡す。S0036_15)。テストでは素通し。
+export function createImageWriter(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+  encode: (bytes: Uint8Array) => Uint8Array = (bytes) => bytes,
+): (kind: CharacterImageKind, bytes: Uint8Array) => void {
+  return (kind, bytes) => {
+    fs.mkdirRecursive(imagesDir(userDataDir, characterId));
+    fs.writeFile(resolveImagePath(userDataDir, characterId, kind), encode(bytes));
+  };
+}
+
+// S0036_13 再生成で画像も作り直し、前の画像を残さない
+export function clearImages(fs: CharacterFs, userDataDir: string, characterId: string): void {
+  fs.removeDirRecursive(imagesDir(userDataDir, characterId));
 }
 
 // シナリオ: ローカル生成でプールと wav が揃う

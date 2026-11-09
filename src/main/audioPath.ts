@@ -14,8 +14,8 @@ function isInside(parent: string, child: string): boolean {
   return c === p || c.startsWith(p.endsWith(sep) ? p : p + sep);
 }
 
-// 許可なら絶対パス、拒否なら null を返す。
-export function resolveAudioRequest(url: string, userDataDir: string): string | null {
+// {userData} 配下で、拡張子が extension のものだけを許す。許可なら絶対パス、拒否なら null。
+function resolveRequest(url: string, userDataDir: string, extension: string): string | null {
   let pathname: string;
   try {
     pathname = decodeURIComponent(new URL(url).pathname.replace(/^\/+/, ""));
@@ -24,7 +24,17 @@ export function resolveAudioRequest(url: string, userDataDir: string): string | 
   }
   if (pathname.length === 0) return null;
   const candidate = normalize(pathname);
-  if (!candidate.toLowerCase().endsWith(".wav")) return null;
+  if (!candidate.toLowerCase().endsWith(extension)) return null;
   if (!isInside(userDataDir, candidate)) return null;
   return candidate;
+}
+
+export function resolveAudioRequest(url: string, userDataDir: string): string | null {
+  return resolveRequest(url, userDataDir, ".wav");
+}
+
+// キャラ画像(論点 0036。docs/popup.md S0036_26)。wav と同じ専用スキームで、.png だけを許す。
+// 拡張子で分けるのは、片方の要求でもう片方の種類のファイルを読ませないため。
+export function resolveImageRequest(url: string, userDataDir: string): string | null {
+  return resolveRequest(url, userDataDir, ".png");
 }

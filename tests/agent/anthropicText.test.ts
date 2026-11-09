@@ -4,6 +4,7 @@ import {
   ANTHROPIC_TOKENS_PER_MESSAGE,
   ANTHROPIC_MAX_TOKENS_MARGIN,
 } from "../../src/agent/providers/anthropicText.js";
+import { buildImageTagText, validateImageTagResponse } from "../../src/core/characterImage.js";
 
 // spec: 論点 0016
 //   Anthropic Messages API による TextGenerator 実装。
@@ -14,6 +15,14 @@ const RESPONSE_SCHEMA = {
   type: "object",
   properties: { messages: { type: "array", items: { type: "string" } } },
   required: ["messages"],
+  additionalProperties: false,
+};
+
+// 画像タグの応答スキーマ(docs/integrations.md「画像タグの要求」の写し。実装の定数から導かない)
+const TAG_SCHEMA = {
+  type: "object",
+  properties: { tags: { type: "array", items: { type: "string" } } },
+  required: ["tags"],
   additionalProperties: false,
 };
 
@@ -209,5 +218,26 @@ describe("anthropic-text / タイムアウト予算を超えたら中断する [
     const assertion = expect(pending).rejects.toThrow(/aborted/);
     await vi.advanceTimersByTimeAsync(5_000);
     await assertion;
+  });
+});
+
+describe("anthropic-text / 画像タグの要求(論点 0036)", () => {
+  it("requests the image tag schema through a forced tool and returns a response the core can read", async () => {
+    const fetchFn = vi.fn(async () =>
+      okJson({ content: [{ type: "tool_use", input: { tags: ["smiling"] } }] }),
+    );
+    const gen = createAnthropicTextGenerator({ apiKey: "sk-ant", model: "claude-haiku", fetchFn });
+
+    const raw = await gen.generateImageTags({ prompt: "tag prompt", timeoutMs: 5_000 });
+
+    const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.system).toContain("tag prompt");
+    expect(body.tools[0].input_schema).toEqual(TAG_SCHEMA);
+    expect(body.tool_choice).toEqual({ type: "tool", name: body.tools[0].name });
+    expect(body.seed).toBeUndefined();
+    expect((init.headers as Record<string, string>)["x-api-key"]).toBe("sk-ant");
+    expect(validateImageTagResponse(raw)).toEqual([]);
+    expect(buildImageTagText(raw)).toBe("smiling");
   });
 });

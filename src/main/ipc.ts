@@ -14,7 +14,9 @@ import type {
   SaveGenerationConfigResult,
   ConsentSnapshot,
 } from "../core/shared/ipc.js";
-import type { GenerationConfig } from "../core/shared/types.js";
+import type { GenerationConfig, PopupDisplayConfig } from "../core/shared/types.js";
+import type { SavePopupDisplayResult } from "../core/shared/ipc.js";
+import { validatePopupDisplayConfig } from "../core/popupDisplayConfig.js";
 import { isConsentableProviderId } from "../core/shared/providerDisclosure.js";
 import { fetchSpeakers } from "./speakerCatalog.js";
 // 信頼境界の検証は electron 非依存の別モジュールに置く(テストで縛るため)。
@@ -28,6 +30,8 @@ export interface IpcDeps {
   providers: ProviderStore;
   // 更新された設定を発動経路へ即時反映する(store 永続化とは別に RuntimeState 側へ)
   onConfigUpdated: (config: TriggerConfig) => void;
+  // 常時表示の変更を窓へ即時反映する(再起動なしで出す・隠す。S0036_29)
+  onPopupDisplayUpdated: (config: PopupDisplayConfig) => void;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
@@ -85,6 +89,20 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return { ok: true };
     },
   );
+
+  // 論点 0036: 設定画面の「キャラを常に表示する」
+  ipcMain.handle(
+    IpcChannel.GetPopupDisplay,
+    (): PopupDisplayConfig => deps.store.loadPopupDisplay(),
+  );
+  ipcMain.handle(IpcChannel.SetPopupDisplay, (_event, raw: unknown): SavePopupDisplayResult => {
+    // renderer からの設定の変更は main 側で検証する(S0033_15 と同じ扱い)
+    const validated = validatePopupDisplayConfig(raw);
+    if (!validated.ok) return { ok: false, errors: validated.errors };
+    deps.store.savePopupDisplay(validated.value);
+    deps.onPopupDisplayUpdated(validated.value);
+    return { ok: true };
+  });
 
   // 論点 0019: 話者一覧。VOICEVOX 未起動でも unavailable を返すだけで落ちない。
   ipcMain.handle(

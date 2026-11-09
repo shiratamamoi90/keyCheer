@@ -238,7 +238,6 @@ describe("poolGenerator / シナリオの応援種別で文の数を決める", 
 });
 
 describe("poolGenerator / 要求数を超える応答は切り詰める [境界]", () => {
-
   it("keeps a short bucket as-is (少ない分は失敗にしない)", async () => {
     const generator = makeGenerator(async () => ["ひとつだけ"]);
     const state = await generatePool({ characterId: "c", character, generator });

@@ -132,6 +132,16 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   shouldActivateOnComplete: true,
 };
 
+// 常時表示の設定(論点 0036。設定 JSON では popup.shouldAlwaysShow)。
+// true ならキャラの窓を常に出し、待機画像を表示する。false なら発動時だけ文言を出す(論点 0017 のまま)。
+export interface PopupDisplayConfig {
+  shouldAlwaysShow: boolean;
+}
+
+export const DEFAULT_POPUP_DISPLAY_CONFIG: PopupDisplayConfig = {
+  shouldAlwaysShow: true,
+};
+
 // オンボーディング状態(論点 0018)。
 // メインウィンドウの自動表示可否のみを持つ(キャラ作成の進捗そのものは character 側で判定)。
 export interface Onboarding {

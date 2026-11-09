@@ -16,6 +16,16 @@ export function resolveWavPath(
   return `${userDataDir}/characters/${characterId}/voices/${messageId}.wav`;
 }
 
+// キャラ画像のパスの決定的解決(docs/data-model.md「画像ファイル」。論点 0036)。
+// wav と同じく、生成側と表示側で規約を二重に持たないためここ 1 箇所にまとめる。
+export function resolveImagePath(
+  userDataDir: string,
+  characterId: string,
+  kind: "idle" | "regular" | "milestone",
+): string {
+  return `${userDataDir}/characters/${characterId}/images/${kind}.png`;
+}
+
 export interface CheerPlaybackPlan {
   popupText: string;
   wavPath: string | null; // null = テキストのみ(wav 欠損 / baseline 定型文)

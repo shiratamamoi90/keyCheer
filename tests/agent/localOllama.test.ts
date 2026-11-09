@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createOllamaTextGenerator } from "../../src/agent/providers/localOllama.js";
 import { DEFAULT_SYSTEM_CONFIG } from "../../src/core/shared/types.js";
+import { buildImageTagText, validateImageTagResponse } from "../../src/core/characterImage.js";
 
 // 要件: docs/integrations.md(Ollama ローカルの呼び出し契約 / 未起動のフォールバック /
 //        自動リトライしない C6)/ decisions/0002-local-llm-ollama.md
@@ -11,6 +12,14 @@ const RESPONSE_SCHEMA = {
   type: "object",
   properties: { messages: { type: "array", items: { type: "string" } } },
   required: ["messages"],
+  additionalProperties: false,
+};
+
+// 画像タグの応答スキーマ(docs/integrations.md「画像タグの要求」の写し。実装の定数から導かない)
+const TAG_SCHEMA = {
+  type: "object",
+  properties: { tags: { type: "array", items: { type: "string" } } },
+  required: ["tags"],
   additionalProperties: false,
 };
 
@@ -153,5 +162,29 @@ describe("local-ollama / 移行先のモデルが Ollama に無い [異常系]",
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string).model).toBe("sarashina2.2-3b-instruct");
+  });
+});
+
+describe("local-ollama / 画像タグの要求(論点 0036)", () => {
+  it("requests the image tag schema through format and returns a response the core can read", async () => {
+    const fetchFn = vi.fn(async () =>
+      okJson({ response: JSON.stringify({ tags: ["smiling", "raising fist"] }) }),
+    );
+    const gen = createOllamaTextGenerator({
+      endpoint: "http://localhost:11434",
+      model: "sarashina2.2-3b-instruct",
+      fetchFn,
+    });
+
+    const raw = await gen.generateImageTags({ prompt: "tag prompt", seed: 7, timeoutMs: 5_000 });
+
+    const [url, init] = fetchFn.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe("http://localhost:11434/api/generate");
+    const body = JSON.parse(init.body as string);
+    expect(body.prompt).toContain("tag prompt");
+    expect(body.format).toEqual(TAG_SCHEMA);
+    expect(body.options.seed).toBe(7);
+    expect(validateImageTagResponse(raw)).toEqual([]);
+    expect(buildImageTagText(raw)).toBe("smiling, raising fist");
   });
 });

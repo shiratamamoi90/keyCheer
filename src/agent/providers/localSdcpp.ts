@@ -1,14 +1,12 @@
-// local-sdcpp: ImageGenerator のローカル実装(sd.cpp 子プロセス)。キャラ設定の「AIで生成」でのみ起動、常駐しない。
+// local-sdcpp: ImageGenerator のローカル実装(sd.cpp 子プロセス)。生成の画像の工程でのみ起動、常駐しない。
 // 要件: docs/integrations.md「画像 (sd.cpp / 外部)」
-//   3 枚生成して終了 / 同一シード + 表情タグ差し替え / タイムアウト・失敗時はプロセス終了(ゾンビ防止) /
+//   同一シード / タイムアウト・失敗時はプロセス終了(ゾンビ防止) /
+//   画像タグは呼び出し側がプロンプトに入れる(論点 0036。旧 通常/喜び/激励の固定タグは持たない) /
 //   子プロセスはタイムアウト・キャンセル・重複起動排他を持つ [不変条件]。
 // spawn / readOutput は注入(main プロセスが child_process.spawn と fs 読み出しを渡す)。
 // [要確認] Vulkan iGPU→失敗時 CPU の自動切替は実バイナリ挙動に合わせて別途(docs/integrations.md)。
 
 import type { ImageGenerator, ImageGenerationRequest } from "../../core/providers/types.js";
-import { EXPRESSION_TAGS, expressionTagAt } from "./expressions.js";
-
-export { EXPRESSION_TAGS };
 
 export interface ChildHandleLike {
   on(event: "close" | "error", listener: (arg: unknown) => void): void;
@@ -17,8 +15,6 @@ export interface ChildHandleLike {
 
 export type SpawnLike = (command: string, args: string[]) => ChildHandleLike;
 
-// 通常 / 喜び / 激励(docs/integrations.md)。同一シードでこのタグだけ差し替える。
-// タグの正本は ./expressions.ts(外部プロバイダーと共有)。
 const DEFAULT_STEPS = 4;
 
 export interface SdcppConfig {
@@ -29,7 +25,6 @@ export interface SdcppConfig {
   spawn: SpawnLike;
   readOutput: (path: string) => Uint8Array;
   makeOutputPath?: (index: number) => string;
-  expressionTags?: string[];
 }
 
 export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
@@ -41,18 +36,17 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
     spawn,
     readOutput,
     makeOutputPath = (i) => `sd-out-${i}.png`,
-    expressionTags = [...EXPRESSION_TAGS],
   } = config;
 
   // 重複起動排他(不変条件): 常駐しない・同時に 1 生成のみ。
   let running = false;
 
-  function buildArgs(request: ImageGenerationRequest, tag: string, outPath: string): string[] {
+  function buildArgs(request: ImageGenerationRequest, outPath: string): string[] {
     const args = [
       "-m",
       modelPath,
       "-p",
-      `${request.prompt}, ${tag}`,
+      request.prompt,
       "-s",
       String(request.seed),
       "--steps",
@@ -115,9 +109,8 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
       try {
         const images: Uint8Array[] = [];
         for (let i = 0; i < request.count; i++) {
-          const tag = expressionTagAt(i, expressionTags);
           const outPath = makeOutputPath(i);
-          images.push(await runOne(buildArgs(request, tag, outPath), outPath, request.timeoutMs));
+          images.push(await runOne(buildArgs(request, outPath), outPath, request.timeoutMs));
         }
         return images;
       } finally {

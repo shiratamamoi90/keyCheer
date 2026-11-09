@@ -49,6 +49,7 @@ import {
   type TextProviderId,
   type VoiceProviderId,
   type GenerationConfig,
+  type PopupDisplayConfig,
 } from "../core/shared/types.js";
 import type { SpeakerOption } from "../core/shared/ipc.js";
 // window.keycheer の型は preload の公開 API がそのまま正本(popup.ts と同じ宣言を共有する)。
@@ -116,6 +117,8 @@ function App(): ReactNS.ReactElement {
   const [blocked, setBlocked] = React.useState<string | null>(null);
   // 設定画面(論点 0033)
   const [generationConfig, setGenerationConfig] = React.useState<GenerationConfig | null>(null);
+  // 常時表示(論点 0036)
+  const [popupDisplay, setPopupDisplay] = React.useState<PopupDisplayConfig | null>(null);
 
   const refreshCharacters = React.useCallback((): void => {
     void window.keycheer.listCharacters().then((items) => {
@@ -137,6 +140,7 @@ function App(): ReactNS.ReactElement {
   React.useEffect(() => {
     void window.keycheer.getProviders().then(setSelection);
     void window.keycheer.getGenerationConfig().then(setGenerationConfig);
+    void window.keycheer.getPopupDisplay().then(setPopupDisplay);
   }, []);
 
   // シナリオ: 話者一覧を VOICEVOX から取得する / VOICEVOX 未起動でも画面は壊れない [異常系]
@@ -286,6 +290,14 @@ function App(): ReactNS.ReactElement {
     const next = { shouldActivateOnComplete: checked };
     void window.keycheer.setGenerationConfig(next).then((result) => {
       if (result.ok) setGenerationConfig(next);
+    });
+  };
+
+  // S0036_29 設定画面で常時表示を切り替える(保存すると main が再起動なしで窓を出す・隠す)
+  const changeAlwaysShow = (checked: boolean): void => {
+    const next = { shouldAlwaysShow: checked };
+    void window.keycheer.setPopupDisplay(next).then((result) => {
+      if (result.ok) setPopupDisplay(next);
     });
   };
 
@@ -571,6 +583,17 @@ function App(): ReactNS.ReactElement {
           changeActivateOnComplete(e.target.checked),
       }),
       "生成が完了したら、そのキャラクターを使用中にする",
+    ),
+    React.createElement(
+      "label",
+      { key: "always-show", className: "agree" },
+      React.createElement("input", {
+        type: "checkbox",
+        checked: popupDisplay?.shouldAlwaysShow ?? true,
+        disabled: popupDisplay === null,
+        onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) => changeAlwaysShow(e.target.checked),
+      }),
+      "キャラを常に表示する",
     ),
   ];
 

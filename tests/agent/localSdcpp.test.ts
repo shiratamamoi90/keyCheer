@@ -50,8 +50,8 @@ const request = {
   timeoutMs: 60_000,
 };
 
-describe("localSdcpp / 3 枚生成して終了 + 同一シード + 表情タグ", () => {
-  it("spawns once per image with the same seed and distinct expression tags", async () => {
+describe("localSdcpp / 枚数ぶん起動 + 同一シード(画像タグは呼び出し側。論点 0036)", () => {
+  it("spawns once per image with the same seed and the prompt as-is", async () => {
     const spawned: { args: string[] }[] = [];
     const spawn: SpawnLike = (_cmd, args) => {
       const child = makeChild();
@@ -74,10 +74,9 @@ describe("localSdcpp / 3 枚生成して終了 + 同一シード + 表情タグ"
       expect(seedIdx).toBeGreaterThanOrEqual(0);
       expect(s.args[seedIdx + 1]).toBe("42");
     }
-    // 表情タグは 3 枚で異なる(プロンプト末尾に付与)
+    // 固定の表情タグ(旧 通常/喜び/激励)を足さない
     const prompts = spawned.map((s) => s.args[s.args.indexOf("-p") + 1]!);
-    expect(new Set(prompts).size).toBe(3);
-    for (const p of prompts) expect(p).toContain("anime girl");
+    expect(prompts).toEqual(["anime girl", "anime girl", "anime girl"]);
     // steps=4 と model/lora が引数に乗る
     expect(spawned[0]!.args).toContain("--steps");
     expect(spawned[0]!.args).toContain("/opt/sd/anime.safetensors");

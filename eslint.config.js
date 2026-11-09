@@ -49,6 +49,11 @@ const cheerPathRestrictedPatterns = [
     message:
       "応援発動経路から providers を import しない(発動はプール + wav のみで成立。CLAUDE.md 不変条件)",
   },
+  {
+    // キャラ画像の画像タグ要求・生成は作成時だけの処理(論点 0036 S0036_26)
+    group: ["./characterImage*", "../characterImage*"],
+    message: "応援発動経路からキャラ画像の生成を import しない(発動で画像を作らない。S0036_26)",
+  },
 ];
 
 // main 側の発動経路グルー(keyHook / cheerRuntime)も providers・生成系から分離する。
@@ -62,6 +67,9 @@ const mainCheerPathRestrictedPatterns = [
       "../agent/voiceSynth*",
       "../agent/secrets*",
       "../agent/auditLog*",
+      // キャラ画像の画像タグ要求・生成(論点 0036 S0036_26)
+      "../agent/characterImage*",
+      "../core/characterImage*",
     ],
     message:
       "応援発動経路(main)から providers・生成系を import しない(発動はプール + wav のみ。CLAUDE.md 不変条件)",

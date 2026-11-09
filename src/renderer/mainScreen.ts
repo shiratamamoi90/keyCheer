@@ -63,7 +63,9 @@ export function applyMainScreenEvent(
 }
 
 function isGenerationRunning(generation: GenerationViewState): boolean {
-  return generation.phase === "text" || generation.phase === "voice";
+  return (
+    generation.phase === "text" || generation.phase === "voice" || generation.phase === "image"
+  );
 }
 
 // S0033_07 生成中はほかの画面でも生成タブに「生成中」と示す

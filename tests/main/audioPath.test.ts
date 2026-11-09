@@ -4,7 +4,11 @@
 // 注: この検証関数はグルー(audioProtocol)から切り出した後付けの契約テスト(Red-first ではない)。
 
 import { describe, it, expect } from "vitest";
-import { AUDIO_SCHEME, resolveAudioRequest } from "../../src/main/audioPath.js";
+import {
+  AUDIO_SCHEME,
+  resolveAudioRequest,
+  resolveImageRequest,
+} from "../../src/main/audioPath.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 
 const USER_DATA = "/home/u/.config/keycheer";
@@ -38,5 +42,23 @@ describe("audioPath / 拒否される要求 [異常系]", () => {
   it("rejects an empty or malformed url", () => {
     expect(resolveAudioRequest(`${AUDIO_SCHEME}://play/`, USER_DATA)).toBeNull();
     expect(resolveAudioRequest("not a url", USER_DATA)).toBeNull();
+  });
+});
+
+// キャラ画像も wav と同じ専用スキームで読む(論点 0036。docs/popup.md「応援の発動で画像を作らない」)。
+// 許可するのは {userData} 配下の .png だけ。
+describe("audioPath / キャラ画像の要求", () => {
+  it("accepts a png under userData and rejects others", () => {
+    const png = `${USER_DATA}/characters/chia/images/idle.png`;
+    expect(resolveImageRequest(urlFor(png), USER_DATA)).toBe(png);
+    expect(resolveImageRequest(urlFor("/etc/secret.png"), USER_DATA)).toBeNull();
+    expect(
+      resolveImageRequest(urlFor(`${USER_DATA}/characters/../../../../etc/x.png`), USER_DATA),
+    ).toBeNull();
+    // wav は画像として読ませない(逆に png を音声として読ませない)
+    expect(
+      resolveImageRequest(urlFor(`${USER_DATA}/characters/chia/voices/m.wav`), USER_DATA),
+    ).toBeNull();
+    expect(resolveAudioRequest(urlFor(png), USER_DATA)).toBeNull();
   });
 });

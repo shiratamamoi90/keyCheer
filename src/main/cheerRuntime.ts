@@ -16,7 +16,7 @@ import {
   type RuntimeState,
   type MessagePool,
 } from "../core/index.js";
-import { planCheerPlayback } from "../agent/cheerPlayer.js";
+import { planCheerPlayback, resolveImagePath } from "../agent/cheerPlayer.js";
 import { baselineMessages } from "../core/baseline/messages.js";
 import type { TriggerConfig, CheerHistoryEntry } from "../core/shared/types.js";
 import type { CheerFiredPayload } from "../core/shared/ipc.js";
@@ -40,6 +40,10 @@ export interface CheerRuntimeDeps {
   // 統計のまとめ書き(flushStats から日付ごとに 1 回ずつ呼ばれる)
   recordStats?: (delta: StatsDelta) => void;
   random?: () => number; // 既定 Math.random(テスト時に固定シード注入可)
+  // キャラ画像の実在チェック(論点 0036)。省略時は画像を渡さない
+  imageExists?: (path: string) => boolean;
+  // 使用中のキャラクターが変わったら待機画像を窓へ渡す(S0036_23)。画像が無ければ null
+  emitCharacterDisplay?: (display: { idleImagePath: string | null }) => void;
 }
 
 export interface CheerRuntimeOptions {
@@ -81,6 +85,13 @@ export function createCheerRuntime(
   // 未永続化の統計。日付をまたぐ可能性があるのでローカル日付ごとに貯める。
   const pending = new Map<string, { keys: number; activeMs: number }>();
 
+  // 保存済みのキャラ画像だけを渡す。発動で画像を作らない(S0036_26)— 無ければ null
+  const existingImage = (kind: "idle" | "regular" | "milestone"): string | null => {
+    if (characterId === null || deps.imageExists === undefined) return null;
+    const path = resolveImagePath(deps.userDataDir, characterId, kind);
+    return deps.imageExists(path) ? path : null;
+  };
+
   return {
     setConfig(next) {
       config = next; // 設定変更の即時反映(次の押下から有効。RuntimeState は保持)
@@ -89,6 +100,8 @@ export function createCheerRuntime(
     setActiveCharacter(id, nextPool) {
       characterId = id;
       pool = nextPool;
+      // S0036_23 使用中のキャラクターを切り替えたら待機画像も切り替わる(プールが無くても待機画像は出す)
+      deps.emitCharacterDisplay?.({ idleImagePath: existingImage("idle") });
     },
 
     flushStats() {
@@ -147,6 +160,8 @@ export function createCheerRuntime(
         message: plan.popupText,
         wavPath: plan.wavPath,
         popupDurationMs: deps.popupDurationMs,
+        // S0036_19 その応援種別の画像。S0036_22 定型文の応援では渡さない(renderer は待機画像を出す)
+        imagePath: cheer.source === "pool" ? existingImage(cheer.type) : null,
       });
 
       // シナリオ: 履歴の記録(cheer-trigger.md)。入力内容は含めない。

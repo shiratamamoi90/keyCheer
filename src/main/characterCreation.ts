@@ -1,5 +1,5 @@
-// characterCreation: プール生成 → wav 合成 → 永続化のオーケストレーション。
-// spec: 論点 0020
+// characterCreation: プール生成 → wav 合成 → キャラ画像 → 永続化のオーケストレーション。
+// spec: 論点 0020 / 論点 0036(画像の工程)
 //
 // 生成の中身は agent 側(generatePool / synthesizePoolVoices)が持つ。ここは配線と
 // 「いつ保存するか」「失敗をどう扱うか」だけを決める。
@@ -7,14 +7,29 @@
 
 import { generatePool, isPoolComplete, type PoolGenerationState } from "../agent/poolGenerator.js";
 import { synthesizePoolVoices } from "../agent/voiceSynth.js";
+import { generateCharacterImages } from "../agent/characterImage.js";
+import { CHARACTER_IMAGE_KINDS, type CharacterImageKind } from "../core/characterImage.js";
+import { resolveImagePath } from "../agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
-import type { TextGenerator, VoiceSynthesizer } from "../core/providers/types.js";
+import type {
+  ImageGenerator,
+  ImageTagGenerator,
+  TextGenerator,
+  VoiceSynthesizer,
+} from "../core/providers/types.js";
 import type { GeneratedBy } from "../core/shared/types.js";
 import type { AppStore } from "./store.js";
 import { loadActiveCharacterPool, type ActiveCharacterPoolDeps } from "./characterSelection.js";
-import { savePool, createWavWriter, clearVoices, type CharacterFs } from "./characterStore.js";
+import {
+  savePool,
+  createWavWriter,
+  clearVoices,
+  createImageWriter,
+  clearImages,
+  type CharacterFs,
+} from "./characterStore.js";
 
-export type GenerationPhase = "text" | "voice";
+export type GenerationPhase = "text" | "voice" | "image";
 
 export interface GenerationProgress {
   phase: GenerationPhase;
@@ -35,18 +50,47 @@ export interface StartGenerationInput {
   onProgress?: (progress: GenerationProgress) => void;
   timeoutMsPerBucket?: number;
   timeoutMsPerMessage?: number;
+  // 画像の工程(論点 0036)。渡したときだけ画像を作る(画像プロバイダーを組み立てられないときは渡さない)
+  image?: ImageGenerationInput;
+}
+
+export interface ImageGenerationInput {
+  generator: ImageGenerator;
+  tagGenerator: ImageTagGenerator;
+  seed: number;
+  width: number;
+  height: number;
+  timeoutMsPerImage?: number;
+  // 縮小・PNG 化(S0036_15)。main が Electron の nativeImage を渡す。省略時は素通し
+  encode?: (bytes: Uint8Array) => Uint8Array;
+}
+
+// images: 画像の工程を通したときだけ持つ。missing = 作れなかった画像(S0036_10 のエラー表示に使う)
+export interface ImagesOutcome {
+  saved: CharacterImageKind[];
+  missing: CharacterImageKind[];
 }
 
 // completed: 欠損なく完了した種別と、実際に使ったプロバイダー ID(論点 0022)。
 // 保存は呼び出し側(store.recordGeneratedBy)。runner は store を知らない。
+// cleared: 作り直したが揃わなかった種別。前の記録も消す(S0036_17)
 export type GenerationResult =
-  | { ok: true; pool: MessagePool; synthesized: number; missing: number; completed: GeneratedBy }
+  | {
+      ok: true;
+      pool: MessagePool;
+      synthesized: number;
+      missing: number;
+      completed: GeneratedBy;
+      cleared?: (keyof GeneratedBy)[];
+      images?: ImagesOutcome;
+    }
   | {
       ok: false;
       reason: "text-generation-failed" | "cancelled" | "already-running";
       state?: PoolGenerationState;
       // already-running では生成を始めていないので持たない(記録の対象外)
       completed?: GeneratedBy;
+      cleared?: (keyof GeneratedBy)[];
     };
 
 export interface GenerationRunner {
@@ -56,6 +100,7 @@ export interface GenerationRunner {
 }
 
 const DEFAULT_TIMEOUT_MS_PER_MESSAGE = 30_000;
+const DEFAULT_TIMEOUT_MS_PER_IMAGE = 120_000;
 
 function allMessages(pool: MessagePool): PoolMessage[] {
   const messages: PoolMessage[] = [];
@@ -148,12 +193,70 @@ export function createGenerationRunner(): GenerationRunner {
             ? { text: input.textGenerator.id, voice: input.synthesizer.id }
             : { text: input.textGenerator.id };
 
+        if (input.image === undefined) {
+          return {
+            ok: true,
+            pool: state.pool,
+            synthesized: synthesized.length,
+            missing: missing.length,
+            completed,
+          };
+        }
+
+        // --- 画像(論点 0036) ---
+        // S0036_12 再開(resumeFrom あり)では保存済みの画像を作り直さない。
+        // S0036_13 再生成(resumeFrom なし)では前の画像を消してから作る — 前のプロフィールの絵を混ぜない。
+        // S0036_11 テキストが揃わなければここに来ない(上で return 済み)。
+        const image = input.image;
+        if (input.resumeFrom === undefined) {
+          clearImages(input.fs, input.userDataDir, input.characterId);
+        }
+        const isSaved = (kind: CharacterImageKind): boolean =>
+          input.fs.exists(resolveImagePath(input.userDataDir, input.characterId, kind));
+        const alreadySaved = CHARACTER_IMAGE_KINDS.filter(isSaved);
+        const images = await generateCharacterImages({
+          character: input.character,
+          pool: state.pool,
+          tagGenerator: image.tagGenerator,
+          imageGenerator: image.generator,
+          seed: image.seed,
+          width: image.width,
+          height: image.height,
+          timeoutMsPerImage: image.timeoutMsPerImage ?? DEFAULT_TIMEOUT_MS_PER_IMAGE,
+          kinds: CHARACTER_IMAGE_KINDS.filter((kind) => !isSaved(kind)),
+          writeImage: createImageWriter(
+            input.fs,
+            input.userDataDir,
+            input.characterId,
+            image.encode,
+          ),
+          shouldCancel,
+          // S0036_08 進捗に画像の工程が含まれる(保存済みの分も done に数える)
+          onProgress: (done) =>
+            input.onProgress?.({
+              phase: "image",
+              done: alreadySaved.length + done,
+              total: CHARACTER_IMAGE_KINDS.length,
+            }),
+        });
+
+        if (images.cancelled) {
+          // 中断:テキスト・音声は揃っているので記録する。使用中は変えない(S0032_32)
+          return { ok: false, reason: "cancelled", state, completed };
+        }
+
+        // S0036_09 / S0036_10 画像が一部・全部欠けても生成は完了とする(応援は画像なしでも成立する)
+        // S0036_16 3 枚揃ったら image を記録 / S0036_17 欠けたら記録せず、前の記録も消す
+        const saved = CHARACTER_IMAGE_KINDS.filter(isSaved);
+        const isComplete = saved.length === CHARACTER_IMAGE_KINDS.length;
         return {
           ok: true,
           pool: state.pool,
           synthesized: synthesized.length,
           missing: missing.length,
-          completed,
+          completed: isComplete ? { ...completed, image: image.generator.id } : completed,
+          ...(isComplete ? {} : { cleared: ["image" as const] }),
+          images: { saved, missing: CHARACTER_IMAGE_KINDS.filter((kind) => !isSaved(kind)) },
         };
       } finally {
         running = false;
@@ -184,7 +287,9 @@ export function saveGenerationResult(
   result: GenerationResult,
 ): void {
   // 失敗時も completed を渡す — 空なら何も変わらない
-  if (result.completed !== undefined) deps.store.recordGeneratedBy(characterId, result.completed);
+  if (result.completed !== undefined) {
+    deps.store.recordGeneratedBy(characterId, result.completed, result.cleared ?? []);
+  }
   // S0032_32 中断・失敗した生成では使用中を変えない [否定]
   if (!result.ok) return;
 

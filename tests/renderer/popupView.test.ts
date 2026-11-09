@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  applyCharacterDisplay,
   initialPopupState,
   showCheer,
   tick,
@@ -105,6 +106,113 @@ describe("popupView / wav が無い発動はテキストのみ [異常系]", () 
 describe("popupView / 入力内容は renderer に渡らない [不変条件]", () => {
   it("keeps only display fields in the view state", () => {
     const { state } = showCheer(initialPopupState, payload(), 1_000);
-    expect(Object.keys(state).sort()).toEqual(["durationMs", "shownAt", "text", "visible"]);
+    // 論点 0036 で画像のパス(待機画像・いま描く画像)と常時表示を足した。どれも表示に使う値で、入力内容ではない
+    expect(Object.keys(state).sort()).toEqual([
+      "durationMs",
+      "idleImagePath",
+      "imagePath",
+      "shouldAlwaysShow",
+      "shownAt",
+      "text",
+      "visible",
+    ]);
+  });
+});
+
+// キャラ画像の常時表示と切り替え(論点 0036)。docs/popup.md
+const IDLE = "/userData/characters/c/images/idle.png";
+const MILESTONE = "/userData/characters/c/images/milestone.png";
+
+describe("popupView / 常時表示なら待機画像を出し続ける", () => {
+  it("S0036_18 keeps the window shown with the idle image and no text", () => {
+    // GIVEN 常時表示、使用中のキャラクターに待機画像がある / WHEN 応援が出ていない
+    const state = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: true,
+    });
+
+    // THEN 窓が表示され、待機画像を描き、文言は描かない
+    expect(state.visible).toBe(true);
+    expect(state.imagePath).toBe(IDLE);
+    expect(state.text).toBe("");
+  });
+});
+
+describe("popupView / 応援でその応援種別の画像に切り替え、表示時間の後に待機画像へ戻す", () => {
+  it("S0036_19 shows the milestone image with the text, then returns to the idle image without hiding", () => {
+    // GIVEN 常時表示で待機画像を表示中
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: true,
+    });
+
+    // WHEN milestone の応援が発動する
+    const { state: cheering } = showCheer(
+      idle,
+      payload({ type: "milestone", message: "1000 回達成!", imagePath: MILESTONE }),
+      1_000,
+    );
+
+    // THEN 文言とともに milestone の画像を描く
+    expect(cheering.text).toBe("1000 回達成!");
+    expect(cheering.imagePath).toBe(MILESTONE);
+    // 表示時間が過ぎたら文言を消して待機画像に戻し、窓は消さない
+    const after = tick(cheering, 6_000);
+    expect(after.visible).toBe(true);
+    expect(after.text).toBe("");
+    expect(after.imagePath).toBe(IDLE);
+  });
+});
+
+describe("popupView / その応援種別の画像が無ければ待機画像を出す [異常系]", () => {
+  it("S0036_20 falls back to the idle image when the payload has no image", () => {
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: true,
+    });
+
+    const { state } = showCheer(idle, payload({ imagePath: null }), 1_000);
+
+    expect(state.text).toBe("いいペースだね!");
+    expect(state.imagePath).toBe(IDLE);
+  });
+});
+
+describe("popupView / 待機画像も無ければ画像を出さない [異常系]", () => {
+  it("S0036_21 draws no image while idle nor while cheering when there is no idle image", () => {
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: null,
+      shouldAlwaysShow: true,
+    });
+    expect(idle.imagePath).toBeNull();
+
+    const { state, playWavPath } = showCheer(
+      idle,
+      payload({ imagePath: null, wavPath: "/userData/characters/c/voices/m.wav" }),
+      1_000,
+    );
+
+    expect(state.imagePath).toBeNull();
+    expect(state.text).toBe("いいペースだね!");
+    expect(playWavPath).toBe("/userData/characters/c/voices/m.wav");
+  });
+});
+
+describe("popupView / 常時表示を切ると発動時だけ文言を出す [否定]", () => {
+  it("S0036_24 hides the window while idle and never draws an image", () => {
+    // GIVEN 常時表示を切り、使用中のキャラクターに画像がある
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: false,
+    });
+    // 応援が出ていない間は窓を出さない
+    expect(idle.visible).toBe(false);
+
+    // 発動時は文言だけを出し、画像は描かない
+    const { state } = showCheer(idle, payload({ imagePath: MILESTONE }), 1_000);
+    expect(state.visible).toBe(true);
+    expect(state.imagePath).toBeNull();
+    // 表示時間が過ぎたら消える(論点 0017 の挙動のまま)
+    expect(tick(state, 6_000).visible).toBe(false);
   });
 });

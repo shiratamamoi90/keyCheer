@@ -16,6 +16,7 @@ import {
   DEFAULT_ONBOARDING,
   DEFAULT_SYSTEM_CONFIG,
   DEFAULT_GENERATION_CONFIG,
+  DEFAULT_POPUP_DISPLAY_CONFIG,
   MAX_CHARACTER_COUNT,
   type TriggerConfig,
   type Stats,
@@ -25,6 +26,7 @@ import {
   type Onboarding,
   type SystemConfig,
   type GenerationConfig,
+  type PopupDisplayConfig,
 } from "../core/shared/types.js";
 
 // electron-store に持たせる最小スキーマ(Phase 1。popup は UI 実装時に追加)。
@@ -37,6 +39,8 @@ interface PersistedSchema {
   // 旧形式(論点 0032 より前)。読み込み時に characters へ移して消す(S0032_24)
   character?: Partial<Character>;
   generation?: Partial<GenerationConfig>;
+  // popup はほかの項目(position / duration / opacity)も持つ。常時表示だけをここで読み書きする
+  popup?: Record<string, unknown>;
   onboarding?: Onboarding;
   system?: Partial<SystemConfig>;
   [key: string]: unknown;
@@ -70,10 +74,17 @@ export interface AppStore {
   // (characterDeletion.ts)— store は fs も生成の状態も知らない。
   removeCharacter(characterId: string): void;
   // 論点 0022: 欠損なく完了した種別だけを generatedBy に記録する(他の種別は残す)。
-  recordGeneratedBy(characterId: string, completed: GeneratedBy): void;
+  recordGeneratedBy(
+    characterId: string,
+    completed: GeneratedBy,
+    cleared?: readonly (keyof GeneratedBy)[],
+  ): void;
   loadGeneration(): GenerationConfig;
   // 検証(真偽値か)は呼び出し側(core/generationConfig)。
   saveGeneration(config: GenerationConfig): void;
+  // 常時表示(論点 0036)。検証(真偽値か)は呼び出し側(core/popupDisplayConfig)。
+  loadPopupDisplay(): PopupDisplayConfig;
+  savePopupDisplay(config: PopupDisplayConfig): void;
   loadSystem(): SystemConfig;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
@@ -290,13 +301,13 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     },
 
     // 保存されていないキャラ(id が一覧に無い)なら何もしない。生成は保存済みキャラに対してのみ。
-    recordGeneratedBy(characterId, completed) {
+    recordGeneratedBy(characterId, completed, cleared = []) {
       const characters = readCharacters();
       store.set(
         "characters",
         characters.map((c) =>
           c.id === characterId
-            ? { ...c, generatedBy: applyGeneratedBy(c.generatedBy, completed) }
+            ? { ...c, generatedBy: applyGeneratedBy(c.generatedBy, completed, cleared) }
             : c,
         ),
       );
@@ -341,6 +352,22 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     // S0033_14 generation だけを書く(キャラクター・使用中・トリガー・統計に触れない)
     saveGeneration(config) {
       store.set("generation", { shouldActivateOnComplete: config.shouldActivateOnComplete });
+    },
+
+    // S0036_27 `popup.shouldAlwaysShow` の既定値 — 真偽値でない保存値は書き換えない(S0032_31 と同じ)
+    loadPopupDisplay() {
+      const stored = store.get("popup")?.shouldAlwaysShow;
+      if (stored === undefined) return DEFAULT_POPUP_DISPLAY_CONFIG;
+      if (typeof stored !== "boolean") {
+        console.error("[keycheer] popup.shouldAlwaysShow が真偽値ではありません", stored);
+        return DEFAULT_POPUP_DISPLAY_CONFIG;
+      }
+      return { shouldAlwaysShow: stored };
+    },
+
+    // S0036_29 設定画面で常時表示を切り替える — popup のほかの項目は残す
+    savePopupDisplay(config) {
+      store.set("popup", { ...store.get("popup"), shouldAlwaysShow: config.shouldAlwaysShow });
     },
 
     loadOnboarding() {

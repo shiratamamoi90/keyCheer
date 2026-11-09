@@ -157,8 +157,9 @@ describe("openai-dalle / 呼び出し契約", () => {
     expect([...images[0]!.slice(0, 4)]).toEqual([137, 80, 78, 71]);
   });
 
-  // 要件: docs/integrations.md「3 枚生成して終了」/「通常/喜び/激励の 3 枚を表情タグ差し替えで生成」
-  it("S0016_28 3 枚生成して終了: requests one image per expression tag (通常/喜び/激励)", async () => {
+  // 要件: docs/integrations.md「画像」— 画像タグは呼び出し側がプロンプトに入れる(論点 0036)。
+  // 実装が固定の表情タグ(旧 通常/喜び/激励)を足さないこと
+  it("sends the prompt as-is, one request per image", async () => {
     const b64 = Buffer.from(IMG).toString("base64");
     const fetchFn = vi.fn(
       async () =>
@@ -180,9 +181,7 @@ describe("openai-dalle / 呼び出し契約", () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
     const calls = fetchFn.mock.calls as unknown as [string, RequestInit][];
     const prompts = calls.map((c) => JSON.parse(c[1].body as string).prompt as string);
-    // 3 枚とも同じベースプロンプト + 別々の表情タグ(ローカル sd.cpp と同じ 3 表情)
-    expect(prompts.every((p) => p.startsWith("anime girl, "))).toBe(true);
-    expect(new Set(prompts).size).toBe(3);
+    expect(prompts).toEqual(["anime girl", "anime girl", "anime girl"]);
     // 1 リクエスト = 1 枚(dall-e-3 は n=1 のみ受け付ける)
     for (const call of calls) {
       expect(JSON.parse(call[1].body as string).n).toBe(1);

@@ -5,7 +5,7 @@
 
 import { protocol, net } from "electron";
 import { pathToFileURL } from "node:url";
-import { AUDIO_SCHEME, resolveAudioRequest } from "./audioPath.js";
+import { AUDIO_SCHEME, resolveAudioRequest, resolveImageRequest } from "./audioPath.js";
 
 export { AUDIO_SCHEME };
 
@@ -23,7 +23,10 @@ export function registerAudioSchemePrivileges(): void {
 
 export function registerAudioProtocol(userDataDir: string): void {
   protocol.handle(AUDIO_SCHEME, async (request) => {
-    const filePath = resolveAudioRequest(request.url, userDataDir);
+    // キャラ画像も同じスキームで配る(論点 0036)。.wav / .png 以外は拒否
+    const filePath =
+      resolveAudioRequest(request.url, userDataDir) ??
+      resolveImageRequest(request.url, userDataDir);
     if (filePath === null) return new Response("forbidden", { status: 403 });
     return net.fetch(pathToFileURL(filePath).toString());
   });
