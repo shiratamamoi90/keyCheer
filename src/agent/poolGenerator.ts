@@ -1,4 +1,4 @@
-// poolGenerator: キャラ作成時に 24 シナリオ × 約 20 文のメッセージプールを一括生成する
+// poolGenerator: キャラ作成時に 24 シナリオ(計 48 文。論点 0037)のメッセージプールを一括生成する
 // オーケストレーション。I/O(実際の LLM 呼び出し)は TextGenerator として注入される。
 // 要件: docs/integrations.md(プール一括生成成功 / 中断と再開 / 進捗 UX / 文字数契約 /
 //        Ollama 未起動のフォールバック)
@@ -6,6 +6,7 @@
 
 import {
   ALL_BUCKET_KEYS,
+  computeMessageCount,
   type BucketKey,
   type MessagePool,
   type PoolMessage,
@@ -28,13 +29,7 @@ export interface CharacterProfile {
 
 // 正本は core/textResponse(パース規則と同じ場所に置く)。既存の参照先を保つため再エクスポートする
 export { MAX_MESSAGE_LENGTH };
-// バケットあたりの生成文数。24 バケット × 8 = 192 文。
-// 2026-07-26 に 20(= 480 文)から引き下げた。理由はキャラ作成の所要時間と wav の
-// ディスク使用量(480 文だと 16〜32 分 / 約 80MB、192 文なら 7〜13 分 / 約 33MB)。
-// 20 という数字は decisions/0007 で [要確認] のまま置かれた未検証の見積もりだった。
-// 引き下げにより同じ文を聞く頻度は上がる(1 時間の打鍵で 3〜4 回 → 9 回程度)。
-// 「何文なら飽きないか」は指標でしか測れないため、実使用で調整する前提の初期値。
-export const MESSAGES_PER_BUCKET = 8;
+// バケットあたりの生成文数は応援種別で決まる(core の computeMessageCount。論点 0037)。
 const DEFAULT_TIMEOUT_MS_PER_BUCKET = 60_000;
 
 export function emptyPoolState(characterId: string): PoolGenerationState {
@@ -92,6 +87,7 @@ export interface GeneratePoolInput {
   characterId: string;
   character: CharacterProfile;
   generator: TextGenerator;
+  // 指定すると全バケット一律にこの数を要求する(テスト・計測用)。省略時は応援種別で決まる
   messagesPerBucket?: number;
   timeoutMsPerBucket?: number;
   seed?: number;
@@ -107,7 +103,7 @@ export async function generatePool(input: GeneratePoolInput): Promise<PoolGenera
     characterId,
     character,
     generator,
-    messagesPerBucket = MESSAGES_PER_BUCKET,
+    messagesPerBucket,
     timeoutMsPerBucket = DEFAULT_TIMEOUT_MS_PER_BUCKET,
     seed,
     resumeFrom,
@@ -124,15 +120,16 @@ export async function generatePool(input: GeneratePoolInput): Promise<PoolGenera
     if (completion[key] === "complete") continue;
     if (shouldCancel?.()) break; // 以降は pending / failed のまま残す(部分結果保持)
 
+    const count = messagesPerBucket ?? computeMessageCount(key);
     try {
       const raw = await generator.generateMessages({
-        systemPrompt: buildSystemPrompt(character, key, messagesPerBucket),
+        systemPrompt: buildSystemPrompt(character, key, count),
         scenarioKey: key,
-        count: messagesPerBucket,
+        count,
         ...(seed !== undefined ? { seed } : {}),
         timeoutMs: timeoutMsPerBucket,
       });
-      const texts = buildMessageTexts(raw, messagesPerBucket);
+      const texts = buildMessageTexts(raw, count);
       if (texts.length === 0) {
         // 全文が空 = 実質失敗。空バケット complete にすると発動時フォールバック頼みになるため failed
         completion[key] = "failed";

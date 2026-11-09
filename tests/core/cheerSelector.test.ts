@@ -84,20 +84,28 @@ describe("cheerSelector", () => {
       expect(result.messageId).toBe("b");
     });
 
-    it("falls back to allowing the last messageId when it is the only entry", () => {
-      // バケットに 1 文しかない場合、除外すると 0 になる → 除外を諦めて出す
-      const pool = makePool(() => [{ id: "only", text: "lonely" }]);
+    it("S0037_03 picks the only message of a single-message bucket even if it was the last one", () => {
+      // GIVEN (fast, milestone, night) が 1 文だけを持ち、直前にその文を選んだ(論点 0037 で milestone は 1 文)
+      const pool = makePool((key) =>
+        key === "fast_milestone_night"
+          ? [{ id: "only", text: "lonely" }]
+          : [{ id: `${key}-other`, text: "other" }],
+      );
+      // WHEN 同じバケットから次に選ぶ
       const result = selectCheer({
         pool,
         zone: "fast",
-        type: "regular",
-        timeOfDay: "evening",
-        lastMessageIdByBucket: { fast_regular_evening: "only" },
+        type: "milestone",
+        timeOfDay: "night",
+        milestone: 1000,
+        lastMessageIdByBucket: { fast_milestone_night: "only" },
         baseline: makeBaseline("BASE"),
         random: () => 0,
       });
+      // THEN その文を選び、別のバケットや baseline へフォールバックしない
       expect(result.messageId).toBe("only");
       expect(result.source).toBe("pool");
+      expect(result.sourceBucketKey).toBe("fast_milestone_night");
     });
 
     it("does not exclude based on a different bucket's last messageId", () => {

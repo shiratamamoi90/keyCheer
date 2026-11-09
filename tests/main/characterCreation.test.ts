@@ -16,7 +16,6 @@ import { createAppStore, type StoreLike } from "../../src/main/store.js";
 import type { MessagePool } from "../../src/core/messagePool.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
-import { MESSAGES_PER_BUCKET } from "../../src/agent/poolGenerator.js";
 import type { TextGenerator, VoiceSynthesizer } from "../../src/core/providers/types.js";
 
 const USER_DATA = "/userdata";
@@ -77,7 +76,7 @@ describe("characterCreation / ローカル生成でプールと wav が揃う", 
     expect(saved).not.toBeNull();
     expect(Object.keys(saved!.buckets)).toHaveLength(24);
 
-    const expectedTotal = 24 * MESSAGES_PER_BUCKET;
+    const expectedTotal = 48; // regular 3 文 × 12 + milestone 1 文 × 12(論点 0037)
     expect(result.synthesized).toBe(expectedTotal);
     expect(result.missing).toBe(0);
 
@@ -104,7 +103,7 @@ describe("characterCreation / 生成の進捗が通知される", () => {
     expect(lastText).toEqual({ phase: "text", done: 24, total: 24 });
 
     const lastVoice = progress.filter((p) => p.phase === "voice").at(-1);
-    const total = 24 * MESSAGES_PER_BUCKET;
+    const total = 48;
     expect(lastVoice).toEqual({ phase: "voice", done: total, total });
   });
 });
@@ -147,7 +146,7 @@ describe("characterCreation / VOICEVOX 未起動で音声だけ失敗した [異
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.synthesized).toBe(0);
-    expect(result.missing).toBe(24 * MESSAGES_PER_BUCKET);
+    expect(result.missing).toBe(48);
     expect(loadPool(fs, USER_DATA, CHAR_ID)).not.toBeNull();
     expect(Object.keys(fs.files).filter((p) => p.endsWith(".wav"))).toHaveLength(0);
   });
@@ -170,7 +169,7 @@ describe("characterCreation / 音声の部分失敗を許容する [境界]", ()
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const total = 24 * MESSAGES_PER_BUCKET;
+    const total = 48;
     expect(result.missing).toBeGreaterThan(0);
     expect(result.synthesized + result.missing).toBe(total);
   });

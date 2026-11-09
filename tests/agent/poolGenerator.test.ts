@@ -5,7 +5,6 @@ import {
   emptyPoolState,
   isPoolComplete,
   MAX_MESSAGE_LENGTH,
-  MESSAGES_PER_BUCKET,
 } from "../../src/agent/poolGenerator.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
 import type { TextGenerator, TextGenerationRequest } from "../../src/core/providers/types.js";
@@ -34,7 +33,7 @@ function makeGenerator(
 }
 
 describe("poolGenerator / プール一括生成成功", () => {
-  it("S0016_14 generates 24 buckets x MESSAGES_PER_BUCKET messages, addressable by scenario key", async () => {
+  it("S0016_14 generates 48 messages over 24 buckets (regular 3 / milestone 1), addressable by scenario key", async () => {
     const generator = makeGenerator(async ({ count }) =>
       Array.from({ length: count }, (_, i) => `msg${i}`),
     );
@@ -51,13 +50,11 @@ describe("poolGenerator / プール一括生成成功", () => {
     let total = 0;
     for (const key of ALL_BUCKET_KEYS) {
       expect(state.completion[key]).toBe("complete");
-      expect(state.pool.buckets[key]).toHaveLength(MESSAGES_PER_BUCKET);
+      // 論点 0037:regular 3 文・milestone 1 文
+      expect(state.pool.buckets[key]).toHaveLength(key.includes("_milestone_") ? 1 : 3);
       total += state.pool.buckets[key].length;
     }
-    expect(total).toBe(24 * MESSAGES_PER_BUCKET);
-    // 既定値は 8(= 192 文)。20(= 480 文)から引き下げた根拠は
-    // decisions/0007 と 論点 0020 を参照(作成時間とディスク使用量)。
-    expect(MESSAGES_PER_BUCKET).toBe(8);
+    expect(total).toBe(48);
     // シナリオごとに 1 回ずつ呼ばれ、scenarioKey が渡る
     expect(generator.calls).toHaveLength(24);
     expect(new Set(generator.calls.map((c) => c.scenarioKey))).toEqual(new Set(ALL_BUCKET_KEYS));
@@ -88,7 +85,8 @@ describe("poolGenerator / 文字数契約 [境界]", () => {
     const long = "あ".repeat(45);
     const generator = makeGenerator(async () => [long, "短い文"]);
     const state = await generatePool({ characterId: "c", character, generator });
-    for (const key of ALL_BUCKET_KEYS) {
+    // 2 文以上を残せる regular のバケットで見る(milestone は 1 文。論点 0037)
+    for (const key of ALL_BUCKET_KEYS.filter((k) => k.includes("_regular_"))) {
       const texts = state.pool.buckets[key].map((m) => m.text);
       expect(texts[0]).toBe("あ".repeat(MAX_MESSAGE_LENGTH));
       expect(texts[1]).toBe("短い文");
@@ -98,7 +96,7 @@ describe("poolGenerator / 文字数契約 [境界]", () => {
   it("drops empty strings from generator output", async () => {
     const generator = makeGenerator(async () => ["ok", "", "  ", "ok2"]);
     const state = await generatePool({ characterId: "c", character, generator });
-    for (const key of ALL_BUCKET_KEYS) {
+    for (const key of ALL_BUCKET_KEYS.filter((k) => k.includes("_regular_"))) {
       expect(state.pool.buckets[key].map((m) => m.text)).toEqual(["ok", "ok2"]);
     }
   });
@@ -197,22 +195,49 @@ describe("poolGenerator / 初期状態", () => {
   });
 });
 
-// 要件: docs/integrations.md「プール一括生成成功」(24 シナリオ × 8 文 = 192 文)
+// 要件: docs/integrations.md「テキスト(セリフ生成)」(論点 0037)
 // プロンプトで件数を指示しても LLM がそのとおり返す保証はない。多く返された場合に
-// そのまま採用すると、プール総数・生成時間・ディスク使用量の見積もりが崩れる
-// (2026-07-26 の 480 → 192 削減が無意味になる)。
-describe("poolGenerator / 要求数を超える応答は切り詰める [境界]", () => {
-  it("truncates a bucket to messagesPerBucket when the provider returns more", async () => {
+// そのまま採用すると、プール総数・生成時間・ディスク使用量の見積もりが崩れる。
+describe("poolGenerator / シナリオの応援種別で文の数を決める", () => {
+  it("S0037_01 requests count 3 for regular scenarios and count 1 for milestone scenarios", async () => {
+    // GIVEN regular と milestone のシナリオ(24 バケット全部)
     const generator = makeGenerator(async ({ count }) =>
-      Array.from({ length: count + 7 }, (_, i) => `msg${i}`),
+      Array.from({ length: count }, (_, i) => `msg${i}`),
     );
+
+    // WHEN プールを生成する
+    await generatePool({ characterId: "c", character, generator });
+
+    // THEN 要求の count と、システムプロンプトの {count} が応援種別で決まる
+    expect(generator.calls).toHaveLength(24);
+    for (const call of generator.calls) {
+      const expected = call.scenarioKey.includes("_milestone_") ? 1 : 3;
+      expect(call.count).toBe(expected);
+      expect(call.systemPrompt).toContain(`${expected} 個生成してください`);
+    }
+  });
+
+  it("S0037_02 truncates to the first 1 message for milestone (first 3 for regular) when the provider returns more", async () => {
+    // GIVEN 要求より多く(3 文 / 10 文)返すプロバイダー
+    const generator = makeGenerator(async ({ scenarioKey }) =>
+      Array.from({ length: scenarioKey.includes("_milestone_") ? 3 : 10 }, (_, i) => `msg${i}`),
+    );
+
+    // WHEN バケットに入れる
     const state = await generatePool({ characterId: "c", character, generator });
 
-    for (const key of ALL_BUCKET_KEYS) {
-      expect(state.pool.buckets[key]).toHaveLength(MESSAGES_PER_BUCKET);
-    }
+    // THEN 先頭から応援種別の文の数だけ残す
+    expect(state.pool.buckets.fast_milestone_night.map((m) => m.text)).toEqual(["msg0"]);
+    expect(state.pool.buckets.fast_regular_night.map((m) => m.text)).toEqual([
+      "msg0",
+      "msg1",
+      "msg2",
+    ]);
     expect(isPoolComplete(state)).toBe(true);
   });
+});
+
+describe("poolGenerator / 要求数を超える応答は切り詰める [境界]", () => {
 
   it("keeps a short bucket as-is (少ない分は失敗にしない)", async () => {
     const generator = makeGenerator(async () => ["ひとつだけ"]);

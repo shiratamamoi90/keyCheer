@@ -63,7 +63,7 @@ describe("voiceSynth / 全文事前合成", () => {
 });
 
 describe("voiceSynth / 部分失敗時の許容 [異常系]", () => {
-  it("S0016_25 collects failed ids as missing and does not throw (5 of 480 may fail)", async () => {
+  it("S0016_25 collects failed ids as missing and does not throw (5 of 48 may fail)", async () => {
     const failIds = new Set(["msg-1", "msg-3"]);
     const writeWav = vi.fn(async () => {});
     const result = await synthesizePoolVoices({

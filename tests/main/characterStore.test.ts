@@ -85,6 +85,40 @@ describe("characterStore / 保存先のパス契約 [境界]", () => {
   });
 });
 
+describe("characterStore / 目標サイズより多い既存のプール(論点 0037)", () => {
+  it("S0037_04 loads an 8-messages-per-bucket pool as-is without trimming or re-saving", () => {
+    // GIVEN 論点 0037 より前に生成した、1 バケット 8 文の pool.json
+    const state = emptyPoolState(CHAR_ID);
+    for (const key of ALL_BUCKET_KEYS) {
+      state.pool.buckets[key] = Array.from({ length: 8 }, (_, i) => ({
+        id: `${key}-00${i}`,
+        text: `がんばれ${i}`,
+      }));
+      state.completion[key] = "complete";
+    }
+    const fs = fakeFs();
+    savePool(fs, USER_DATA, CHAR_ID, state);
+    const before = fs.files[poolPath(USER_DATA, CHAR_ID)];
+    const writes: string[] = [];
+    const original = fs.writeFile;
+    fs.writeFile = (p, data) => {
+      writes.push(p);
+      original(p, data);
+    };
+
+    // WHEN 起動時に読み込む
+    const pool = loadPool(fs, USER_DATA, CHAR_ID);
+
+    // THEN 文を削らずに使え、ファイルも保存し直さない
+    expect(pool).not.toBeNull();
+    for (const key of ALL_BUCKET_KEYS) {
+      expect(pool!.buckets[key]).toHaveLength(8);
+    }
+    expect(writes).toEqual([]);
+    expect(fs.files[poolPath(USER_DATA, CHAR_ID)]).toBe(before);
+  });
+});
+
 describe("characterStore / ローカル生成でプールと wav が揃う", () => {
   it("saves the pool and its completion so a reload returns it", () => {
     const fs = fakeFs();

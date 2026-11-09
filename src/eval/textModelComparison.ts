@@ -6,12 +6,17 @@
 // temperature は渡さない — アプリも渡しておらず、両モデルとも Modelfile で上書きしていないので
 // Ollama 既定(0.8 = config.yaml の temperature)が効く。
 
-import { MESSAGES_PER_BUCKET } from "../agent/poolGenerator.js";
 import { createOllamaTextGenerator } from "../agent/providers/localOllama.js";
 import { ALL_BUCKET_KEYS, type BucketKey } from "../core/messagePool.js";
 import { buildMessageTexts, MAX_MESSAGE_LENGTH } from "../core/textResponse.js";
 import type { CharacterProfile } from "../agent/poolGenerator.js";
 import type { PromptBuilder } from "./promptVariant.js";
+
+// 1 バケットに要求する文の数。論点 0021 / 0026 / 0027 / 0035 の計測はすべて 8 文で測った。
+// 製品のプールは論点 0037 で応援種別ごとの数(core の computeMessageCount)に変わったが、
+// ここを追随させると過去の result.md と比べられなくなる(baseline は固定 — experiment-rules.md)。
+// 件数を変えて測りたくなったら、別の論点で 1 変数として振る。
+const EVAL_MESSAGES_PER_BUCKET = 8;
 
 // 評価データ:性格の異なる固定プロフィール 3 種(論点 0026 / 0027 の「キャラ 3 種」)。
 // 変えると過去の計測と比べられなくなるので固定する(@.claude/rules/experiment-rules.md「規律」)。
@@ -62,9 +67,13 @@ export async function runTrials(
   // 1 回目はモデルの読み込みを含むので、レイテンシに混ぜないよう捨てる
   await generator
     .generateMessages({
-      systemPrompt: settings.buildPrompt(characters[0]!, ALL_BUCKET_KEYS[0]!, MESSAGES_PER_BUCKET),
+      systemPrompt: settings.buildPrompt(
+        characters[0]!,
+        ALL_BUCKET_KEYS[0]!,
+        EVAL_MESSAGES_PER_BUCKET,
+      ),
       scenarioKey: ALL_BUCKET_KEYS[0]!,
-      count: MESSAGES_PER_BUCKET,
+      count: EVAL_MESSAGES_PER_BUCKET,
       seed: settings.baseSeed,
       timeoutMs: settings.timeoutMsPerBucket,
     })
@@ -79,13 +88,13 @@ export async function runTrials(
         let record: BucketRecord;
         try {
           const raw = await generator.generateMessages({
-            systemPrompt: settings.buildPrompt(character, bucket, MESSAGES_PER_BUCKET),
+            systemPrompt: settings.buildPrompt(character, bucket, EVAL_MESSAGES_PER_BUCKET),
             scenarioKey: bucket,
-            count: MESSAGES_PER_BUCKET,
+            count: EVAL_MESSAGES_PER_BUCKET,
             seed,
             timeoutMs: settings.timeoutMsPerBucket,
           });
-          const texts = buildMessageTexts(raw, MESSAGES_PER_BUCKET);
+          const texts = buildMessageTexts(raw, EVAL_MESSAGES_PER_BUCKET);
           record = {
             ...base(),
             raw,
@@ -165,8 +174,8 @@ export function computeSummary(
       raws.filter((t) => [...t.trim()].length > MAX_MESSAGE_LENGTH).length,
       raws.length,
     ),
-    // 件数充足率:要求した MESSAGES_PER_BUCKET 件に対し、プールに入った件数
-    fillRatePct: pct(texts.length, records.length * MESSAGES_PER_BUCKET),
+    // 件数充足率:要求した EVAL_MESSAGES_PER_BUCKET 件に対し、プールに入った件数
+    fillRatePct: pct(texts.length, records.length * EVAL_MESSAGES_PER_BUCKET),
     meanLatencyMs: Math.round(
       records.reduce((sum, r) => sum + r.latencyMs, 0) / Math.max(records.length, 1),
     ),

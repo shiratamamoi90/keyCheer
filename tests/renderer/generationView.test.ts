@@ -28,9 +28,9 @@ describe("generationView / 生成の進捗が通知される", () => {
 
   it("moves on to the voice phase", () => {
     let s = applyGenerationEvent(IDLE, { type: "progress", phase: "text", done: 24, total: 24 });
-    s = applyGenerationEvent(s, { type: "progress", phase: "voice", done: 1, total: 192 });
+    s = applyGenerationEvent(s, { type: "progress", phase: "voice", done: 1, total: 48 });
     expect(s.phase).toBe("voice");
-    expect(progressLabel(s)).toContain("192");
+    expect(progressLabel(s)).toContain("48");
   });
 
   it("shows a completion state with the synthesized counts", () => {

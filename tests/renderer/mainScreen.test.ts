@@ -39,7 +39,7 @@ const GENERATING = applyGenerationEvent(IDLE, {
   type: "progress",
   phase: "voice",
   done: 3,
-  total: 192,
+  total: 48,
 });
 
 function stateOn(screen: MainScreenState["screen"]): MainScreenState {

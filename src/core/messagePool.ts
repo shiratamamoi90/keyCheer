@@ -28,6 +28,22 @@ export function bucketKey(zone: SpeedZone, type: CheerType, timeOfDay: TimeOfDay
   return `${zone}_${type}_${timeOfDay}` as BucketKey;
 }
 
+// S0037_01 シナリオの応援種別で要求する文の数を決める
+//
+// 出典は論点 0037(1 キャラ 48 文)。バケットの構造(24 個)は変えずに文の数だけを減らした —
+// 構造を畳む案は、選択の規則・時間帯・プロンプトまで波及するため採らなかった。
+// milestone は発動がまれなので 1 文でも繰り返しが目立ちにくい。生成(agent)だけでなく
+// 計測(eval)も同じ数を参照しうるので core に置く。読み込み時の検証条件ではない(S0037_04)。
+export const MESSAGE_COUNT_BY_CHEER_TYPE: Readonly<Record<CheerType, number>> = {
+  regular: 3,
+  milestone: 1,
+};
+
+export function computeMessageCount(key: BucketKey): number {
+  // バケットキーの書式 `${SpeedZone}_${CheerType}_${TimeOfDay}` の 2 番目
+  return MESSAGE_COUNT_BY_CHEER_TYPE[key.split("_")[1] as CheerType];
+}
+
 // 24 シナリオの全列挙(zone × type × timeOfDay)
 export const ALL_BUCKET_KEYS: readonly BucketKey[] = (() => {
   const keys: BucketKey[] = [];

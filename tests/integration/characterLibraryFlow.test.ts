@@ -229,3 +229,41 @@ describe("総合: 旧形式の 1 キャラのデータ → 移行 → 応援", (
     expect(store.loadCharacters().map((c) => c.id)).toEqual([legacyId]);
   });
 });
+
+describe("総合: 生成 → 48 文のプール → 1 文だけのバケットからの連続した応援(論点 0037)", () => {
+  it("既定の文の数で生成したプールを読み込み、milestone の 1 文を続けて出せる", async () => {
+    const fs = fakeFs();
+    const id = "char-pool-size";
+    const generated = await createGenerationRunner().start({
+      characterId: id,
+      character: { name: "P", personality: "p" },
+      userDataDir: USER_DATA,
+      fs,
+      textGenerator: fakeTextGenerator("P"),
+      synthesizer: fakeVoiceSynthesizer(),
+      speakerId: 3,
+    });
+    expect(generated.ok).toBe(true);
+
+    // 保存されたプールを発動経路と同じ読み込みで取り出す
+    const pool = loadPool(fs, USER_DATA, id);
+    expect(pool).not.toBeNull();
+    const total = Object.values(pool!.buckets).reduce((sum, b) => sum + b.length, 0);
+    expect(total).toBe(48);
+
+    const store = createAppStore(fakeStore(), { hasPool: () => true });
+    const emitted: CheerFiredPayload[] = [];
+    const { runtime } = buildRuntime(store, fs, emitted);
+    runtime.setActiveCharacter(id, pool);
+
+    // 既定のマイルストーン 1000 / 5000 まで打鍵する(同じ速度ゾーン・時間帯 = 同じバケット)
+    for (let pressed = 1; pressed <= 5000; pressed++) runtime.handleKeyPress(T0 + pressed);
+    const milestones = emitted.filter((p) => p.type === "milestone");
+
+    expect(milestones).toHaveLength(2);
+    // 1 文だけのバケットなので、直前と同じ文でも定型文に落ちずにプールの文が出る
+    expect(milestones[0]!.messageId).toBe(milestones[1]!.messageId);
+    expect(milestones[1]!.message.startsWith("P:")).toBe(true);
+    expect(milestones[1]!.wavPath).toBe(resolveWavPath(USER_DATA, id, milestones[1]!.messageId));
+  });
+});
