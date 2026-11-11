@@ -34,6 +34,8 @@
 | キャラクター | `character` | — | `chara`, `charName` | 利用者が作る応援役。名前・性格・話者・生成物を持つ |
 | 使用中のキャラクター | `activeCharacter` | — | `currentCharacter`, `selectedCharacter` | 保存済みのキャラクターのうち応援に使う 1 件。`activeCharacterId` で指す(論点 0032) |
 | 話者 | `speaker` | — | `voiceActor`, `spk` | 音声プロバイダーが持つ声の種類 |
+| 選べる話者 | `selectableSpeaker` | — | `allowedVoice`, `voiceWhitelist` | `local-voicevox` で選択肢に出す、決まった話者とスタイルの組(論点 0044) |
+| クレジット表記 | `creditNotice` | — | `attribution`, `creditText` | 音声ライブラリの規約が求める、利用したことを示す表記(例 `VOICEVOX:四国めたん`。論点 0043) |
 | プロバイダー | `provider` | — | `prov` | 生成手段の差し替え単位(テキスト / 音声 / 画像) |
 | 同意 | `consent` | — | `consentFlag` | 外部プロバイダーへの送信を利用者が明示的に承認した状態 |
 | 監査ログ | `auditLog` | — | `sendLog`, `auditlog` | 外部送信の記録。統計とは別ファイルに置く |
@@ -44,6 +46,7 @@
 | 待機画像 | `idleImage` | — | `normalImage`, `defaultImage` | 応援が出ていないときに表示するキャラ画像(画像の種類 `idle`) |
 | 画像タグ | `imageTag` | — | `imageKeyword` | 画像のプロンプトに入れる英語の短い語句。テキストプロバイダーに出させる |
 | 常時表示 | `alwaysShow` | — | `residentMode` | キャラの窓を常に画面に出しておく表示方法。設定 `popup.shouldAlwaysShow`(既定 true) |
+| 同梱ランタイム | `bundledRuntime` | — | `sidecar`, `embeddedRuntime` | アプリに同梱し、メインウィンドウの表示中だけアプリが起動する Ollama / VOICEVOX ENGINE の実行ファイル(論点 0034) |
 
 > 名詞形は**概念・データ・型の名前**。関数名にするときは N-3 の接頭辞を付ける(例と理由は N-3)。
 

@@ -134,7 +134,7 @@ export function createImageGeneratorFor(
   id: ImageProviderId,
   deps: ProviderFactoryDeps,
 ): ImageGeneratorResult {
-  // sd.cpp の実行ファイル・モデル重みの置き場は、同梱と初回取得(論点 0030 / 0034)が決まるまで無い。
+  // sd.cpp の実行ファイル・モデル重みの置き場は、同梱と重みの取得(論点 0040 / 0041 / 0042)が決まるまで無い。
   // 組み立てられないので画像の工程に進ませない(生成は画像なしで完了する。S0036_10)。
   if (id === "local-sdcpp") return { ok: false, reason: "runtime-not-installed" };
 

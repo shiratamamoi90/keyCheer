@@ -1,0 +1,28 @@
+# 1論点 = 1変数のみ変更:ローカル画像生成のベースモデル
+# 値が「未定」の項目は、計測の前に埋める(埋まるまで計測しない。topic.md の [要確認])
+axis: image_model # 振るのはベースモデル(src/eval に画像の口はまだ無い)
+baseline: 未定 # 候補のうち 1 つを固定する
+candidates: # 論点 0005 が挙げた候補。ライセンスと版の固定を確かめて絞る
+  - name: AnythingV5
+    source: 未定 # 取得元
+    revision: 未定 # コミット
+    sha256: 未定
+  - name: MeinaMix
+    source: 未定
+    revision: 未定
+    sha256: 未定
+  - name: Counterfeit V3
+    source: 未定
+    revision: 未定
+    sha256: 未定
+quantization: 未定 # 全候補で揃える(論点 0005 の宿題)
+lcm_lora: 未定 # 版と sha256。全候補で揃える
+steps: 4 # 論点 0005
+width: 512
+height: 768
+seed: 42 # 試行 i は seed + i
+characters: 3 # 評価用キャラクター(論点 0021 以降と同じ)
+image_kinds: 3 # 待機・regular・milestone
+generations_per_case: 未定
+timeout_ms_per_image: 未定 # baseline を測ってから決める
+runtime: 未定 # sd.cpp の版と出所(論点 0040)。CPU を既定にする

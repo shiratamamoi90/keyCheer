@@ -4,7 +4,7 @@
 //   画像タグは呼び出し側がプロンプトに入れる(論点 0036。旧 通常/喜び/激励の固定タグは持たない) /
 //   子プロセスはタイムアウト・キャンセル・重複起動排他を持つ [不変条件]。
 // spawn / readOutput は注入(main プロセスが child_process.spawn と fs 読み出しを渡す)。
-// [要確認] Vulkan iGPU→失敗時 CPU の自動切替は実バイナリ挙動に合わせて別途(docs/integrations.md)。
+// 同梱するのは CPU 版だけで、GPU への切り替えは持たない(論点 0040)。
 
 import type { ImageGenerator, ImageGenerationRequest } from "../../core/providers/types.js";
 
