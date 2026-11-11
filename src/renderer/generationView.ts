@@ -5,6 +5,8 @@
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは状態遷移と表示文言だけを持つ。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
+import type { StartGenerationResult } from "../core/shared/ipc.js";
+
 export type GenerationPhaseName = "idle" | "text" | "voice" | "image" | "done" | "failed";
 
 export interface GenerationViewState {
@@ -80,3 +82,15 @@ export function progressLabel(state: GenerationViewState): string {
       return FAILURE_TEXT[state.reason ?? ""] ?? "生成に失敗しました";
   }
 }
+
+// 作り直す前の確認(論点 0038。docs/main-window.md S0038_07〜09)。
+// 作り直しかどうかは main が保存状態から決めて応答で返す(main/generationStart)。
+// renderer で判定し直さない — pool.json を読めるのは main だけで、判定を二重に持たないため。
+export function shouldConfirmRebuild(
+  result: StartGenerationResult,
+): result is Extract<StartGenerationResult, { reason: "rebuild-confirmation-required" }> {
+  return !result.ok && result.reason === "rebuild-confirmation-required";
+}
+
+export const REBUILD_CONFIRMATION_TEXT =
+  "応援メッセージ・音声・画像を最初から作り直します。今のものは消えます。作り直しますか?";

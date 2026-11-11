@@ -8,6 +8,8 @@ import {
   applyGenerationEvent,
   canStartGeneration,
   progressLabel,
+  shouldConfirmRebuild,
+  REBUILD_CONFIRMATION_TEXT,
   type GenerationViewState,
 } from "../../src/renderer/generationView.js";
 
@@ -77,5 +79,20 @@ describe("generationView / ビューモデルは純粋", () => {
     const before = { ...IDLE };
     applyGenerationEvent(IDLE, { type: "progress", phase: "text", done: 1, total: 24 });
     expect(IDLE).toEqual(before);
+  });
+});
+
+describe("generationView / 作り直す前の確認(論点 0038)", () => {
+  // 作り直しかどうかは main が決めて応答で返す(main/generationStart)。renderer は応答を見て確認を出すだけ。
+  it("asks for confirmation only when main answers that a rebuild needs it", () => {
+    expect(shouldConfirmRebuild({ ok: false, reason: "rebuild-confirmation-required" })).toBe(true);
+    expect(shouldConfirmRebuild({ ok: true })).toBe(false);
+    expect(shouldConfirmRebuild({ ok: false, reason: "already-running" })).toBe(false);
+  });
+
+  it("tells that the pool, voices and images will be rebuilt", () => {
+    expect(REBUILD_CONFIRMATION_TEXT).toContain("作り直");
+    expect(REBUILD_CONFIRMATION_TEXT).toContain("音声");
+    expect(REBUILD_CONFIRMATION_TEXT).toContain("画像");
   });
 });

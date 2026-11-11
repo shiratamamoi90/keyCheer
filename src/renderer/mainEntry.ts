@@ -20,7 +20,12 @@ import {
   CHARACTER_PERSONALITY_MAX,
   type CharacterFormError,
 } from "./characterForm.js";
-import { canStartGeneration, progressLabel } from "./generationView.js";
+import {
+  canStartGeneration,
+  progressLabel,
+  shouldConfirmRebuild,
+  REBUILD_CONFIRMATION_TEXT,
+} from "./generationView.js";
 import {
   MAIN_SCREENS,
   initialMainScreenState,
@@ -115,6 +120,10 @@ function App(): ReactNS.ReactElement {
   const [selection, setSelection] = React.useState<ProviderSelection>(DEFAULT_PROVIDER_SELECTION);
   const [dialog, setDialog] = React.useState<ConsentDialogState | null>(null);
   const [blocked, setBlocked] = React.useState<string | null>(null);
+  // 作り直しの確認を出しているキャラクター(論点 0038。null = 出していない)
+  const [rebuildConfirmId, setRebuildConfirmId] = React.useState<string | null>(null);
+  // 確認したキャラクター。同意ダイアログを挟んで呼び直すときにも確認済みとして渡す
+  const confirmedRebuildIdRef = React.useRef<string | null>(null);
   // 設定画面(論点 0033)
   const [generationConfig, setGenerationConfig] = React.useState<GenerationConfig | null>(null);
   // 常時表示(論点 0036)
@@ -174,9 +183,17 @@ function App(): ReactNS.ReactElement {
 
   const startGeneration = (characterId: string): void => {
     setBlocked(null);
-    void window.keycheer.startGeneration(characterId).then((result) => {
+    const isRebuildConfirmed = confirmedRebuildIdRef.current === characterId;
+    void window.keycheer.startGeneration(characterId, { isRebuildConfirmed }).then((result) => {
       if (result.ok) {
+        confirmedRebuildIdRef.current = null;
         refreshCharacters(); // 一覧に生成中を出す(S0033_11)
+        return;
+      }
+
+      // S0038_07 作り直しになるときは、生成を始める前に確認する
+      if (shouldConfirmRebuild(result)) {
+        setRebuildConfirmId(characterId);
         return;
       }
 
@@ -195,6 +212,21 @@ function App(): ReactNS.ReactElement {
       }
       dispatch({ type: "generation", payload: { type: "failed", reason: result.reason } });
     });
+  };
+
+  // S0038_07 作り直すを選んだときだけ、確認済みとして呼び直す
+  const confirmRebuild = (): void => {
+    if (rebuildConfirmId === null) return;
+    confirmedRebuildIdRef.current = rebuildConfirmId;
+    const characterId = rebuildConfirmId;
+    setRebuildConfirmId(null);
+    startGeneration(characterId);
+  };
+
+  // S0038_08 確認で取りやめたら何も変えない — 呼び直さないだけ(main は確認を求めた時点で何も書いていない)
+  const cancelRebuild = (): void => {
+    confirmedRebuildIdRef.current = null;
+    setRebuildConfirmId(null);
   };
 
   // 同意ダイアログを通過した時だけ grantConsent を呼ぶ(表示・チェック操作では呼ばない)。
@@ -484,6 +516,16 @@ function App(): ReactNS.ReactElement {
     blocked !== null
       ? React.createElement("p", { key: "blocked", className: "error" }, blocked)
       : null,
+    // 作り直しの確認(論点 0038)
+    rebuildConfirmId === null
+      ? null
+      : React.createElement(
+          "div",
+          { key: "rebuild", className: "dialog", role: "dialog", "aria-modal": true },
+          React.createElement("p", null, REBUILD_CONFIRMATION_TEXT),
+          React.createElement("button", { type: "button", onClick: confirmRebuild }, "作り直す"),
+          React.createElement("button", { type: "button", onClick: cancelRebuild }, "取りやめる"),
+        ),
     // シナリオ: 同意ダイアログに ToS リンクと必須チェック
     dialog === null
       ? null

@@ -24,6 +24,7 @@ import { checkGenerationPreconditions } from "../core/providers/consent.js";
 import { computeImageSize } from "../core/characterImage.js";
 import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
+import { resolveGenerationStart } from "./generationStart.js";
 import { deleteCharacter } from "./characterDeletion.js";
 import { activateCharacter, loadCharacterList } from "./characterSelection.js";
 import { IpcChannel } from "../core/shared/ipc.js";
@@ -121,12 +122,34 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
   // S0032_18 生成は選んだキャラクターに対して行う
   ipcMain.handle(
     IpcChannel.StartGeneration,
-    async (_event, characterId: unknown): Promise<StartGenerationResult> => {
+    async (_event, characterId: unknown, options: unknown): Promise<StartGenerationResult> => {
       const character = deps.store.loadCharacters().find((c) => c.id === characterId);
       // シナリオ: 生成は保存済みキャラに対してのみ(characterId が無いと保存先が決まらない)
       // renderer から届いた id は一覧にあるものだけを受け付ける(S0033_09 を main 側でも守る)
       if (character === undefined) {
         return { ok: false, reason: "no-character" };
+      }
+
+      // 再開か作り直しか(論点 0038)。作り直しで確認がまだなら、何も組み立てず・何も消さずに返す。
+      // 同意・キーの確認より先に置く — 確認で取りやめる人に同意ダイアログを出さないため。
+      // 確認済みの印は true のときだけ受け付ける(renderer からの値は信頼境界の外)。
+      const isRebuildConfirmed =
+        typeof options === "object" &&
+        options !== null &&
+        (options as { isRebuildConfirmed?: unknown }).isRebuildConfirmed === true;
+      const start = resolveGenerationStart({
+        fs: deps.fs,
+        userDataDir: deps.userDataDir,
+        characterId: character.id,
+        profile: {
+          name: character.name,
+          personality: character.personality,
+          voicevoxSpeakerId: character.voicevoxSpeakerId,
+        },
+        isRebuildConfirmed,
+      });
+      if (start.kind === "confirmation-required") {
+        return { ok: false, reason: "rebuild-confirmation-required" };
       }
 
       const system = deps.store.loadSystem();
@@ -170,9 +193,8 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
             }
           : undefined;
 
-      // 再開:既存の完了状態があれば未完了バケットだけを続行する。
-      // (pool.json には completion も保存している — characterStore.savePool)
-      const resumeFrom = readResumeState(deps.fs, deps.userDataDir, character.id);
+      // 再開なら未完了バケットだけを続行する。作り直しでは渡さない(古い画像も消してから作る。S0036_13)
+      const resumeFrom = start.resumeFrom;
 
       if (!runner.isRunning()) generatingCharacterId = character.id;
       const started = runner.start({
@@ -263,30 +285,4 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
         characterId,
       ),
   );
-}
-
-// pool.json に残した completion から再開状態を組み立てる。
-// 壊れている・存在しない場合は undefined(= 最初から生成する)。
-function readResumeState(
-  fs: CharacterFs,
-  userDataDir: string,
-  characterId: string,
-):
-  | { pool: MessagePool; completion: Record<string, "complete" | "pending" | "failed"> }
-  | undefined {
-  const pool = loadPool(fs, userDataDir, characterId);
-  if (pool === null) return undefined;
-
-  const raw = fs.readFile(`${userDataDir}/characters/${characterId}/pool.json`);
-  if (raw === undefined) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as { completion?: unknown };
-    if (typeof parsed.completion !== "object" || parsed.completion === null) return undefined;
-    return {
-      pool,
-      completion: parsed.completion as Record<string, "complete" | "pending" | "failed">,
-    };
-  } catch {
-    return undefined;
-  }
 }

@@ -142,12 +142,19 @@ export type ActivateCharacterResult =
 
 export type SaveGenerationConfigResult = { ok: true } | { ok: false; errors: string[] };
 
+// renderer → main: 生成開始の引数(論点 0038)。作り直しの確認を済ませたかを伝える
+export interface StartGenerationOptions {
+  isRebuildConfirmed?: boolean;
+}
+
 // renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
 // 外部プロバイダーで止まった場合は、どのプロバイダーが何で止まったかを返す。
 // renderer はそれを見て同意ダイアログ / キー入力のどちらを出すか決める。
 export type StartGenerationResult =
   | { ok: true }
   | { ok: false; reason: "already-running" | "no-character" }
+  // 作り直しになるので確認が要る(論点 0038)。確認後に isRebuildConfirmed で呼び直す
+  | { ok: false; reason: "rebuild-confirmation-required" }
   | {
       ok: false;
       reason: "consent-required" | "missing-api-key" | "voice-id-required";

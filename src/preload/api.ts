@@ -19,6 +19,7 @@ import type {
   GetSpeakersResult,
   SaveCharacterRequest,
   SaveCharacterResult,
+  StartGenerationOptions,
   StartGenerationResult,
   StatsSnapshot,
   UpdateTriggerConfigRequest,
@@ -71,7 +72,10 @@ export interface KeyCheerApi {
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す。論点 0033)
   onMainWindowShown(listener: () => void): () => void;
   // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
-  startGeneration(characterId: string): Promise<StartGenerationResult>;
+  startGeneration(
+    characterId: string,
+    options?: StartGenerationOptions,
+  ): Promise<StartGenerationResult>;
   cancelGeneration(): Promise<void>;
   onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
   // 外部プロバイダーの同意(論点 0016)。grantConsent は同意ダイアログを
@@ -114,8 +118,12 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       ipc.invoke(IpcChannel.SetPopupDisplay, config) as Promise<SavePopupDisplayResult>,
     onCharacterDisplay: (listener) => subscribe(ipc, IpcChannel.CharacterDisplay, listener),
     onMainWindowShown: (listener) => subscribe(ipc, IpcChannel.MainWindowShown, () => listener()),
-    startGeneration: (characterId) =>
-      ipc.invoke(IpcChannel.StartGeneration, characterId) as Promise<StartGenerationResult>,
+    startGeneration: (characterId, options) =>
+      ipc.invoke(
+        IpcChannel.StartGeneration,
+        characterId,
+        options ?? {},
+      ) as Promise<StartGenerationResult>,
     cancelGeneration: () => ipc.invoke(IpcChannel.CancelGeneration) as Promise<void>,
     onGenerationProgress: (listener) => subscribe(ipc, IpcChannel.GenerationProgress, listener),
     getProviders: () => ipc.invoke(IpcChannel.GetProviders) as Promise<ProviderSelection>,
