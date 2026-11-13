@@ -499,6 +499,24 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 - WHEN `regular` の画像のプロンプトを組み立てる
 - THEN `solo, upper body, simple background, flat color, limited palette, 1girl, long hair, smile, waving, <lora:lcm-lora-sdv1-5:1>` になる
 
+### S0049_01 待機画像の画像タグの要求は見た目を訊く
+
+- GIVEN `providers.image = "local-sdcpp"`、プールのあるキャラクター
+- WHEN 待機画像の画像タグの要求を組み立てる
+- THEN 人物の語(`1girl` か `1boy`)・髪の色・髪型・目の色・服装を訊く文になる。プールのセリフは 1 文も含まない
+
+### S0049_02 応援種別の画像の画像タグの要求は表情とポーズだけを訊く
+
+- GIVEN `providers.image = "local-sdcpp"`、`regular` と `milestone` のセリフを持つプール
+- WHEN `regular` の画像の画像タグの要求を組み立てる
+- THEN `regular` のバケットのセリフを示して表情とポーズを訊き、髪・目・服は書かないよう指示する文になる。`milestone` のセリフは含まない
+
+### S0049_03 外部の画像プロバイダーでは画像タグの要求を変えない [否定]
+
+- GIVEN `providers.image` が `openai-dalle` または `stability-ai`
+- WHEN 3 枚の画像タグを要求する
+- THEN 要求は S0036_01〜03 の形のまま**変わらない**(見た目だけ・表情とポーズだけ、という訊き分けをしない)
+
 ### S0046_04 背景の色の語と避ける語を渡さない [否定]
 
 - GIVEN `providers.image = "local-sdcpp"`
