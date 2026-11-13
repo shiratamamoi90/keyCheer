@@ -7,6 +7,8 @@
 // 未起動・異常応答・想定外の形はすべて unavailable に畳んで throw しない
 // (フォームは開けたまま、案内を出して保存だけを止めるため)。
 
+import { isSelectableSpeaker } from "../core/shared/selectableSpeaker.js";
+
 export const DEFAULT_VOICEVOX_ENDPOINT = "http://127.0.0.1:50021";
 
 const DEFAULT_TIMEOUT_MS = 3_000;
@@ -66,7 +68,11 @@ export async function fetchSpeakers(
     if (!res.ok) return { ok: false, reason: "unavailable" };
     const speakers = parseSpeakers(await res.json());
     if (speakers === undefined) return { ok: false, reason: "unavailable" };
-    return { ok: true, speakers };
+    // S0044_01 選択肢は選べる話者だけにする / S0044_02 VOICEVOX が一部しか返さなければ、その分だけ出す
+    const selectable = speakers.filter((speaker) => isSelectableSpeaker(speaker.id));
+    // S0044_03 選べる話者が 1 つも返らなければ、話者一覧が取れないときと同じ扱いにする
+    if (selectable.length === 0) return { ok: false, reason: "unavailable" };
+    return { ok: true, speakers: selectable };
   } catch {
     // 未起動(ECONNREFUSED)・タイムアウト・JSON 破損はすべて「使えない」に畳む
     return { ok: false, reason: "unavailable" };

@@ -586,3 +586,42 @@ describe("store / 設定画面で常時表示を切り替える", () => {
     });
   });
 });
+
+describe("store / 保存済みのキャラクターが選べる話者以外を指していても値を変えない [否定]", () => {
+  it("S0044_05 keeps a saved speaker id outside the selectable speakers as it is", () => {
+    // GIVEN 保存済みのキャラクターの voicevoxSpeakerId が、選べる話者以外の ID(3)
+    const saved = [
+      { id: "char-a", name: "A", personality: "p", voicevoxSpeakerId: 3 },
+      { id: "char-b", name: "B", personality: "p", voicevoxSpeakerId: 8 },
+    ];
+    const fake = fakeStore({ characters: saved });
+    const before = JSON.stringify(fake.get("characters"));
+
+    // WHEN 設定を読み込む
+    const characters = createAppStore(fake).loadCharacters();
+
+    // THEN voicevoxSpeakerId は変化しない。ほかのキャラクターの値も、保存データも変化しない
+    expect(characters.map((c) => c.voicevoxSpeakerId)).toEqual([3, 8]);
+    expect(JSON.stringify(fake.get("characters"))).toBe(before);
+  });
+});
+
+describe("store / 画像の重みのライセンスへの同意の記録", () => {
+  it("saves the agreement under system without touching the other settings", () => {
+    const fake = fakeStore({
+      system: { ollamaEndpoint: "http://localhost:9999" },
+      providers: { consent: { openai: true } },
+    });
+    const store = createAppStore(fake);
+    expect(store.loadImageWeightsLicenseAgreement()).toBeNull();
+
+    store.saveImageWeightsLicenseAgreement({ agreedAt: "2026-11-13T09:00:00.000Z", version: "1" });
+
+    expect(store.loadImageWeightsLicenseAgreement()).toEqual({
+      agreedAt: "2026-11-13T09:00:00.000Z",
+      version: "1",
+    });
+    expect(store.loadSystem().ollamaEndpoint).toBe("http://localhost:9999");
+    expect(fake.get("providers")).toEqual({ consent: { openai: true } });
+  });
+});

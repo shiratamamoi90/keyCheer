@@ -17,8 +17,7 @@
            それ以外(WSL での開発時など)でも豆腐にならないよう、CJK を持つ
            一般的なフォントへフォールバックする。CSP が default-src 'none' で
            font-src を許可していないため、Web フォントは使わず OS のフォントのみに頼る。 */
-        font-family:
-          "Yu Gothic UI", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans",
+        font-family: "Yu Gothic UI", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans",
           "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
       }
       .form {
@@ -76,6 +75,15 @@
       .error {
         margin: 0;
         color: #c0392b;
+      }
+      /* ライセンスの本文・利用の制限(論点 0047)。長いので枠の中で送って読む */
+      pre.license {
+        max-height: 220px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-size: 11px;
+        border: 1px solid #ccc;
+        padding: 8px;
       }
       .notice {
         color: #b9770e;

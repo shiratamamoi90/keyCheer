@@ -93,3 +93,18 @@ describe("発動経路の分離 / 応援の発動で画像を作らない [否�
     expect(violations).toEqual([]);
   });
 });
+
+describe("発動経路の分離 / 応援の発動は取得に依存しない [否定]", () => {
+  it("S0042_13 発動経路のどのファイルも、重みの取得と状態を import しない", () => {
+    // GIVEN 重みが取得されていない、または取得中
+    // WHEN 打鍵して応援が発動する(= 発動経路のファイルが動く)
+    const violations = CHEER_PATH_FILES.flatMap((file) =>
+      readImportSources(file)
+        .filter((source) => /imageWeights|bundledSdcpp/.test(source))
+        .map((source) => `${file} -> ${source}`),
+    );
+
+    // THEN 発動は取得の状態を読まず、取得の通信も起こさない(その手段を import していない)
+    expect(violations).toEqual([]);
+  });
+});

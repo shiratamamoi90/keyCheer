@@ -5,6 +5,8 @@
 // main 側の検証を省く理由にはならない(security-rules.md「入力と信頼境界」)。
 // electron を import しないため決定的にテストできる。
 
+import { isSelectableSpeaker } from "../core/shared/selectableSpeaker.js";
+
 export interface ValidatedCharacterProfile {
   name: string;
   personality: string;
@@ -33,6 +35,9 @@ export function validateCharacterProfile(raw: unknown): ValidateCharacterProfile
   if (personality.length === 0) errors.push("personality is required");
   if (typeof speakerId !== "number" || !Number.isInteger(speakerId)) {
     errors.push("voicevoxSpeakerId must be an integer");
+  } else if (!isSelectableSpeaker(speakerId)) {
+    // S0044_04 選べる話者以外の ID は保存しない — フォームは選択肢に出さないが、迂回されても通さない
+    errors.push("voicevoxSpeakerId must be a selectable speaker");
   }
   if (errors.length > 0) return { ok: false, errors };
 

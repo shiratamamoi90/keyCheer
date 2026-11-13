@@ -16,6 +16,9 @@ import type {
   SaveGenerationConfigResult,
   SavePopupDisplayResult,
   GenerationProgressPayload,
+  ImageWeightsLicenseTexts,
+  ImageWeightsStatus,
+  StartImageWeightsFetchResult,
   GetSpeakersResult,
   SaveCharacterRequest,
   SaveCharacterResult,
@@ -71,6 +74,12 @@ export interface KeyCheerApi {
   onCharacterDisplay(listener: (payload: CharacterDisplayPayload) => void): () => void;
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す。論点 0033)
   onMainWindowShown(listener: () => void): () => void;
+  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)。進捗は onImageWeightsProgress で流れてくる
+  getImageWeightsStatus(): Promise<ImageWeightsStatus>;
+  getImageWeightsLicenseTexts(): Promise<ImageWeightsLicenseTexts>;
+  startImageWeightsFetch(hasAgreed: boolean): Promise<StartImageWeightsFetchResult>;
+  cancelImageWeightsFetch(): Promise<void>;
+  onImageWeightsProgress(listener: (status: ImageWeightsStatus) => void): () => void;
   // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
   startGeneration(
     characterId: string,
@@ -118,6 +127,17 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       ipc.invoke(IpcChannel.SetPopupDisplay, config) as Promise<SavePopupDisplayResult>,
     onCharacterDisplay: (listener) => subscribe(ipc, IpcChannel.CharacterDisplay, listener),
     onMainWindowShown: (listener) => subscribe(ipc, IpcChannel.MainWindowShown, () => listener()),
+    getImageWeightsStatus: () =>
+      ipc.invoke(IpcChannel.GetImageWeightsStatus) as Promise<ImageWeightsStatus>,
+    getImageWeightsLicenseTexts: () =>
+      ipc.invoke(IpcChannel.GetImageWeightsLicenseTexts) as Promise<ImageWeightsLicenseTexts>,
+    startImageWeightsFetch: (hasAgreed) =>
+      ipc.invoke(
+        IpcChannel.StartImageWeightsFetch,
+        hasAgreed,
+      ) as Promise<StartImageWeightsFetchResult>,
+    cancelImageWeightsFetch: () => ipc.invoke(IpcChannel.CancelImageWeightsFetch) as Promise<void>,
+    onImageWeightsProgress: (listener) => subscribe(ipc, IpcChannel.ImageWeightsProgress, listener),
     startGeneration: (characterId, options) =>
       ipc.invoke(
         IpcChannel.StartGeneration,

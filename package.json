@@ -28,6 +28,7 @@
     },
     "files": [
       "dist/**/*",
+      "assets/licenses/**/*",
       "package.json"
     ],
     "asarUnpack": [

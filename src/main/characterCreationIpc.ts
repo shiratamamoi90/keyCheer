@@ -29,6 +29,7 @@ import { checkGenerationGate } from "../core/providers/gate.js";
 import { checkGenerationPreconditions } from "../core/providers/consent.js";
 import { applyRedBlueSwap, computeImageSize, type RgbaImage } from "../core/characterImage.js";
 import { createChildTracker, resolveSdcppPaths } from "./bundledSdcpp.js";
+import { registerImageWeights } from "./imageWeightsIpc.js";
 import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
 import { resolveGenerationStart } from "./generationStart.js";
@@ -382,6 +383,14 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
         characterId,
       ),
   );
+
+  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)。生成側の関心なので、ここから登録する
+  registerImageWeights({
+    store: deps.store,
+    providers: deps.providers,
+    userDataDir: deps.userDataDir,
+    getWindow: deps.getWindow,
+  });
 
   return { stopSdcpp: () => sdcppChildren.stopAll() };
 }

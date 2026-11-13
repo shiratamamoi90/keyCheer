@@ -5,17 +5,11 @@
 // Electron にも child_process にも触れない(起動の手段は注入)。発動経路からは import しない。
 
 import type { ChildHandleLike, SpawnLike } from "../agent/providers/localSdcpp.js";
+import { IMAGE_WEIGHT_FILES, IMAGE_WEIGHTS_DIR } from "../core/shared/imageWeights.js";
 
 // 同梱物の中の置き場と、実行ファイルの名前(公式リリースの zip の中身。scripts/fetch-sdcpp.sh が同じ名前で置く)
 const SDCPP_DIR_NAME = "sdcpp";
 const SDCPP_BIN_NAME = "sd-cli";
-// 画像の重みの置き場とファイル名(論点 0041 の決定。取得の実装 — 論点 0042 / 0048 — も同じ名前で置く)。
-// LoRA のファイル名は、プロンプトの <lora:lcm-lora-sdv1-5:1> と揃える必要がある(sd.cpp は名前で探す)
-const IMAGE_WEIGHTS_DIR = "weights/image";
-const BASE_MODEL_FILE = "Counterfeit-V3.0_fix_fp16.safetensors";
-const LORA_DIR_NAME = "lora";
-const LORA_FILE = "lcm-lora-sdv1-5.safetensors";
-
 export interface SdcppPaths {
   binPath: string;
   modelPath: string;
@@ -31,13 +25,17 @@ export function resolveSdcppPaths(input: {
   platform: string;
 }): SdcppPaths {
   const extension = input.platform === "win32" ? ".exe" : "";
+  // 重みの置き場とファイル名は、取得(main/imageWeights.ts)と同じ定義から決める(core/shared/imageWeights.ts)
   const weightsDir = `${input.userDataDir}/${IMAGE_WEIGHTS_DIR}`;
-  const loraDir = `${weightsDir}/${LORA_DIR_NAME}`;
+  const relativePathOf = (id: "base-model" | "lcm-lora"): string =>
+    IMAGE_WEIGHT_FILES.find((file) => file.id === id)!.relativePath;
+  const loraPath = `${weightsDir}/${relativePathOf("lcm-lora")}`;
   return {
     binPath: `${input.resourcesDir}/${SDCPP_DIR_NAME}/${SDCPP_BIN_NAME}${extension}`,
-    modelPath: `${weightsDir}/${BASE_MODEL_FILE}`,
-    loraDir,
-    loraPath: `${loraDir}/${LORA_FILE}`,
+    modelPath: `${weightsDir}/${relativePathOf("base-model")}`,
+    // sd.cpp には LoRA の置き場(フォルダ)を渡す
+    loraDir: loraPath.slice(0, loraPath.lastIndexOf("/")),
+    loraPath,
   };
 }
 

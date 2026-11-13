@@ -11,6 +11,16 @@
 // I/O グルーでユニットテスト対象外 — 検証は typecheck / lint / 実機確認。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
+import { resolveEditableSpeakerId } from "../core/shared/selectableSpeaker.js";
+import type { ImageWeightsLicenseTexts, ImageWeightsStatus } from "../core/shared/ipc.js";
+import {
+  buildImageWeightLines,
+  buildImageWeightsLicenseSections,
+  buildUseRestrictionText,
+  IMAGE_WEIGHTS_AGREE_LABEL,
+  imageWeightsFailureText,
+  imageWeightsStatusLabel,
+} from "./imageWeightsView.js";
 import type * as ReactNS from "react";
 import type * as ReactDOMClientNS from "react-dom/client";
 import {
@@ -129,6 +139,23 @@ function App(): ReactNS.ReactElement {
   const [generationConfig, setGenerationConfig] = React.useState<GenerationConfig | null>(null);
   // 常時表示(論点 0036)
   const [popupDisplay, setPopupDisplay] = React.useState<PopupDisplayConfig | null>(null);
+  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)
+  const [imageWeights, setImageWeights] = React.useState<ImageWeightsStatus | null>(null);
+  const [isAgreementOpen, setAgreementOpen] = React.useState(false);
+  const [hasAgreedToLicense, setAgreedToLicense] = React.useState(false);
+  const [imageWeightsMessage, setImageWeightsMessage] = React.useState<string | null>(null);
+  const [licenseTexts, setLicenseTexts] = React.useState<ImageWeightsLicenseTexts | null>(null);
+
+  const refreshImageWeights = React.useCallback((): void => {
+    void window.keycheer.getImageWeightsStatus().then(setImageWeights);
+  }, []);
+
+  // S0042_02 状態を読むだけでは取得は始まらない。進捗は main から届く
+  React.useEffect(() => {
+    refreshImageWeights();
+    void window.keycheer.getImageWeightsLicenseTexts().then(setLicenseTexts);
+    return window.keycheer.onImageWeightsProgress(setImageWeights);
+  }, [refreshImageWeights]);
 
   const refreshCharacters = React.useCallback((): void => {
     void window.keycheer.listCharacters().then((items) => {
@@ -267,7 +294,8 @@ function App(): ReactNS.ReactElement {
     setEditingId(editing?.id ?? null);
     setName(editing?.name ?? "");
     setPersonality(editing?.personality ?? "");
-    setSpeakerId(editing?.voicevoxSpeakerId ?? null);
+    // S0044_06 今の話者が選べる話者に無ければ未選択として出す(選び直すまで保存できない)
+    setSpeakerId(resolveEditableSpeakerId(editing?.voicevoxSpeakerId ?? null));
     setErrors([]);
     setStatus(null);
   };
@@ -613,6 +641,155 @@ function App(): ReactNS.ReactElement {
     ];
   };
 
+  // S0047_05 同意していなければ、取得の前に同意の画面を出す / S0047_07 同意済みならそのまま始める
+  const startImageWeightsFetch = (hasAgreed: boolean): void => {
+    setImageWeightsMessage(null);
+    setAgreementOpen(false);
+    setAgreedToLicense(false);
+    void window.keycheer.startImageWeightsFetch(hasAgreed).then((result) => {
+      setImageWeightsMessage(
+        result.ok
+          ? "画像生成のモデルの重みを取得しました。次の生成から画像が作られます"
+          : imageWeightsFailureText(result.reason),
+      );
+      refreshImageWeights();
+    });
+    refreshImageWeights();
+  };
+
+  const requestImageWeightsFetch = (): void => {
+    if (imageWeights?.needsLicenseAgreement === true) {
+      // ライセンスの文面を読めていないときは、同意を求めない(示さずに同意させない)
+      if (licenseTexts === null) {
+        setImageWeightsMessage("ライセンスの文面を読み込めませんでした");
+        return;
+      }
+      setAgreementOpen(true);
+    } else {
+      startImageWeightsFetch(false);
+    }
+  };
+
+  const licenseDetails = (key: string): ReactNS.ReactElement | null =>
+    licenseTexts === null
+      ? null
+      : React.createElement(
+          "details",
+          { key },
+          React.createElement("summary", null, "画像生成のモデルのライセンス(全文)"),
+          ...buildImageWeightsLicenseSections(licenseTexts).map((section) =>
+            React.createElement(
+              "div",
+              { key: section.name },
+              React.createElement(
+                "p",
+                null,
+                `${section.name} — ${section.licenseName}(配布元: ${section.source})`,
+              ),
+              React.createElement("pre", { className: "license" }, section.text),
+            ),
+          ),
+        );
+
+  // 画像生成のモデルの重み(論点 0042 / 0047)。取得しない人にもライセンスは見せる(S0047_01)
+  const imageWeightsSection = (): (ReactNS.ReactElement | null)[] => [
+    React.createElement("h2", { key: "weights-h" }, "画像生成のモデルの重み"),
+    React.createElement(
+      "p",
+      { key: "weights-note", className: "notice" },
+      "ローカルでキャラクターの画像を作るのに使います。無くても応援は文言と声で出ます。",
+    ),
+    React.createElement(
+      "ul",
+      { key: "weights-files" },
+      ...buildImageWeightLines().map((line) => React.createElement("li", { key: line }, line)),
+    ),
+    imageWeights !== null
+      ? React.createElement(
+          "p",
+          { key: "weights-status", className: "progress" },
+          imageWeightsStatusLabel(imageWeights),
+        )
+      : null,
+    // S0042_09 重みが無ければ取得の操作を出す / S0042_11 外部の画像プロバイダーなら出さない
+    imageWeights?.canFetch === true && !isAgreementOpen
+      ? React.createElement(
+          "button",
+          { key: "weights-start", type: "button", onClick: requestImageWeightsFetch },
+          "重みを取得する",
+        )
+      : null,
+    // S0042_03 取得中は中断できる
+    imageWeights !== null && imageWeights.progress !== null
+      ? React.createElement(
+          "button",
+          {
+            key: "weights-cancel",
+            type: "button",
+            onClick: () => void window.keycheer.cancelImageWeightsFetch(),
+          },
+          "中断",
+        )
+      : null,
+    // S0047_05 ライセンスと利用の制限を示して同意を求める / S0047_06 同意しなければ取得を始めない
+    isAgreementOpen
+      ? React.createElement(
+          "div",
+          { key: "weights-agreement", className: "confirm" },
+          React.createElement(
+            "p",
+            null,
+            "取得する前に、ライセンスと利用の制限を確認してください。次の使い方は禁じられています。",
+          ),
+          React.createElement(
+            "pre",
+            { className: "license" },
+            licenseTexts !== null ? buildUseRestrictionText(licenseTexts) : "",
+          ),
+          licenseDetails("agreement-license"),
+          React.createElement(
+            "label",
+            { className: "agree" },
+            React.createElement("input", {
+              type: "checkbox",
+              checked: hasAgreedToLicense,
+              onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                setAgreedToLicense(e.target.checked),
+            }),
+            IMAGE_WEIGHTS_AGREE_LABEL,
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              disabled: !hasAgreedToLicense,
+              onClick: () => startImageWeightsFetch(true),
+            },
+            "同意して取得する",
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                setAgreementOpen(false);
+                setAgreedToLicense(false);
+              },
+            },
+            "やめる",
+          ),
+        )
+      : null,
+    imageWeightsMessage !== null
+      ? React.createElement(
+          "p",
+          { key: "weights-message", className: "status" },
+          imageWeightsMessage,
+        )
+      : null,
+    isAgreementOpen ? null : licenseDetails("weights-license"),
+  ];
+
   const settingsScreen = (): (ReactNS.ReactElement | null)[] => [
     React.createElement("h1", { key: "h" }, "設定"),
     React.createElement(
@@ -638,6 +815,7 @@ function App(): ReactNS.ReactElement {
       }),
       "キャラを常に表示する",
     ),
+    ...imageWeightsSection(),
   ];
 
   const body: Record<MainScreen, () => (ReactNS.ReactElement | null)[]> = {

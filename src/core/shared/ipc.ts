@@ -31,6 +31,12 @@ export const IpcChannel = {
   SetProviders: "keycheer:set-providers",
   GetConsent: "keycheer:get-consent",
   GrantConsent: "keycheer:grant-consent",
+  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)
+  GetImageWeightsStatus: "keycheer:get-image-weights-status",
+  StartImageWeightsFetch: "keycheer:start-image-weights-fetch",
+  CancelImageWeightsFetch: "keycheer:cancel-image-weights-fetch",
+  ImageWeightsProgress: "keycheer:image-weights-progress",
+  GetImageWeightsLicenseTexts: "keycheer:get-image-weights-license-texts",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   // 待機画像と常時表示の通知(論点 0036)。使用中のキャラクター・設定が変わるたびに送る
@@ -178,3 +184,31 @@ export type StartGenerationResult =
 // renderer ⇄ main: 外部プロバイダーの同意状態(論点 0016)。
 // true のものだけが載る。未同意は「キーが無い」で表す(false を持ち回らない)。
 export type ConsentSnapshot = Readonly<Partial<Record<ProviderId, true>>>;
+
+// 画像の重みの状態(論点 0042 / 0047)。設定画面が取得の操作・同意の画面・進捗を出すのに使う
+export interface ImageWeightsStatus {
+  hasWeights: boolean; // 重みが照合に通って置かれている
+  canFetch: boolean; // 取得の操作を出すか(local-sdcpp を選んでいて、重みが無く、取得中でない)
+  needsLicenseAgreement: boolean; // 取得の前にライセンスへの同意が要る
+  progress: { doneBytes: number; totalBytes: number } | null; // 取得中だけ
+}
+
+export type StartImageWeightsFetchResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "license-agreement-required"
+        | "already-running"
+        | "cancelled"
+        | "network"
+        | "hash-mismatch"
+        | "insufficient-space";
+    };
+
+// 画像の重みのライセンスの全文(論点 0047)。同梱した文面を main が読んで渡す(通信しない。S0047_10)。
+// キーは core/shared/imageWeights の ImageWeightFile.id
+export interface ImageWeightsLicenseTexts {
+  "base-model": string;
+  "lcm-lora": string;
+}

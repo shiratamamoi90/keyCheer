@@ -3,6 +3,7 @@
 // 要件: docs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular=100 のマイグレーション」
 // 注:API キー本体はここ(平文 JSON)に書かない(safeStorage 管轄。src/agent/secrets.ts)。
 
+import type { ImageWeightsLicenseAgreement } from "../core/shared/imageWeights.js";
 import Store from "electron-store";
 import {
   mergeWithDefaults,
@@ -86,6 +87,9 @@ export interface AppStore {
   loadPopupDisplay(): PopupDisplayConfig;
   savePopupDisplay(config: PopupDisplayConfig): void;
   loadSystem(): SystemConfig;
+  // 画像の重みのライセンスへの同意(論点 0047)。形の検証は core/shared/imageWeights の hasLicenseAgreement が行う
+  loadImageWeightsLicenseAgreement(): unknown;
+  saveImageWeightsLicenseAgreement(agreement: ImageWeightsLicenseAgreement): void;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
 }
@@ -326,6 +330,17 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
         return DEFAULT_GENERATION_CONFIG;
       }
       return { shouldActivateOnComplete: stored };
+    },
+
+    // S0047_08 同意したことと日時と、同意した対象の版を記録する — system の中の 1 項目として持つ。
+    // ほかの system の項目と、送信の同意(providers.consent)は書き換えない(S0047_11)
+    loadImageWeightsLicenseAgreement() {
+      const raw = (store.get("system") as Record<string, unknown> | undefined) ?? {};
+      return raw.imageWeightsLicenseAgreement ?? null;
+    },
+    saveImageWeightsLicenseAgreement(agreement) {
+      const raw = (store.get("system") as Record<string, unknown> | undefined) ?? {};
+      store.set("system", { ...raw, imageWeightsLicenseAgreement: agreement });
     },
 
     // シナリオ: system 設定の読み込みと既定値補完

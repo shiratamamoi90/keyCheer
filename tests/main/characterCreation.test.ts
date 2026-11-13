@@ -926,3 +926,21 @@ describe("characterCreation / 画像の結果を画面へ渡す形にまとめ�
     });
   });
 });
+
+describe("characterCreation / 画像の重みが無くても生成は始められる [境界]", () => {
+  it("S0042_10 starts and completes without images when the image provider could not be built", async () => {
+    // GIVEN local-sdcpp で画像の重みが取得されていない(= 画像プロバイダーを組み立てられず、画像の工程を渡さない)。
+    //       テキストと音声は生成できる状態
+    const fs = fakeFs();
+
+    // WHEN 生成を始める
+    const result = await createGenerationRunner().start(baseInput(fs));
+
+    // THEN 取得の案内で止めずに生成を始め、画像なしで完了する
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.images).toBeUndefined();
+    expect(imageFiles(fs)).toEqual([]);
+    expect(loadPool(fs, USER_DATA, CHAR_ID)).not.toBeNull();
+  });
+});

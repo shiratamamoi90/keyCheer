@@ -11,11 +11,11 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
     const result = validateCharacterProfile({
       name: "チア",
       personality: "元気いっぱい",
-      voicevoxSpeakerId: 3,
+      voicevoxSpeakerId: 2,
     });
     expect(result).toEqual({
       ok: true,
-      value: { name: "チア", personality: "元気いっぱい", voicevoxSpeakerId: 3 },
+      value: { name: "チア", personality: "元気いっぱい", voicevoxSpeakerId: 2 },
     });
   });
 
@@ -26,17 +26,17 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
   });
 
   it("rejects non-string name / personality even if present", () => {
-    expect(validateCharacterProfile({ name: 1, personality: "p", voicevoxSpeakerId: 3 }).ok).toBe(
+    expect(validateCharacterProfile({ name: 1, personality: "p", voicevoxSpeakerId: 2 }).ok).toBe(
       false,
     );
-    expect(validateCharacterProfile({ name: "n", personality: {}, voicevoxSpeakerId: 3 }).ok).toBe(
+    expect(validateCharacterProfile({ name: "n", personality: {}, voicevoxSpeakerId: 2 }).ok).toBe(
       false,
     );
   });
 
   it("rejects a whitespace-only name (フォームを迂回されても通さない)", () => {
     expect(
-      validateCharacterProfile({ name: "   ", personality: "p", voicevoxSpeakerId: 3 }).ok,
+      validateCharacterProfile({ name: "   ", personality: "p", voicevoxSpeakerId: 2 }).ok,
     ).toBe(false);
   });
 
@@ -52,11 +52,11 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
     const result = validateCharacterProfile({
       name: "  チア  ",
       personality: "  元気  ",
-      voicevoxSpeakerId: 3,
+      voicevoxSpeakerId: 2,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toEqual({ name: "チア", personality: "元気", voicevoxSpeakerId: 3 });
+    expect(result.value).toEqual({ name: "チア", personality: "元気", voicevoxSpeakerId: 2 });
   });
 
   it("reports every problem at once", () => {
@@ -70,12 +70,28 @@ describe("characterInput / renderer からの入力は main 側でも検証す�
     const result = validateCharacterProfile({
       name: "チア",
       personality: "元気",
-      voicevoxSpeakerId: 3,
+      voicevoxSpeakerId: 2,
       imagePaths: { normal: "/etc/passwd" },
       pool: { buckets: {} },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(Object.keys(result.value).sort()).toEqual(["name", "personality", "voicevoxSpeakerId"]);
+  });
+});
+
+describe("characterInput / 選べる話者以外の ID は保存しない [異常系]", () => {
+  it("S0044_04 rejects a speaker id outside the selectable speakers", () => {
+    // GIVEN 名前と性格は入力済みで、話者として選べる話者以外のスタイルの ID(3 = ずんだもん)が渡された
+    const result = validateCharacterProfile({
+      name: "チア",
+      personality: "元気",
+      voicevoxSpeakerId: 3,
+    });
+
+    // THEN 保存は行われない
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual(["voicevoxSpeakerId must be a selectable speaker"]);
   });
 });

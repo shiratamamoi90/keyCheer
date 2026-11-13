@@ -35,11 +35,8 @@ describe("speakerCatalog / 話者一覧を VOICEVOX から取得する", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.speakers).toEqual([
-      { id: 2, name: "四国めたん", styleName: "ノーマル" },
-      { id: 3, name: "ずんだもん", styleName: "ノーマル" },
-      { id: 1, name: "ずんだもん", styleName: "あまあま" },
-    ]);
+    // 平坦化したうち、選べる話者(論点 0044)にあたるものだけが選択肢になる
+    expect(result.speakers).toEqual([{ id: 2, name: "四国めたん", styleName: "ノーマル" }]);
   });
 
   it("requests the /speakers endpoint", async () => {
@@ -92,5 +89,59 @@ describe("speakerCatalog / 話者一覧の取得は localhost に閉じる [不�
 
   it("uses a localhost default endpoint", () => {
     expect(LOCAL_HOSTS.has(new URL(DEFAULT_VOICEVOX_ENDPOINT).hostname)).toBe(true);
+  });
+});
+
+// --- 選べる話者(論点 0044)---
+
+const manySpeakers = [
+  {
+    name: "四国めたん",
+    styles: [
+      { name: "ノーマル", id: 2 },
+      { name: "あまあま", id: 0 },
+    ],
+  },
+  { name: "ずんだもん", styles: [{ name: "ノーマル", id: 3 }] },
+  { name: "春日部つむぎ", styles: [{ name: "ノーマル", id: 8 }] },
+  { name: "雨晴はう", styles: [{ name: "ノーマル", id: 10 }] },
+  { name: "玄野武宏", styles: [{ name: "ノーマル", id: 11 }] },
+];
+
+describe("speakerCatalog / 選択肢は選べる話者だけにする", () => {
+  it("S0044_01 lists only the four selectable speakers out of a larger list", async () => {
+    // GIVEN VOICEVOX が選べる話者 4 つを含む、それより多い話者 × スタイルを返す
+    const result = await fetchSpeakers({ fetchFn: vi.fn(async () => okJson(manySpeakers)) });
+
+    // THEN 選択肢は選べる話者の 4 つだけ
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.speakers.map((s) => s.id)).toEqual([2, 8, 10, 11]);
+  });
+});
+
+describe("speakerCatalog / VOICEVOX が一部しか返さなければ、その分だけ出す [境界]", () => {
+  it("S0044_02 lists only the selectable speakers that VOICEVOX returned", async () => {
+    // GIVEN VOICEVOX が返す一覧に、選べる話者のうち 2 つしか含まれない
+    const some = manySpeakers.filter((s) =>
+      ["四国めたん", "ずんだもん", "雨晴はう"].includes(s.name),
+    );
+    const result = await fetchSpeakers({ fetchFn: vi.fn(async () => okJson(some)) });
+
+    // THEN 選択肢はその 2 つだけ
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.speakers.map((s) => s.id)).toEqual([2, 10]);
+  });
+});
+
+describe("speakerCatalog / 選べる話者が 1 つも返らなければ、話者一覧が取れないときと同じ扱いにする [境界]", () => {
+  it("S0044_03 returns unavailable when no selectable speaker is returned", async () => {
+    // GIVEN VOICEVOX は応答するが、返す一覧に選べる話者が 1 つも含まれない
+    const none = [{ name: "ずんだもん", styles: [{ name: "ノーマル", id: 3 }] }];
+    const result = await fetchSpeakers({ fetchFn: vi.fn(async () => okJson(none)) });
+
+    // THEN 話者一覧が取れないときと同じ扱い(例外を投げない)
+    expect(result).toEqual({ ok: false, reason: "unavailable" });
   });
 });
