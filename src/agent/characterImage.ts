@@ -15,6 +15,7 @@ import {
   buildImageTagPrompt,
   buildImageTagText,
   buildLocalImagePrompt,
+  buildLocalImageTagPrompt,
   CHARACTER_IMAGE_KINDS,
   computeImagePalette,
   LOCAL_DERIVED_STEPS,
@@ -138,8 +139,9 @@ async function generateLocalImages(
   let source = kinds.includes("idle") ? null : local.loadIdleSource();
 
   const requestTags = async (kind: CharacterImageKind): Promise<string | null> => {
+    // S0049_01 / S0049_02 待機画像は見た目を、応援種別の画像は表情とポーズだけを訊く
     const raw = await input.tagGenerator.generateImageTags({
-      prompt: buildImageTagPrompt(input.character, kind, input.pool),
+      prompt: buildLocalImageTagPrompt(input.character, kind, input.pool),
       seed: input.seed,
       timeoutMs: input.timeoutMsPerImage,
     });

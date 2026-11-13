@@ -261,3 +261,46 @@ describe("localSdcpp / 下絵・強さ・ステップ数", () => {
     expect(valueAfter(args!, "--steps")).toBe("4");
   });
 });
+
+describe("localSdcpp / 一時ファイルを残さない", () => {
+  function setup(exitCode: number) {
+    const removed: string[] = [];
+    const spawn: SpawnLike = () => {
+      const child = makeChild();
+      queueMicrotask(() => child.fireClose(exitCode));
+      return child;
+    };
+    const generator = createSdcppImageGenerator({
+      ...baseConfig(spawn, () => new Uint8Array([1])),
+      makeInputPath: (i: number) => `sd-in-${i}.png`,
+      writeInput: () => {},
+      removeFile: (path: string) => {
+        removed.push(path);
+      },
+    });
+    const run = generator.generateImages({
+      ...request,
+      count: 1,
+      initImage: new Uint8Array([9]),
+      strength: 0.65,
+      steps: 8,
+    });
+    return { removed, run };
+  }
+
+  it("removes the init image and the output after the image is read", async () => {
+    const { removed, run } = setup(0);
+
+    await run;
+
+    expect(removed.slice().sort()).toEqual(["sd-in-0.png", "sd-out-0.png"]);
+  });
+
+  it("removes them also when sd.cpp fails", async () => {
+    const { removed, run } = setup(1);
+
+    await expect(run).rejects.toThrow();
+
+    expect(removed.slice().sort()).toEqual(["sd-in-0.png", "sd-out-0.png"]);
+  });
+});

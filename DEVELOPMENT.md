@@ -138,7 +138,8 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
     ├── validate.sh                 # 機械検査(項目の正本は impl-rules.md N-8)。/validate が呼ぶ(Core)
     ├── hooks.sh                    # hooks の実体。format|test(Core)/ veto|validate(Scale)を引数で切替
     ├── postbuild.mjs               # このプロジェクト固有:dist を Electron が読める形に整える
-    └── fetch-image-eval.sh / image-eval.Dockerfile  # 画像の計測用:sd.cpp と重みの取得、計測用コンテナ(論点 0041 / 0045)
+    ├── fetch-image-eval.sh / image-eval.Dockerfile  # 画像の計測用:sd.cpp と重みの取得、計測用コンテナ(論点 0041 / 0045)
+    └── fetch-sdcpp.sh              # 同梱する sd.cpp(Windows 向け CPU 版)を vendor/sdcpp/ に取得する(論点 0040)
 ```
 
 ## 依存方向

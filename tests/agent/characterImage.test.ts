@@ -408,3 +408,42 @@ describe("characterImage / 外部の画像プロバイダーにはローカル�
     expect(written.map((w) => Array.from(w.bytes))).toEqual([[8], [11], [13]]);
   });
 });
+
+describe("characterImage / 外部の画像プロバイダーでは画像タグの要求を変えない [否定]", () => {
+  it("S0049_03 asks for the appearance only for local-sdcpp and keeps the request as before for an external provider", async () => {
+    // GIVEN providers.image が stability-ai の場合と、local-sdcpp の場合
+    const externalTags = fakeTagGenerator();
+    const localTags = fakeTagGenerator();
+    const external = baseInput({
+      tagGenerator: externalTags,
+      imageGenerator: fakeImageGenerator("stability-ai"),
+      local: fakeLocalProcess().process,
+    });
+    const local = baseInput({
+      tagGenerator: localTags,
+      imageGenerator: fakeLocalGenerator(),
+      local: fakeLocalProcess().process,
+    });
+
+    // WHEN 3 枚の画像タグを要求する
+    await generateCharacterImages(external.input);
+    await generateCharacterImages(local.input);
+
+    // THEN 外部の要求は今までの形のまま(訊き分けをしない)。local-sdcpp だけが見た目・表情とポーズを訊き分ける
+    for (const call of externalTags.calls) {
+      expect(call.prompt).toContain("表情・ポーズ・雰囲気");
+      expect(call.prompt).not.toContain("髪の色");
+      expect(call.prompt).not.toContain("表情とポーズだけ");
+    }
+    expect(localTags.calls.map((call) => call.prompt.includes("髪の色"))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(localTags.calls.map((call) => call.prompt.includes("表情とポーズだけ"))).toEqual([
+      false,
+      true,
+      true,
+    ]);
+  });
+});

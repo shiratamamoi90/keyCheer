@@ -5,9 +5,11 @@ import { describe, it, expect } from "vitest";
 import {
   applyBackgroundRemoval,
   applyImagePalette,
+  applyRedBlueSwap,
   buildImageTagPrompt,
   buildImageTagText,
   buildLocalImagePrompt,
+  buildLocalImageTagPrompt,
   computeImagePalette,
   computeImageSize,
   type RgbaImage,
@@ -258,5 +260,57 @@ describe("characterImage / 同じ絵からは同じ絵が保存される", () =>
     // THEN 2 回の結果は画素ごとに一致し、もとの絵は書き換わらない
     expect(run()).toEqual(run());
     expect([...source.pixels]).toEqual(before);
+  });
+});
+
+describe("characterImage / 色の並びの入れ替え", () => {
+  it("swaps the first and the third channel of every pixel without touching the input", () => {
+    const image: RgbaImage = {
+      width: 2,
+      height: 1,
+      pixels: new Uint8Array([50, 100, 200, 255, 1, 2, 3, 0]),
+    };
+
+    const swapped = applyRedBlueSwap(image);
+
+    expect([...swapped.pixels]).toEqual([200, 100, 50, 255, 3, 2, 1, 0]);
+    expect([...image.pixels]).toEqual([50, 100, 200, 255, 1, 2, 3, 0]);
+  });
+});
+
+describe("characterImage / 待機画像の画像タグの要求は見た目を訊く", () => {
+  it("S0049_01 asks for the appearance and includes no pool message", () => {
+    // GIVEN local-sdcpp、プールのあるキャラクター
+    const pool = makePool();
+
+    // WHEN 待機画像の画像タグの要求を組み立てる
+    const prompt = buildLocalImageTagPrompt(character, "idle", pool);
+
+    // THEN 人物の語・髪の色・髪型・目の色・服装を訊く。セリフは 1 文も含まない
+    for (const word of ["1girl", "1boy", "髪の色", "髪型", "目の色", "服装"]) {
+      expect(prompt, word).toContain(word);
+    }
+    expect(prompt).toContain("チアちゃん");
+    expect(prompt).not.toContain("R:");
+    expect(prompt).not.toContain("M:");
+  });
+});
+
+describe("characterImage / 応援種別の画像の画像タグの要求は表情とポーズだけを訊く", () => {
+  it("S0049_02 shows the messages of that cheer type and asks only for the expression and the pose", () => {
+    // GIVEN local-sdcpp、regular と milestone のセリフを持つプール
+    const pool = makePool();
+
+    // WHEN regular の画像の画像タグの要求を組み立てる
+    const prompt = buildLocalImageTagPrompt(character, "regular", pool);
+
+    // THEN regular のセリフを示して表情とポーズを訊き、髪・目・服は書かないよう指示する。milestone のセリフは含まない
+    for (const key of ALL_BUCKET_KEYS.filter((k) => k.includes("_regular_"))) {
+      expect(prompt).toContain(`R:${key}`);
+    }
+    expect(prompt).not.toContain("M:");
+    expect(prompt).toContain("表情とポーズだけ");
+    expect(prompt).toContain("髪・目・服は書かないでください");
+    expect(prompt).not.toContain("髪型");
   });
 });

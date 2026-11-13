@@ -10,6 +10,8 @@
 // テスト対象外の I/O グルー。判定ロジックは characterCreation / characterStore 側にあり、
 // そちらで注入して縛っている。
 
+import { spawn as spawnChild } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { ipcMain, nativeImage, safeStorage, type BrowserWindow } from "electron";
 import Store from "electron-store";
 import { createSecretStore } from "../agent/secrets.js";
@@ -21,7 +23,8 @@ import {
 } from "./providerFactory.js";
 import { checkGenerationGate } from "../core/providers/gate.js";
 import { checkGenerationPreconditions } from "../core/providers/consent.js";
-import { computeImageSize } from "../core/characterImage.js";
+import { applyRedBlueSwap, computeImageSize, type RgbaImage } from "../core/characterImage.js";
+import { createChildTracker, resolveSdcppPaths } from "./bundledSdcpp.js";
 import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
 import { resolveGenerationStart } from "./generationStart.js";
@@ -55,6 +58,14 @@ export interface CharacterCreationDeps {
   onActiveCharacterRemoved: () => void;
   // 進捗の送り先(メインウィンドウ)
   getWindow: () => BrowserWindow | null;
+  // 同梱した sd.cpp の置き場(論点 0040)。resourcesDir の下の sdcpp/ に実行ファイルがある。
+  // 渡さなければ local-sdcpp は組み立てない(画像なしで生成を完了する)
+  sdcpp?: { resourcesDir: string; tempDir: string };
+}
+
+export interface CharacterCreationHandle {
+  // S0040_05 アプリ終了時に、実行中の sd.cpp を止める
+  stopSdcpp(): void;
 }
 
 // 画像の生成の大きさとシード(docs/data-model.md `system.imageGen` の既定値 512x768)。
@@ -99,7 +110,66 @@ function createDefaultSecretAccess(): SecretAccess {
   };
 }
 
-export function registerCharacterCreation(deps: CharacterCreationDeps): void {
+// --- local-sdcpp の作り方に要る画素の読み書き(論点 0046)。Electron の nativeImage の画素は B・G・R・A の順 ---
+
+// S0046_06 白で塗りつぶした下地
+function makeWhiteCanvas(width: number, height: number): Uint8Array {
+  const WHITE = 255;
+  const bitmap = Buffer.alloc(width * height * 4, WHITE);
+  return new Uint8Array(nativeImage.createFromBitmap(bitmap, { width, height }).toPNG());
+}
+
+// S0046_09 縮小してから画素の並びにする(縮小は S0036_15 と同じ大きさ)
+function decodeScaledImage(bytes: Uint8Array): RgbaImage {
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (image.isEmpty()) throw new Error("image could not be decoded");
+  const size = image.getSize();
+  const scaled = image.resize(computeImageSize(size.width, size.height));
+  const { width, height } = scaled.getSize();
+  return applyRedBlueSwap({ width, height, pixels: new Uint8Array(scaled.toBitmap()) });
+}
+
+function encodeImagePng(image: RgbaImage): Uint8Array {
+  const bitmap = Buffer.from(applyRedBlueSwap(image).pixels);
+  return new Uint8Array(
+    nativeImage.createFromBitmap(bitmap, { width: image.width, height: image.height }).toPNG(),
+  );
+}
+
+export function registerCharacterCreation(deps: CharacterCreationDeps): CharacterCreationHandle {
+  // 同梱した sd.cpp(論点 0040)。シェルを経由せず、引数配列で起動する(不変条件)。窓は出さない
+  const sdcppChildren = createChildTracker((command, args) => {
+    const child = spawnChild(command, args, { stdio: "ignore", windowsHide: true });
+    return {
+      on: (event, listener) => {
+        child.on(event, listener);
+      },
+      // タイムアウトでも終了時でも、途中の絵は要らないので待たずに止める
+      kill: () => {
+        child.kill("SIGKILL");
+      },
+    };
+  });
+  const sdcppRuntime =
+    deps.sdcpp === undefined
+      ? undefined
+      : {
+          paths: resolveSdcppPaths({
+            resourcesDir: deps.sdcpp.resourcesDir,
+            userDataDir: deps.userDataDir,
+            platform: process.platform,
+          }),
+          exists: existsSync,
+          spawn: sdcppChildren.spawn,
+          readOutput: (path: string) => new Uint8Array(readFileSync(path)),
+          writeInput: (path: string, bytes: Uint8Array) => {
+            mkdirSync(deps.sdcpp!.tempDir, { recursive: true });
+            writeFileSync(path, bytes);
+          },
+          removeFile: (path: string) => rmSync(path, { force: true }),
+          tempDir: deps.sdcpp.tempDir,
+        };
+
   const runner = createGenerationRunner();
   // どのキャラクターを生成中か。削除(S0032_08)・切り替え(S0032_13)・一覧(S0033_11)が見る。
   // runner は id を知らない(生成の中身だけを持つ)ので、IPC の側で持つ。
@@ -164,7 +234,12 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
       });
       if (!gate.ok) return { ok: false, reason: gate.reason, provider: gate.provider };
 
-      const factoryDeps = { system, apiKeyFor: secrets.apiKeyFor, voiceIdFor: secrets.voiceIdFor };
+      const factoryDeps = {
+        system,
+        apiKeyFor: secrets.apiKeyFor,
+        voiceIdFor: secrets.voiceIdFor,
+        ...(sdcppRuntime !== undefined ? { sdcpp: sdcppRuntime } : {}),
+      };
       const text = createTextGeneratorFor(selection.text, factoryDeps);
       if (!text.ok) return { ok: false, reason: text.reason, provider: selection.text };
       const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
@@ -190,6 +265,12 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
               width: IMAGE_GENERATION_WIDTH,
               height: IMAGE_GENERATION_HEIGHT,
               encode: encodeCharacterImage,
+              // local-sdcpp のときだけ使われる(外部の画像プロバイダーには当てない。S0046_16)
+              local: {
+                makeCanvas: makeWhiteCanvas,
+                decodeScaled: decodeScaledImage,
+                encodePng: encodeImagePng,
+              },
             }
           : undefined;
 
@@ -285,4 +366,6 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): void {
         characterId,
       ),
   );
+
+  return { stopSdcpp: () => sdcppChildren.stopAll() };
 }

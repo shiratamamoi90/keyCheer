@@ -106,7 +106,10 @@ export interface GenerationRunner {
 }
 
 const DEFAULT_TIMEOUT_MS_PER_MESSAGE = 30_000;
-const DEFAULT_TIMEOUT_MS_PER_IMAGE = 120_000;
+// 画像 1 枚あたりの時間の上限。論点 0045 の計測では、開発機(16 スレッド)の CPU で 1 枚 68〜80 秒かかった。
+// 製品ターゲットの機械はもっと遅いので、計測で使った上限と同じ 10 分にしている(論点 0040 決定 6:計測を見て決める内部定数)。
+// 短くすると、遅い機械で画像が 1 枚も作れなくなる。
+const DEFAULT_TIMEOUT_MS_PER_IMAGE = 600_000;
 
 function allMessages(pool: MessagePool): PoolMessage[] {
   const messages: PoolMessage[] = [];

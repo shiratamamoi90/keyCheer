@@ -138,7 +138,7 @@ function bootstrap(): void {
 
   // キャラ作成(プール・wav 生成)の配線。providers を使うのはこのモジュールの中だけで、
   // 発動経路(上の cheerRuntime 配線)には混ざらない。
-  registerCharacterCreation({
+  const characterCreation = registerCharacterCreation({
     store,
     providers: createProviderStore(rawStore),
     fs: characterFs,
@@ -148,6 +148,11 @@ function bootstrap(): void {
       cheerRuntime.setActiveCharacter(characterId, pool),
     onActiveCharacterRemoved: () => cheerRuntime.setActiveCharacter(null, null),
     getWindow: () => mainWindow.win,
+    // 同梱した sd.cpp(論点 0040)。配布物では resources/、開発時はリポジトリの vendor/(scripts/fetch-sdcpp.sh の置き先)
+    sdcpp: {
+      resourcesDir: app.isPackaged ? process.resourcesPath : `${app.getAppPath()}/vendor`,
+      tempDir: `${app.getPath("temp")}/keycheer-sdcpp`,
+    },
   });
 
   createTray({ onQuit: () => app.quit(), onShowMain: () => mainWindow.toggle() });
@@ -172,6 +177,8 @@ function bootstrap(): void {
     if (hideTimer !== undefined) clearTimeout(hideTimer);
     keyHook.stop();
     cheerRuntime.flushStats();
+    // S0040_05 アプリ終了時に、実行中の sd.cpp を止める
+    characterCreation.stopSdcpp();
   });
 }
 

@@ -127,6 +127,47 @@ const LOCAL_IMAGE_LORA_NAME = "lcm-lora-sdv1-5";
 const PERSON_TAG_PATTERN = /\b1(girl|boy)\b/;
 const FALLBACK_PERSON_TAG = "1girl";
 
+const LOCAL_POSE_KIND_LINE: Readonly<Record<CheerType, string>> = {
+  regular: "次のような応援の言葉を話しているときの立ち絵です。",
+  milestone: "節目を達成したときに、次のような言葉を話している立ち絵です。",
+};
+
+// S0049_01 待機画像の画像タグの要求は見た目を訊く
+// S0049_02 応援種別の画像の画像タグの要求は表情とポーズだけを訊く
+//
+// 文面は論点 0045 の計測で使ったもの(src/eval/imageProcessComparison.ts と同じ文)。絵を確かめたのはこの文だけなので、
+// 言い回しを変えるときは計測し直す。待機画像で見た目を決めておくのは、その画像タグを応援種別の画像にも足して
+// 人物を保つため(S0046_03)。応援種別の画像で髪・目・服を訊かないのは、待機画像と食い違う語が出ると別の人物になるため。
+// 外部の画像プロバイダーには使わない(S0049_03。外部は 3 枚を別々に作るので buildImageTagPrompt のまま)。
+export function buildLocalImageTagPrompt(
+  character: ImageTagCharacter,
+  kind: CharacterImageKind,
+  pool: MessagePool,
+): string {
+  const head = [
+    "あなたは画像生成用のタグを考えます。",
+    `キャラクター: ${character.name}`,
+    `性格: ${character.personality}`,
+  ];
+  if (kind === "idle") {
+    return [
+      ...head,
+      "このキャラクターの見た目を決めて、アニメ絵の画像生成で使う英語のタグで返してください。",
+      "1girl か 1boy のどちらか 1 つ、髪の色、髪型、目の色、服装を、それぞれ小文字の英語 1〜3 語で書きます。",
+      "例: 1girl, blonde hair, long hair, blue eyes, school uniform",
+      "キャラクターの名前と、性格を表す語は入れないでください。",
+    ].join("\n");
+  }
+  return [
+    ...head,
+    LOCAL_POSE_KIND_LINE[kind],
+    ...selectMessageTexts(pool, kind).map((text) => `- ${text}`),
+    "このときの表情とポーズだけを、アニメ絵の画像生成で使う英語のタグで 2〜4 個返してください。",
+    "それぞれ小文字の英語 1〜3 語で書きます。髪・目・服は書かないでください。",
+    "例: smile, open mouth, arms up",
+  ].join("\n");
+}
+
 // S0046_06 待機画像は白の下地から強さ 0.9・4 ステップで描く
 export const LOCAL_IDLE_STRENGTH = 0.9;
 export const LOCAL_IDLE_STEPS = 4;
@@ -382,6 +423,19 @@ export function applyImagePalette(image: RgbaImage, palette: readonly ImageColor
       nearestByColor.set(colorKey(color), nearest);
     }
     pixels.set(nearest, offset);
+  }
+  return { width: image.width, height: image.height, pixels };
+}
+
+// 1 画素の 1 番目と 3 番目の色を入れ替えた絵を返す(R・G・B・A ⇄ B・G・R・A)。
+// Electron の nativeImage の画素は B・G・R・A の順なので、main がこの関数で行き来する(実物で確かめた並び)。
+// 後処理(背景を透明にする・減色)は色の差しか見ないので、どちらの並びでも結果は変わらないが、
+// 残しておく待機画像の色(R・G・B)と並びを揃えるために入れ替える。
+export function applyRedBlueSwap(image: RgbaImage): RgbaImage {
+  const pixels = Uint8Array.from(image.pixels);
+  for (let offset = 0; offset < pixels.length; offset += RGBA_BYTES) {
+    pixels[offset] = image.pixels[offset + 2]!;
+    pixels[offset + 2] = image.pixels[offset]!;
   }
   return { width: image.width, height: image.height, pixels };
 }

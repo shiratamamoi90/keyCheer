@@ -18,7 +18,8 @@
     "services:down": "docker compose --profile cpu --profile gpu down",
     "services:model": "bash scripts/import-sarashina.sh",
     "services:status": "docker compose --profile cpu --profile gpu ps",
-    "package:win": "npm run build && electron-builder --win --dir",
+    "fetch:sdcpp": "bash scripts/fetch-sdcpp.sh",
+    "package:win": "npm run fetch:sdcpp && npm run build && electron-builder --win --dir",
     "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh"
   },
   "build": {
@@ -31,6 +32,18 @@
     ],
     "asarUnpack": [
       "node_modules/uiohook-napi/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/sdcpp",
+        "to": "sdcpp",
+        "filter": [
+          "**/*",
+          "!.tag",
+          "!sd-server.exe",
+          "!start-server.*"
+        ]
+      }
     ],
     "npmRebuild": false,
     "win": {

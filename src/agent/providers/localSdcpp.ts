@@ -32,6 +32,8 @@ export interface SdcppConfig {
   // 下絵(S0046_06 / S0046_07)を sd.cpp に渡すための書き出し。sd.cpp はファイルのパスでしか下絵を受け取らない
   writeInput?: (path: string, bytes: Uint8Array) => void;
   makeInputPath?: (index: number) => string;
+  // 下絵と出力のファイルを消す。下絵は縮小前の待機画像なので、生成が終わったあとに残さない(S0046_19)
+  removeFile?: (path: string) => void;
 }
 
 export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
@@ -45,6 +47,7 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
     makeOutputPath = (i) => `sd-out-${i}.png`,
     writeInput,
     makeInputPath = (i) => `sd-in-${i}.png`,
+    removeFile,
   } = config;
 
   // 重複起動排他(不変条件): 常駐しない・同時に 1 生成のみ。
@@ -137,9 +140,21 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
             initPath = makeInputPath(i);
             writeInput(initPath, request.initImage);
           }
-          images.push(
-            await runOne(buildArgs(request, outPath, initPath), outPath, request.timeoutMs),
-          );
+          try {
+            images.push(
+              await runOne(buildArgs(request, outPath, initPath), outPath, request.timeoutMs),
+            );
+          } finally {
+            // 成否によらず消す(失敗・タイムアウトでも途中の出力が残りうる)。消せなくても生成の成否は変えない
+            for (const path of [outPath, initPath]) {
+              if (path === null || removeFile === undefined) continue;
+              try {
+                removeFile(path);
+              } catch {
+                // 残った一時ファイルは次の生成で上書きされる
+              }
+            }
+          }
         }
         return images;
       } finally {

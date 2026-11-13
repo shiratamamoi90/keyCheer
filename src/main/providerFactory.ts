@@ -17,6 +17,8 @@ import { createOpenAITTSSynthesizer } from "../agent/providers/openaiTts.js";
 import { createElevenLabsSynthesizer } from "../agent/providers/elevenLabsTts.js";
 import { createOpenAIDalleGenerator } from "../agent/providers/openaiDalle.js";
 import { createStabilityImageGenerator } from "../agent/providers/stabilityImage.js";
+import { createSdcppImageGenerator, type SpawnLike } from "../agent/providers/localSdcpp.js";
+import { hasSdcppFiles, type SdcppPaths } from "./bundledSdcpp.js";
 import type {
   ImageGenerator,
   ImageTagGenerator,
@@ -38,16 +40,30 @@ const OPENAI_TTS_MODEL = "tts-1";
 const OPENAI_TTS_VOICE = "alloy";
 const OPENAI_IMAGE_MODEL = "dall-e-3";
 
+// 同梱した sd.cpp を動かすのに要るもの(論点 0040)。パスは同梱物の配置と重みの置き場から決めたものを受け取り、
+// 設定(system)からは読まない(S0040_04)。子プロセスとファイルの I/O は main が渡す
+export interface SdcppRuntimeDeps {
+  paths: SdcppPaths;
+  exists: (path: string) => boolean;
+  spawn: SpawnLike;
+  readOutput: (path: string) => Uint8Array;
+  writeInput: (path: string, bytes: Uint8Array) => void;
+  removeFile: (path: string) => void;
+  tempDir: string; // sd.cpp の出力と下絵を置く一時の置き場
+}
+
 export interface ProviderFactoryDeps {
   system: SystemConfig;
   /** キーが無ければ null。値そのものはここで保持しない。 */
   apiKeyFor: (id: ProviderId) => string | null;
   /** ElevenLabs の voice ID。未設定なら null(0009 で未確定のまま)。 */
   voiceIdFor: (id: ProviderId) => string | null;
+  /** 同梱した sd.cpp。渡さなければ local-sdcpp は組み立てない。 */
+  sdcpp?: SdcppRuntimeDeps;
 }
 
 export type BuildFailure = "missing-api-key" | "voice-id-required";
-// runtime-not-installed: sd.cpp の実行ファイルとモデル重みの同梱・取得が未実装(論点 0030 / 0034)。
+// runtime-not-installed: sd.cpp の実行ファイルかモデル重みが置き場に無い(S0040_02)。
 // 画像の失敗は生成を止めない(S0036_10)ので、文言・音声の BuildFailure とは別に持つ
 export type ImageBuildFailure = "missing-api-key" | "runtime-not-installed";
 
@@ -134,9 +150,29 @@ export function createImageGeneratorFor(
   id: ImageProviderId,
   deps: ProviderFactoryDeps,
 ): ImageGeneratorResult {
-  // sd.cpp の実行ファイル・モデル重みの置き場は、同梱と重みの取得(論点 0040 / 0041 / 0042)が決まるまで無い。
-  // 組み立てられないので画像の工程に進ませない(生成は画像なしで完了する。S0036_10)。
-  if (id === "local-sdcpp") return { ok: false, reason: "runtime-not-installed" };
+  if (id === "local-sdcpp") {
+    // S0040_02 実行ファイルか重みが無ければ子プロセスを起動しない — 組み立てないので画像の工程に進まず、
+    // 生成は画像なしで完了する(S0036_10)。重みは選んだ人だけが取得するので、無いのは普通の状態
+    const sdcpp = deps.sdcpp;
+    if (sdcpp === undefined || !hasSdcppFiles(sdcpp.paths, sdcpp.exists)) {
+      return { ok: false, reason: "runtime-not-installed" };
+    }
+    // S0040_01 同梱した sd.cpp と重みが揃っていれば local-sdcpp で画像の工程を実行する
+    return {
+      ok: true,
+      generator: createSdcppImageGenerator({
+        binPath: sdcpp.paths.binPath,
+        modelPath: sdcpp.paths.modelPath,
+        loraPath: sdcpp.paths.loraDir,
+        spawn: sdcpp.spawn,
+        readOutput: sdcpp.readOutput,
+        writeInput: sdcpp.writeInput,
+        removeFile: sdcpp.removeFile,
+        makeOutputPath: (index) => `${sdcpp.tempDir}/sd-out-${index}.png`,
+        makeInputPath: (index) => `${sdcpp.tempDir}/sd-in-${index}.png`,
+      }),
+    };
+  }
 
   const apiKey = deps.apiKeyFor(id);
   if (apiKey === null) return { ok: false, reason: "missing-api-key" };

@@ -27,6 +27,8 @@ build/
 out/
 release/
 release-builds/
+# 同梱するランタイムの取得物(scripts/fetch-sdcpp.sh の置き先。論点 0040)
+vendor/
 coverage/
 *.tsbuildinfo
 
