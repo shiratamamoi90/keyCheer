@@ -16,7 +16,9 @@ import { createAppStore, type StoreLike } from "../../src/main/store.js";
 import type { MessagePool } from "../../src/core/messagePool.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS } from "../../src/core/messagePool.js";
+import type { RgbaImage } from "../../src/core/characterImage.js";
 import type {
+  ImageGenerationRequest,
   ImageGenerator,
   ImageTagGenerator,
   TextGenerator,
@@ -753,5 +755,153 @@ describe("characterCreation / 画像が欠けたら image を記録しない [�
       text: "local-ollama",
       voice: "local-voicevox",
     });
+  });
+});
+
+// --- ローカル画像生成の作り方(論点 0045 / 0046。docs/integrations.md「ローカル画像生成の作り方」)---
+
+const LOCAL_CANVAS = new Uint8Array([0xca]);
+
+// 呼ばれた順に [first], [first + 1], … を返す(その回の 1 枚目 = 待機画像の、縮小前の絵)
+function fakeLocalImages(first: number): ImageGenerator & { calls: ImageGenerationRequest[] } {
+  const calls: ImageGenerationRequest[] = [];
+  return {
+    id: "local-sdcpp",
+    calls,
+    generateImages: async (req) => {
+      calls.push(req);
+      return [new Uint8Array([first + calls.length - 1])];
+    },
+  };
+}
+
+// 縁が白、まん中の 1 画素が色つきの 3x3 の絵にする。PNG のかわりに画素をそのまま書く
+function localImageInput(generator: ImageGenerator) {
+  return {
+    image: {
+      generator,
+      tagGenerator: fakeTags(),
+      seed: 42,
+      width: 512,
+      height: 768,
+      local: {
+        makeCanvas: () => LOCAL_CANVAS,
+        decodeScaled: (bytes: Uint8Array): RgbaImage => {
+          const pixels = new Uint8Array(3 * 3 * 4).fill(255);
+          pixels.set([bytes[0]!, 0, 0, 255], 4 * 4);
+          return { width: 3, height: 3, pixels };
+        },
+        encodePng: (image: RgbaImage) => Uint8Array.from(image.pixels),
+      },
+    },
+  };
+}
+
+function characterFiles(fs: { files: Record<string, string | Uint8Array> }): string[] {
+  return Object.keys(fs.files)
+    .filter((p) => p.startsWith(`/userdata/characters/${CHAR_ID}/`))
+    .sort();
+}
+
+function isKeptOutput(path: string): boolean {
+  const base = `/userdata/characters/${CHAR_ID}/`;
+  return (
+    path === `${base}pool.json` ||
+    path.startsWith(`${base}voices/`) ||
+    path.startsWith(`${base}images/`)
+  );
+}
+
+async function interruptAfterIdle(fs: ReturnType<typeof fakeFs>) {
+  const runner = createGenerationRunner();
+  const first = await runner.start(
+    baseInput(fs, {
+      textGenerator: labeledText(),
+      ...localImageInput(fakeLocalImages(1)),
+      shouldCancel: () => imagePath(CHAR_ID, "idle") in fs.files,
+    }),
+  );
+  expect(first.ok).toBe(false);
+  expect(imageFiles(fs)).toEqual([imagePath(CHAR_ID, "idle")]);
+  return { runner, state: first.ok ? undefined : first.state };
+}
+
+describe("characterCreation / 再開では残っている縮小前の待機画像を下絵にする", () => {
+  it("S0046_17 resumes the cheer images from the kept unprocessed idle image", async () => {
+    // GIVEN 画像の工程の途中で中断し、idle が保存されていて、縮小前の待機画像([1])が残っている
+    const fs = fakeFs();
+    const { runner, state } = await interruptAfterIdle(fs);
+    const idleBefore = Array.from(fs.files[imagePath(CHAR_ID, "idle")] as Uint8Array);
+
+    // WHEN 再開する
+    const generator = fakeLocalImages(21);
+    const second = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...localImageInput(generator),
+        ...(state !== undefined ? { resumeFrom: state } : {}),
+      }),
+    );
+
+    // THEN idle は作り直さず、残っている縮小前の待機画像を下絵にして残りの 2 枚を作る
+    expect(second.ok).toBe(true);
+    expect(generator.calls).toHaveLength(2);
+    expect(generator.calls.map((call) => Array.from(call.initImage!))).toEqual([[1], [1]]);
+    expect(Array.from(fs.files[imagePath(CHAR_ID, "idle")] as Uint8Array)).toEqual(idleBefore);
+    expect(imageFiles(fs)).toHaveLength(3);
+  });
+});
+
+describe("characterCreation / 縮小前の待機画像が残っていなければ 3 枚とも作り直す [境界]", () => {
+  it("S0046_18 remakes all three images when the unprocessed idle image is gone", async () => {
+    // GIVEN 画像の工程の途中で中断し、idle は保存されているが、縮小前の待機画像が残っていない
+    const fs = fakeFs();
+    const { runner, state } = await interruptAfterIdle(fs);
+    for (const path of characterFiles(fs)) if (!isKeptOutput(path)) delete fs.files[path];
+
+    // WHEN 再開する
+    const generator = fakeLocalImages(21);
+    const second = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...localImageInput(generator),
+        ...(state !== undefined ? { resumeFrom: state } : {}),
+      }),
+    );
+
+    // THEN 保存済みの画像を下絵にせず、待機画像(下地から)から 3 枚とも作り直す
+    expect(second.ok).toBe(true);
+    expect(generator.calls).toHaveLength(3);
+    expect(generator.calls[0]!.initImage).toBe(LOCAL_CANVAS);
+    expect(generator.calls.slice(1).map((call) => Array.from(call.initImage!))).toEqual([
+      [21],
+      [21],
+    ]);
+    // まん中の画素(待機画像の色)が、作り直した絵のものになっている
+    const idle = fs.files[imagePath(CHAR_ID, "idle")] as Uint8Array;
+    expect(Array.from(idle.slice(16, 20))).toEqual([21, 0, 0, 255]);
+  });
+});
+
+describe("characterCreation / 生成が終わったら縮小前の待機画像を残さない [否定]", () => {
+  it("S0046_19 leaves nothing but the pool, the wavs and the three images after the generation ends", async () => {
+    // GIVEN local-sdcpp で画像の工程を行う(中断の間は、縮小前の待機画像が残っている)
+    const fs = fakeFs();
+    const { runner, state } = await interruptAfterIdle(fs);
+    expect(characterFiles(fs).some((path) => !isKeptOutput(path))).toBe(true);
+
+    // WHEN 生成が完了で終わる
+    const second = await runner.start(
+      baseInput(fs, {
+        textGenerator: labeledText(),
+        ...localImageInput(fakeLocalImages(21)),
+        ...(state !== undefined ? { resumeFrom: state } : {}),
+      }),
+    );
+
+    // THEN 縮小前の待機画像は残らない
+    expect(second.ok).toBe(true);
+    expect(characterFiles(fs).filter((path) => !isKeptOutput(path))).toEqual([]);
+    expect(imageFiles(fs)).toHaveLength(3);
   });
 });

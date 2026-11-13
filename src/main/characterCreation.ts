@@ -7,7 +7,7 @@
 
 import { generatePool, isPoolComplete, type PoolGenerationState } from "../agent/poolGenerator.js";
 import { synthesizePoolVoices } from "../agent/voiceSynth.js";
-import { generateCharacterImages } from "../agent/characterImage.js";
+import { generateCharacterImages, type LocalImageProcess } from "../agent/characterImage.js";
 import { CHARACTER_IMAGE_KINDS, type CharacterImageKind } from "../core/characterImage.js";
 import { resolveImagePath } from "../agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
@@ -25,7 +25,10 @@ import {
   createWavWriter,
   clearVoices,
   createImageWriter,
+  clearIdleSource,
   clearImages,
+  loadIdleSource,
+  saveIdleSource,
   type CharacterFs,
 } from "./characterStore.js";
 
@@ -63,6 +66,9 @@ export interface ImageGenerationInput {
   timeoutMsPerImage?: number;
   // 縮小・PNG 化(S0036_15)。main が Electron の nativeImage を渡す。省略時は素通し
   encode?: (bytes: Uint8Array) => Uint8Array;
+  // local-sdcpp の作り方(論点 0046)に要る画素の読み書き。generator が local-sdcpp のときだけ使い、
+  // そのときは encode を通さない(縮小は decodeScaled が行い、後処理のあとに encodePng で PNG にする)
+  local?: Pick<LocalImageProcess, "makeCanvas" | "decodeScaled" | "encodePng">;
 }
 
 // images: 画像の工程を通したときだけ持つ。missing = 作れなかった画像(S0036_10 のエラー表示に使う)
@@ -208,11 +214,25 @@ export function createGenerationRunner(): GenerationRunner {
         // S0036_13 再生成(resumeFrom なし)では前の画像を消してから作る — 前のプロフィールの絵を混ぜない。
         // S0036_11 テキストが揃わなければここに来ない(上で return 済み)。
         const image = input.image;
-        if (input.resumeFrom === undefined) {
-          clearImages(input.fs, input.userDataDir, input.characterId);
-        }
+        const local =
+          image.local !== undefined && image.generator.id === "local-sdcpp"
+            ? image.local
+            : undefined;
         const isSaved = (kind: CharacterImageKind): boolean =>
           input.fs.exists(resolveImagePath(input.userDataDir, input.characterId, kind));
+        if (input.resumeFrom === undefined) {
+          clearImages(input.fs, input.userDataDir, input.characterId);
+          clearIdleSource(input.fs, input.userDataDir, input.characterId);
+        } else if (
+          local !== undefined &&
+          isSaved("idle") &&
+          !CHARACTER_IMAGE_KINDS.every(isSaved) &&
+          loadIdleSource(input.fs, input.userDataDir, input.characterId) === null
+        ) {
+          // S0046_18 縮小前の待機画像が残っていなければ 3 枚とも作り直す — 保存済みの待機画像(縮小・透明・減色の後)を
+          // 下絵にすると、計測した作り方と違う絵になるため
+          clearImages(input.fs, input.userDataDir, input.characterId);
+        }
         const alreadySaved = CHARACTER_IMAGE_KINDS.filter(isSaved);
         const images = await generateCharacterImages({
           character: input.character,
@@ -228,8 +248,19 @@ export function createGenerationRunner(): GenerationRunner {
             input.fs,
             input.userDataDir,
             input.characterId,
-            image.encode,
+            local === undefined ? image.encode : undefined,
           ),
+          ...(local !== undefined
+            ? {
+                local: {
+                  ...local,
+                  loadIdleSource: () =>
+                    loadIdleSource(input.fs, input.userDataDir, input.characterId),
+                  saveIdleSource: (source) =>
+                    saveIdleSource(input.fs, input.userDataDir, input.characterId, source),
+                },
+              }
+            : {}),
           shouldCancel,
           // S0036_08 進捗に画像の工程が含まれる(保存済みの分も done に数える)
           onProgress: (done) =>
@@ -242,8 +273,11 @@ export function createGenerationRunner(): GenerationRunner {
 
         if (images.cancelled) {
           // 中断:テキスト・音声は揃っているので記録する。使用中は変えない(S0032_32)
+          // 縮小前の待機画像は、再開の下絵に使うので残す(S0046_17)
           return { ok: false, reason: "cancelled", state, completed };
         }
+        // S0046_19 生成が終わったら縮小前の待機画像を残さない
+        clearIdleSource(input.fs, input.userDataDir, input.characterId);
 
         // S0036_09 / S0036_10 画像が一部・全部欠けても生成は完了とする(応援は画像なしでも成立する)
         // S0036_16 3 枚揃ったら image を記録 / S0036_17 欠けたら記録せず、前の記録も消す

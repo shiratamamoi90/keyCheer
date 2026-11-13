@@ -54,6 +54,75 @@ export function createImageWriter(
   };
 }
 
+// --- 待機画像の情報(local-sdcpp。論点 0046)---
+// 応援種別の画像を作るのに要る、縮小前の待機画像・その画像タグ・保存した待機画像の色。
+// キャラ画像の置き場(images/)には置かない(docs/data-model.md「画像ファイル」)。中断してから再開するまでの間だけ残し、
+// 生成が終わったら消す(S0046_19)。CharacterFs の読み出しが文字列だけなので、1 つの JSON にまとめている。
+export interface IdleSourceFile {
+  bytes: Uint8Array;
+  tags: string;
+  palette: (readonly [number, number, number])[];
+}
+
+function imageWorkDir(userDataDir: string, characterId: string): string {
+  return `${characterDir(userDataDir, characterId)}/image-work`;
+}
+
+function idleSourcePath(userDataDir: string, characterId: string): string {
+  return `${imageWorkDir(userDataDir, characterId)}/idle-source.json`;
+}
+
+export function saveIdleSource(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+  source: IdleSourceFile,
+): void {
+  fs.mkdirRecursive(imageWorkDir(userDataDir, characterId));
+  fs.writeFile(
+    idleSourcePath(userDataDir, characterId),
+    JSON.stringify({
+      tags: source.tags,
+      palette: source.palette,
+      pngBase64: Buffer.from(source.bytes).toString("base64"),
+    }),
+  );
+}
+
+function isColor(value: unknown): value is [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((c) => Number.isInteger(c) && c >= 0 && c <= 255)
+  );
+}
+
+// 読めない・形が違うものは「残っていない」として扱う(S0046_18 で 3 枚とも作り直す)
+export function loadIdleSource(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+): IdleSourceFile | null {
+  const text = fs.readFile(idleSourcePath(userDataDir, characterId));
+  if (text === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const { tags, palette, pngBase64 } = parsed as Record<string, unknown>;
+  if (typeof tags !== "string" || typeof pngBase64 !== "string") return null;
+  if (!Array.isArray(palette) || !palette.every(isColor)) return null;
+  return { tags, palette, bytes: new Uint8Array(Buffer.from(pngBase64, "base64")) };
+}
+
+// S0046_19 生成が終わったら縮小前の待機画像を残さない
+export function clearIdleSource(fs: CharacterFs, userDataDir: string, characterId: string): void {
+  fs.removeDirRecursive(imageWorkDir(userDataDir, characterId));
+}
+
 // S0036_13 再生成で画像も作り直し、前の画像を残さない
 export function clearImages(fs: CharacterFs, userDataDir: string, characterId: string): void {
   fs.removeDirRecursive(imagesDir(userDataDir, characterId));

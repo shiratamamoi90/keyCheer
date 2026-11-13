@@ -52,6 +52,10 @@ export interface ImageGenerationRequest {
   width: number;
   height: number;
   timeoutMs: number;
+  // 下絵から描き直すときだけ渡す(local-sdcpp の作り方。論点 0046)。外部の画像プロバイダーには渡さない(S0046_16)
+  initImage?: Uint8Array; // 下絵の PNG
+  strength?: number; // 下絵からどれだけ描き直すか(0〜1)
+  steps?: number; // ステップ数。渡さなければプロバイダーの既定
 }
 
 export interface ImageGenerator {

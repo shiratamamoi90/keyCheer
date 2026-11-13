@@ -164,3 +164,100 @@ describe("localSdcpp / 重複起動排他 [不変条件]", () => {
     await expect(third).resolves.toBeDefined();
   });
 });
+
+// --- ローカル画像生成の作り方(論点 0045 / 0046)---
+
+function runWith(
+  over: Record<string, unknown>,
+  written: { path: string; bytes: Uint8Array }[] = [],
+) {
+  const spawned: string[][] = [];
+  const spawn: SpawnLike = (_cmd, args) => {
+    const child = makeChild();
+    spawned.push(args);
+    queueMicrotask(() => child.fireClose(0));
+    return child;
+  };
+  const generator = createSdcppImageGenerator({
+    ...baseConfig(spawn, () => new Uint8Array([1])),
+    makeInputPath: (i: number) => `sd-in-${i}.png`,
+    writeInput: (path: string, bytes: Uint8Array) => {
+      written.push({ path, bytes });
+    },
+  });
+  return generator.generateImages({ ...request, count: 1, ...over }).then(() => spawned);
+}
+
+function valueAfter(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index < 0 ? undefined : args[index + 1];
+}
+
+describe("localSdcpp / 背景の色の語と避ける語を渡さない [否定]", () => {
+  it("S0046_04 passes no negative prompt and adds no word to the prompt", async () => {
+    // GIVEN providers.image = local-sdcpp
+    // WHEN 下絵つき・下絵なしの引数を組み立てる
+    const withInit = await runWith({ initImage: new Uint8Array([9]), strength: 0.9, steps: 4 });
+    const plain = await runWith({});
+
+    // THEN 避ける語の引数が無く、プロンプトは渡されたものそのまま(背景の色の語を足さない)
+    for (const args of [...withInit, ...plain]) {
+      expect(args).not.toContain("-n");
+      expect(args).not.toContain("--negative-prompt");
+      expect(valueAfter(args, "-p")).toBe("anime girl");
+    }
+  });
+});
+
+describe("localSdcpp / どの画像もサンプラー lcm・CFG 1・512x768・同じシードで作る", () => {
+  it("S0046_05 passes lcm, CFG 1, the size, the seed and the LoRA for every image", async () => {
+    // GIVEN providers.image = local-sdcpp
+    // WHEN 待機画像(下地から)と応援種別の画像(待機画像から)を同じシードで生成する
+    const idle = await runWith({
+      seed: 777,
+      initImage: new Uint8Array([9]),
+      strength: 0.9,
+      steps: 4,
+    });
+    const derived = await runWith({
+      seed: 777,
+      initImage: new Uint8Array([1]),
+      strength: 0.65,
+      steps: 8,
+    });
+
+    // THEN どちらもサンプラー lcm・CFG 1・512x768・同じ seed・LoRA の置き場を渡す
+    for (const args of [...idle, ...derived]) {
+      expect(valueAfter(args, "--sampling-method")).toBe("lcm");
+      expect(valueAfter(args, "--cfg-scale")).toBe("1");
+      expect(valueAfter(args, "-W")).toBe("512");
+      expect(valueAfter(args, "-H")).toBe("768");
+      expect(valueAfter(args, "-s")).toBe("777");
+      expect(valueAfter(args, "--lora-model-dir")).toBe("/opt/sd/lcm.safetensors");
+    }
+  });
+});
+
+describe("localSdcpp / 下絵・強さ・ステップ数", () => {
+  it("writes the init image to a file and passes it with the strength and the steps", async () => {
+    const written: { path: string; bytes: Uint8Array }[] = [];
+    const [args] = await runWith(
+      { initImage: new Uint8Array([9, 9]), strength: 0.65, steps: 8 },
+      written,
+    );
+
+    expect(written).toEqual([{ path: "sd-in-0.png", bytes: new Uint8Array([9, 9]) }]);
+    expect(valueAfter(args!, "--init-img")).toBe("sd-in-0.png");
+    expect(valueAfter(args!, "--strength")).toBe("0.65");
+    expect(valueAfter(args!, "--steps")).toBe("8");
+    expect(args!.filter((arg) => arg === "--steps")).toHaveLength(1);
+  });
+
+  it("passes no init image and the configured steps when the request has none", async () => {
+    const [args] = await runWith({});
+
+    expect(args).not.toContain("--init-img");
+    expect(args).not.toContain("--strength");
+    expect(valueAfter(args!, "--steps")).toBe("4");
+  });
+});

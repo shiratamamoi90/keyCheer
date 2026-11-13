@@ -16,6 +16,10 @@ export interface ChildHandleLike {
 export type SpawnLike = (command: string, args: string[]) => ChildHandleLike;
 
 const DEFAULT_STEPS = 4;
+// S0046_05 どの画像もサンプラー lcm・CFG 1 で作る。LCM LoRA の前提(論点 0041)で、既定のサンプラーと CFG では
+// 少ないステップ数でまともな絵にならない。CFG 1 では避ける語(ネガティブプロンプト)が効かないので渡さない(S0046_04)。
+const SAMPLING_METHOD = "lcm";
+const CFG_SCALE = 1;
 
 export interface SdcppConfig {
   binPath: string;
@@ -25,6 +29,9 @@ export interface SdcppConfig {
   spawn: SpawnLike;
   readOutput: (path: string) => Uint8Array;
   makeOutputPath?: (index: number) => string;
+  // 下絵(S0046_06 / S0046_07)を sd.cpp に渡すための書き出し。sd.cpp はファイルのパスでしか下絵を受け取らない
+  writeInput?: (path: string, bytes: Uint8Array) => void;
+  makeInputPath?: (index: number) => string;
 }
 
 export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
@@ -36,12 +43,18 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
     spawn,
     readOutput,
     makeOutputPath = (i) => `sd-out-${i}.png`,
+    writeInput,
+    makeInputPath = (i) => `sd-in-${i}.png`,
   } = config;
 
   // 重複起動排他(不変条件): 常駐しない・同時に 1 生成のみ。
   let running = false;
 
-  function buildArgs(request: ImageGenerationRequest, outPath: string): string[] {
+  function buildArgs(
+    request: ImageGenerationRequest,
+    outPath: string,
+    initPath: string | null,
+  ): string[] {
     const args = [
       "-m",
       modelPath,
@@ -49,8 +62,12 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
       request.prompt,
       "-s",
       String(request.seed),
+      "--sampling-method",
+      SAMPLING_METHOD,
+      "--cfg-scale",
+      String(CFG_SCALE),
       "--steps",
-      String(steps),
+      String(request.steps ?? steps),
       "-W",
       String(request.width),
       "-H",
@@ -59,6 +76,10 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
       outPath,
     ];
     if (loraPath) args.push("--lora-model-dir", loraPath);
+    if (initPath !== null) {
+      args.push("--init-img", initPath);
+      if (request.strength !== undefined) args.push("--strength", String(request.strength));
+    }
     return args;
   }
 
@@ -110,7 +131,15 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
         const images: Uint8Array[] = [];
         for (let i = 0; i < request.count; i++) {
           const outPath = makeOutputPath(i);
-          images.push(await runOne(buildArgs(request, outPath), outPath, request.timeoutMs));
+          let initPath: string | null = null;
+          if (request.initImage !== undefined) {
+            if (writeInput === undefined) throw new Error("sd.cpp cannot take an init image");
+            initPath = makeInputPath(i);
+            writeInput(initPath, request.initImage);
+          }
+          images.push(
+            await runOne(buildArgs(request, outPath, initPath), outPath, request.timeoutMs),
+          );
         }
         return images;
       } finally {

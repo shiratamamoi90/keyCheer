@@ -1,5 +1,5 @@
-// characterImage: キャラ画像の画像タグの要求・応答のパース・縮小後の大きさ。純粋関数のみ。
-// spec: 論点 0036 / docs/integrations.md「画像タグの要求」/ docs/pool-generation.md「生成でキャラ画像も作る」
+// characterImage: キャラ画像の画像タグの要求・応答のパース・縮小後の大きさ・ローカル画像生成の作り方。純粋関数のみ。
+// spec: 論点 0036 / docs/integrations.md「画像タグの要求」「ローカル画像生成の作り方」/ docs/pool-generation.md「生成でキャラ画像も作る」
 //
 // 画像タグの良し悪し(セリフやキャラに合った絵になるか)は縛らない(非決定的)。ここが持つのは
 // 要求に何を入れ何を入れないか、応答の形、保存する大きさ。
@@ -113,4 +113,275 @@ export const MAX_IMAGE_HEIGHT = 384;
 export function computeImageSize(width: number, height: number): { width: number; height: number } {
   const scale = Math.min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height, 1);
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+// --- ローカル画像生成の作り方(local-sdcpp だけ。論点 0045 / 0046)---
+// 値はどれも論点 0045 が計測で決めたもの(decisions/decided/0045-image-generation-process/config.yaml)。
+// 変えるときは計測し直す。外部の画像プロバイダーには当てない(S0046_16)。
+
+// アプリが画像タグの前に足す語。背景の色は言葉で頼まない(頼んだ色で塗られず、色が人物に移るため。論点 0045 の 3 回目)
+const LOCAL_IMAGE_FIXED_TAGS = "solo, upper body, simple background, flat color, limited palette";
+// LCM LoRA のファイル名(拡張子なし)。sd.cpp はプロンプトの <lora:名前:強さ> で読む
+const LOCAL_IMAGE_LORA_NAME = "lcm-lora-sdv1-5";
+// 人物を指す語。画像タグに無いと、人物の描かれない絵が出うる(論点 0041 の result.md)
+const PERSON_TAG_PATTERN = /\b1(girl|boy)\b/;
+const FALLBACK_PERSON_TAG = "1girl";
+
+// S0046_06 待機画像は白の下地から強さ 0.9・4 ステップで描く
+export const LOCAL_IDLE_STRENGTH = 0.9;
+export const LOCAL_IDLE_STEPS = 4;
+// S0046_07 応援種別の画像は待機画像を下絵に強さ 0.65・8 ステップで描く
+export const LOCAL_DERIVED_STRENGTH = 0.65;
+export const LOCAL_DERIVED_STEPS = 8;
+
+// S0046_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
+// S0046_02 人物の語が画像タグに無ければ 1girl を足す
+// S0046_03 応援種別の画像のプロンプトは待機画像の画像タグにその画像の画像タグを足す
+//
+// なぜ応援種別の画像にも待機画像の画像タグを入れるか:表情とポーズの語だけだと、描き直しで髪や服が変わり
+// 別の人物になる(計測はこの形で 3 枚が同じ人物に見えることを確かめた)。
+export function buildLocalImagePrompt(idleTags: string, kindTags = ""): string {
+  const person = PERSON_TAG_PATTERN.test(idleTags) ? "" : FALLBACK_PERSON_TAG;
+  return [LOCAL_IMAGE_FIXED_TAGS, person, idleTags, kindTags, `<lora:${LOCAL_IMAGE_LORA_NAME}:1>`]
+    .filter((part) => part.length > 0)
+    .join(", ");
+}
+
+// 画素の並び。1 画素 = R・G・B・アルファの 4 バイト(左上から右へ、上から下へ)
+export interface RgbaImage {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+}
+
+export type ImageColor = readonly [number, number, number];
+
+const RGBA_BYTES = 4;
+const OPAQUE_ALPHA = 255;
+// S0046_09 背景の色との色の差がこの値以内なら背景とみなす(R・G・B の差の 2 乗の和の平方根)
+const MAX_BACKGROUND_COLOR_DISTANCE = 48;
+// S0046_11 保存する絵の不透明の色の上限(透明は数えない)
+export const MAX_IMAGE_COLOR_COUNT = 7;
+// 減色で、割って決めた色を近い画素の平均へ寄せ直す回数(計測ドライバと同じ値)
+const PALETTE_REFINE_COUNT = 10;
+
+function computeColorDistance(a: ImageColor, b: ImageColor): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+function colorAt(image: RgbaImage, index: number): ImageColor {
+  const offset = index * RGBA_BYTES;
+  return [image.pixels[offset]!, image.pixels[offset + 1]!, image.pixels[offset + 2]!];
+}
+
+function colorKey(color: ImageColor): number {
+  return (color[0] << 16) | (color[1] << 8) | color[2];
+}
+
+// 絵の縁(いちばん外側の 1 画素の列と行)の画素の番号
+function listBorderIndexes(image: RgbaImage): number[] {
+  const { width, height } = image;
+  const indexes: number[] = [];
+  for (let x = 0; x < width; x++) {
+    indexes.push(x);
+    if (height > 1) indexes.push((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y++) {
+    indexes.push(y * width);
+    if (width > 1) indexes.push(y * width + width - 1);
+  }
+  return indexes;
+}
+
+// 縁でいちばん多い色。同じ数なら色の値の小さいほう(同じ絵から同じ結果にするため)
+function computeBackgroundColor(image: RgbaImage): ImageColor {
+  const counts = new Map<number, { count: number; color: ImageColor }>();
+  for (const index of listBorderIndexes(image)) {
+    const color = colorAt(image, index);
+    const entry = counts.get(colorKey(color)) ?? { count: 0, color };
+    entry.count += 1;
+    counts.set(colorKey(color), entry);
+  }
+  let best: { count: number; color: ImageColor } = { count: 0, color: [0, 0, 0] };
+  for (const [, entry] of [...counts.entries()].sort(([a], [b]) => a - b)) {
+    if (entry.count > best.count) best = { count: entry.count, color: entry.color };
+  }
+  return best.color;
+}
+
+// S0046_09 縁からつながる背景の色を透明にする
+// S0046_10 背景に近い色でも縁からつながらない所は透明にしない
+//
+// なぜ「背景の色の画素を全部」にしないか:キャラクターの中の同じ色(白い服・白目)まで抜けるため。
+// 縁からたどれる所だけにすれば、輪郭線で囲まれた内側は残る。それでも服や髪が背景に近い色で縁まで届くと
+// 一緒に抜ける。この抜けそこないは受け入れると決めている(論点 0045 の決定 6)。
+// 残した画素は完全に不透明にする(S0046_11 半透明の画素を持たない)。
+export function applyBackgroundRemoval(image: RgbaImage): RgbaImage {
+  const { width, height } = image;
+  const pixels = Uint8Array.from(image.pixels);
+  for (let offset = 3; offset < pixels.length; offset += RGBA_BYTES) pixels[offset] = OPAQUE_ALPHA;
+
+  const background = computeBackgroundColor(image);
+  const isBackground = (index: number): boolean =>
+    computeColorDistance(colorAt(image, index), background) <= MAX_BACKGROUND_COLOR_DISTANCE;
+
+  const isVisited = new Uint8Array(width * height);
+  const queue: number[] = [];
+  for (const index of listBorderIndexes(image)) {
+    if (isVisited[index] === 0 && isBackground(index)) {
+      isVisited[index] = 1;
+      queue.push(index);
+    }
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const index = queue[head]!;
+    pixels.fill(0, index * RGBA_BYTES, (index + 1) * RGBA_BYTES);
+    const x = index % width;
+    const neighbors = [
+      x > 0 ? index - 1 : -1,
+      x < width - 1 ? index + 1 : -1,
+      index >= width ? index - width : -1,
+      index < width * (height - 1) ? index + width : -1,
+    ];
+    for (const next of neighbors) {
+      if (next >= 0 && isVisited[next] === 0 && isBackground(next)) {
+        isVisited[next] = 1;
+        queue.push(next);
+      }
+    }
+  }
+  return { width, height, pixels };
+}
+
+interface ColorCount {
+  count: number;
+  color: ImageColor;
+}
+
+// 不透明の画素の色と、その画素の数。色の値の順に並べる(Map の挿入順は画素の並びに依存するため)
+function listOpaqueColors(image: RgbaImage): ColorCount[] {
+  const counts = new Map<number, ColorCount>();
+  for (let index = 0; index < image.width * image.height; index++) {
+    if (image.pixels[index * RGBA_BYTES + 3] !== OPAQUE_ALPHA) continue;
+    const color = colorAt(image, index);
+    const entry = counts.get(colorKey(color)) ?? { count: 0, color };
+    entry.count += 1;
+    counts.set(colorKey(color), entry);
+  }
+  return [...counts.entries()].sort(([a], [b]) => a - b).map(([, entry]) => entry);
+}
+
+function computeWeightedMean(colors: readonly ColorCount[]): [number, number, number] {
+  let count = 0;
+  const total: [number, number, number] = [0, 0, 0];
+  for (const entry of colors) {
+    count += entry.count;
+    for (let c = 0; c < 3; c++) total[c]! += entry.color[c]! * entry.count;
+  }
+  return [total[0] / count, total[1] / count, total[2] / count];
+}
+
+function computeWidestChannel(colors: readonly ColorCount[]): { channel: number; range: number } {
+  let channel = 0;
+  let range = -1;
+  for (let c = 0; c < 3; c++) {
+    const values = colors.map((entry) => entry.color[c]!);
+    const channelRange = Math.max(...values) - Math.min(...values);
+    if (channelRange > range) {
+      range = channelRange;
+      channel = c;
+    }
+  }
+  return { channel, range };
+}
+
+function resolveNearestIndex(palette: readonly ImageColor[], color: ImageColor): number {
+  let nearest = 0;
+  let nearestDistance = Infinity;
+  palette.forEach((candidate, i) => {
+    const distance = computeColorDistance(candidate, color);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = i;
+    }
+  });
+  return nearest;
+}
+
+// S0046_11 保存する絵は 7 色以下 — 絵の不透明の画素から、多くても 7 色を決める
+// S0046_12 不透明の色が 7 色以下ならその色のまま
+//
+// 乱数を使わない(S0046_14 同じ絵からは同じ絵)。色の広がりがいちばん大きい箱を、画素の数が半々になる所で
+// 割っていき(メディアンカット)、そのあと各色を近い画素の平均へ寄せ直す。計測ドライバと同じ考え方。
+export function computeImagePalette(image: RgbaImage): ImageColor[] {
+  const colors = listOpaqueColors(image);
+  if (colors.length <= MAX_IMAGE_COLOR_COUNT) return colors.map((entry) => entry.color);
+
+  const boxes: ColorCount[][] = [colors];
+  while (boxes.length < MAX_IMAGE_COLOR_COUNT) {
+    let target = -1;
+    let targetChannel = 0;
+    let targetRange = 0;
+    boxes.forEach((box, i) => {
+      if (box.length < 2) return;
+      const { channel, range } = computeWidestChannel(box);
+      if (range > targetRange) {
+        target = i;
+        targetChannel = channel;
+        targetRange = range;
+      }
+    });
+    if (target < 0) break;
+
+    const sorted = [...boxes[target]!].sort(
+      (a, b) => a.color[targetChannel]! - b.color[targetChannel]!,
+    );
+    const half = sorted.reduce((sum, entry) => sum + entry.count, 0) / 2;
+    let splitAt = 1;
+    let running = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      running += sorted[i]!.count;
+      splitAt = i + 1;
+      if (running >= half) break;
+    }
+    boxes.splice(target, 1, sorted.slice(0, splitAt), sorted.slice(splitAt));
+  }
+
+  let centers: ImageColor[] = boxes.map(computeWeightedMean);
+  for (let round = 0; round < PALETTE_REFINE_COUNT; round++) {
+    const groups: ColorCount[][] = centers.map(() => []);
+    for (const entry of colors) groups[resolveNearestIndex(centers, entry.color)]!.push(entry);
+    centers = groups.map((group, i) =>
+      group.length === 0 ? centers[i]! : computeWeightedMean(group),
+    );
+  }
+
+  const palette: ImageColor[] = [];
+  for (const center of centers) {
+    const color: ImageColor = [Math.round(center[0]), Math.round(center[1]), Math.round(center[2])];
+    if (!palette.some((p) => colorKey(p) === colorKey(color))) palette.push(color);
+  }
+  return palette;
+}
+
+// S0046_13 応援種別の画像は待機画像の色だけで塗る — 不透明の画素を、渡した色のうちいちばん近い色に置き換える
+//
+// 渡した色が 1 つも無いとき(待機画像が全部透明だった)は色を変えない。このときの扱いは要件で決まっていない
+// (docs/integrations.md の [要確認])。決まるまでは、絵を壊さないほうに倒している。
+export function applyImagePalette(image: RgbaImage, palette: readonly ImageColor[]): RgbaImage {
+  const pixels = Uint8Array.from(image.pixels);
+  if (palette.length === 0) return { width: image.width, height: image.height, pixels };
+  const nearestByColor = new Map<number, ImageColor>();
+  for (let index = 0; index < image.width * image.height; index++) {
+    const offset = index * RGBA_BYTES;
+    if (pixels[offset + 3] !== OPAQUE_ALPHA) continue;
+    const color = colorAt(image, index);
+    let nearest = nearestByColor.get(colorKey(color));
+    if (nearest === undefined) {
+      nearest = palette[resolveNearestIndex(palette, color)]!;
+      nearestByColor.set(colorKey(color), nearest);
+    }
+    pixels.set(nearest, offset);
+  }
+  return { width: image.width, height: image.height, pixels };
 }
