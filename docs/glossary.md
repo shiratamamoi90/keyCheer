@@ -38,6 +38,8 @@
 | クレジット表記 | `creditNotice` | — | `attribution`, `creditText` | 音声ライブラリの規約が求める、利用したことを示す表記(例 `VOICEVOX:四国めたん`。論点 0043) |
 | プロバイダー | `provider` | — | `prov` | 生成手段の差し替え単位(テキスト / 音声 / 画像) |
 | 同意 | `consent` | — | `consentFlag` | 外部プロバイダーへの送信を利用者が明示的に承認した状態 |
+| ライセンスへの同意 | `licenseAgreement` | — | `licenseConsent`, `eula` | 画像の重みのライセンスと利用の制限を、取得の前に利用者が承認した状態。外部プロバイダーへの送信の「同意」とは別(論点 0047) |
+| 利用の制限 | `useRestriction` | — | `usagePolicy` | 画像の重みのライセンスが禁じている使い方の一覧(ライセンスの別紙 A。論点 0047) |
 | 監査ログ | `auditLog` | — | `sendLog`, `auditlog` | 外部送信の記録。統計とは別ファイルに置く |
 | ポップアップ | `popup` | — | `toast` | 応援を表示する小さなウィンドウ |
 | 音声ファイル | `wav` | — | `wavFile`, `voicePath` | 事前合成した応援音声。プールの各文に対応する |

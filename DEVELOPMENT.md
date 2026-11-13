@@ -26,7 +26,7 @@ npm run services:down    # 停止
 - **既定は CPU。** 製品ターゲットが iGPU/CPU なので、開発機の GPU で速さに慣れないようにする。
   GPU で回したいときだけ `docker compose --profile gpu up -d`。
   **cpu と gpu を同時に起動しない**(同じポートを公開するので衝突する。先に `services:down`)。
-- **これは開発機だけの構成。** 配布物は論点 0010 のとおりランタイムを同梱し、重みを初回取得する。
+- **これは開発機だけの構成。** 配布物は論点 0010 のとおりランタイムを同梱し、重みはインストール中かアプリの中で取得する(論点 0042 / 0048)。
   **利用者に Docker は要求しない。**
 - イメージはタグ + digest で固定してある。更新するときは digest も取り直す(固定しないと再現できない)。
 - 起動していなくても**アプリはクラッシュしない**。キャラ作成が完了しないだけで、
@@ -84,7 +84,7 @@ Windows で `ドキュメント\keyCheer\keycheer.exe` を実行する。
 
 ```bash
 npm test                                   # 全テスト。変更を閉じる前に必ず通す
-npx vitest run tests/core tests/agent tests/main tests/preload tests/renderer  # 単体だけ
+npx vitest run tests/core tests/agent tests/main tests/preload tests/renderer tests/eval  # 単体だけ
 npx vitest run tests/integration           # 総合だけ
 npm run typecheck                          # tsc --noEmit
 npm run lint                               # ESLint(依存方向・発動経路の分離を検出)
@@ -129,15 +129,16 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 │   ├── agent/                      #   app: 生成 I/O(プロバイダー実装・プール生成・監査ログ)
 │   ├── main/                       #   app: Electron メイン(キーフック・IPC・store・窓・トレイ)
 │   ├── preload/  renderer/         #   app: レンダラに公開する最小 API と UI
-│   └── eval/                       #   app: 応援メッセージの品質・レイテンシ計測
+│   └── eval/                       #   app: 計測(応援メッセージの品質・レイテンシ、画像のモデルと作り方)
 ├── tests/                          # 単体 + 総合の両方を書く(Core)
 │   ├── core/                       #   単体:docs の全シナリオ
-│   ├── agent/ main/ preload/ renderer/  # 単体:app 側(実装ディレクトリと 1 対 1)
+│   ├── agent/ main/ preload/ renderer/ eval/  # 単体:app 側(実装ディレクトリと 1 対 1)
 │   └── integration/                #   総合:繋いだ経路を最初から最後まで通す(発動の縦 1 本 / 設定更新)
 └── scripts/
     ├── validate.sh                 # 機械検査(項目の正本は impl-rules.md N-8)。/validate が呼ぶ(Core)
     ├── hooks.sh                    # hooks の実体。format|test(Core)/ veto|validate(Scale)を引数で切替
-    └── postbuild.mjs               # このプロジェクト固有:dist を Electron が読める形に整える
+    ├── postbuild.mjs               # このプロジェクト固有:dist を Electron が読める形に整える
+    └── fetch-image-eval.sh / image-eval.Dockerfile  # 画像の計測用:sd.cpp と重みの取得、計測用コンテナ(論点 0041 / 0045)
 ```
 
 ## 依存方向
@@ -229,7 +230,7 @@ src/core          ←          src/{agent,main,preload,renderer,eval}
 ## このプロジェクト固有の注意
 
 - **生成ランタイムは現状「各自で用意」**。キャラ作成には Ollama(:11434)と
-  VOICEVOX ENGINE(:50021)が要る。論点 0010 でランタイム同梱・モデル重みの初回取得と決めたが、
+  VOICEVOX ENGINE(:50021)が要る。論点 0010 でランタイム同梱、論点 0042 / 0048 でモデル重みの取得(インストール中・アプリの中)を決めたが、
   その仕組みは未実装。エンドポイントは `system` 設定で上書きできる。
   未起動でもアプリはクラッシュせず、baseline 定型文で応援する。
 - **バンドラを使わない**。`tsc` の出力を `scripts/postbuild.mjs` が Electron 向けに整える

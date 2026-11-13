@@ -60,8 +60,12 @@
     "ollamaModel": "sarashina2.2-3b-instruct", // 既定値(論点 0028)。旧既定値 "gemma2:2b" は読み込み時に移行する
     "ollamaEndpoint": "http://localhost:11434",
     "voicevoxEndpoint": "http://localhost:50021",
-    "imageGen": { "useGpu": true, "steps": 4, "width": 512, "height": 768 },
+    // 生成の大きさ。GPU は使わない(論点 0040)ので GPU の項目は無い。ステップ数は作り方で決まる定数で、設定に持たない(論点 0046)
+    "imageGen": { "width": 512, "height": 768 },
     "startWithWindows": true,
+    // 画像の重みのライセンスへの同意(論点 0047 → docs/licenses.md)。同意していなければ null(既定)。
+    // 外部プロバイダーへの送信の同意(providers.consent)とは別。取り消す操作は無い
+    "imageWeightsLicenseAgreement": { "agreedAt": "2026-11-13T09:00:00.000Z", "version": "1" },
     "excludedApps": [], // スキーマのみ用意。Phase 1 では参照しない
     "excludedKeys": [], // スキーマのみ用意。Phase 1 では参照しない
   },
@@ -150,6 +154,8 @@
 - 1 キャラ最大 3 枚。`idle` = 待機画像、`regular` / `milestone` = その応援種別の画像
 - `characterId` と `kind` から決定的に解決する(wav と同じく、設定 JSON にパスを持たない)
 - 縦横比を保って 256x384 に収まる PNG(→ docs/pool-generation.md S0036_15)
+- `local-sdcpp` で作った画像は、背景が透明で、不透明の色が 7 色以下(→ docs/integrations.md S0046_09〜15)。
+  下絵にする縮小前の待機画像はここに置かず、生成が終わったら残さない(→ S0046_19)
 - 欠損時は表示で代わりを使う(→ docs/popup.md S0036_20 / S0036_21)
 
 ## Baseline 定型文(同梱)
