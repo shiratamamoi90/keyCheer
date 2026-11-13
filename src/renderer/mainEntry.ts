@@ -23,6 +23,7 @@ import {
 import {
   canStartGeneration,
   progressLabel,
+  START_GENERATION_LABEL,
   shouldConfirmRebuild,
   REBUILD_CONFIRMATION_TEXT,
 } from "./generationView.js";
@@ -488,7 +489,7 @@ function App(): ReactNS.ReactElement {
         },
         disabled: !canStartGeneration(state.generation, target !== undefined),
       },
-      "応援メッセージと音声を生成",
+      START_GENERATION_LABEL,
     ),
     // S0033_08 進捗と中断は生成画面だけに出す
     ...(canShowGenerationControls(state.screen, state.generation)

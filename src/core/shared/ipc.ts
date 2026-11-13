@@ -113,9 +113,23 @@ export type GetSpeakersResult =
 
 // main → renderer: 生成の進捗・完了・失敗(論点 0020)。
 // 応援発動経路とは無関係のチャンネル。プロバイダー実装の型は載せない。
+// 画像の工程に進めなかった理由。runtime-not-installed = sd.cpp の実行ファイルか重みが置き場に無い
+export type ImageUnavailableReason =
+  | "runtime-not-installed"
+  | "missing-api-key"
+  | "consent-required";
+
+// 生成が完了したときの画像の結果(S0036_09 / S0036_10 の「エラーを表示する」を画面へ届ける)。
+// 画像が欠けても生成は完了なので、失敗の通知ではなく完了の通知に載せる
+export interface GenerationImagesSummary {
+  saved: number; // 保存できた枚数
+  total: number; // 作るはずだった枚数
+  unavailableReason: ImageUnavailableReason | null; // 画像の工程に進めなかったときだけ
+}
+
 export type GenerationProgressPayload =
   | { type: "progress"; phase: "text" | "voice" | "image"; done: number; total: number }
-  | { type: "done"; synthesized: number; missing: number }
+  | { type: "done"; synthesized: number; missing: number; images?: GenerationImagesSummary }
   | { type: "failed"; reason: string };
 
 // renderer ← main: 保存済みのキャラクターの一覧(論点 0032 / 0033)。画面ごとの選別は renderer が行う

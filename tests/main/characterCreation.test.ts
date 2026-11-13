@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import {
+  buildImagesSummary,
   createGenerationRunner,
   saveGenerationResult,
   type GenerationProgress,
@@ -903,5 +904,25 @@ describe("characterCreation / 生成が終わったら縮小前の待機画像�
     expect(second.ok).toBe(true);
     expect(characterFiles(fs).filter((path) => !isKeptOutput(path))).toEqual([]);
     expect(imageFiles(fs)).toHaveLength(3);
+  });
+});
+
+describe("characterCreation / 画像の結果を画面へ渡す形にまとめる", () => {
+  it("counts the saved images when the image phase ran", () => {
+    expect(
+      buildImagesSummary({ saved: ["idle"], missing: ["regular", "milestone"] }, null),
+    ).toEqual({
+      saved: 1,
+      total: 3,
+      unavailableReason: null,
+    });
+  });
+
+  it("carries the reason when the image phase did not run", () => {
+    expect(buildImagesSummary(undefined, "runtime-not-installed")).toEqual({
+      saved: 0,
+      total: 3,
+      unavailableReason: "runtime-not-installed",
+    });
   });
 });

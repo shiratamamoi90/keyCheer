@@ -15,7 +15,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { ipcMain, nativeImage, safeStorage, type BrowserWindow } from "electron";
 import Store from "electron-store";
 import { createSecretStore } from "../agent/secrets.js";
-import { createGenerationRunner, saveGenerationResult } from "./characterCreation.js";
+import {
+  buildImagesSummary,
+  createGenerationRunner,
+  saveGenerationResult,
+} from "./characterCreation.js";
 import {
   createImageGeneratorFor,
   createTextGeneratorFor,
@@ -274,6 +278,13 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
             }
           : undefined;
 
+      // 画像の工程に進めない理由(完了の通知に載せて画面に出す。S0036_10)
+      const imageUnavailableReason = !imagePrecondition.ok
+        ? imagePrecondition.reason
+        : imageBuilt !== null && !imageBuilt.ok
+          ? imageBuilt.reason
+          : null;
+
       // 再開なら未完了バケットだけを続行する。作り直しでは渡さない(古い画像も消してから作る。S0036_13)
       const resumeFrom = start.resumeFrom;
 
@@ -306,7 +317,12 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
             result,
           );
           if (result.ok) {
-            emit({ type: "done", synthesized: result.synthesized, missing: result.missing });
+            emit({
+              type: "done",
+              synthesized: result.synthesized,
+              missing: result.missing,
+              images: buildImagesSummary(result.images, imageUnavailableReason),
+            });
           } else {
             emit({ type: "failed", reason: result.reason });
           }

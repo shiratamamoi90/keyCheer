@@ -9,6 +9,7 @@ import { generatePool, isPoolComplete, type PoolGenerationState } from "../agent
 import { synthesizePoolVoices } from "../agent/voiceSynth.js";
 import { generateCharacterImages, type LocalImageProcess } from "../agent/characterImage.js";
 import { CHARACTER_IMAGE_KINDS, type CharacterImageKind } from "../core/characterImage.js";
+import type { GenerationImagesSummary, ImageUnavailableReason } from "../core/shared/ipc.js";
 import { resolveImagePath } from "../agent/cheerPlayer.js";
 import { ALL_BUCKET_KEYS, type MessagePool, type PoolMessage } from "../core/messagePool.js";
 import type {
@@ -75,6 +76,18 @@ export interface ImageGenerationInput {
 export interface ImagesOutcome {
   saved: CharacterImageKind[];
   missing: CharacterImageKind[];
+}
+
+// 画面に出す画像の結果(完了の通知に載せる)。画像の工程を通らなかったときは、その理由を渡す
+export function buildImagesSummary(
+  images: ImagesOutcome | undefined,
+  unavailableReason: ImageUnavailableReason | null,
+): GenerationImagesSummary {
+  return {
+    saved: images?.saved.length ?? 0,
+    total: CHARACTER_IMAGE_KINDS.length,
+    unavailableReason: images === undefined ? unavailableReason : null,
+  };
 }
 
 // completed: 欠損なく完了した種別と、実際に使ったプロバイダー ID(論点 0022)。

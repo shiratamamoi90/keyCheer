@@ -5,7 +5,7 @@
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは状態遷移と表示文言だけを持つ。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
-import type { StartGenerationResult } from "../core/shared/ipc.js";
+import type { GenerationImagesSummary, StartGenerationResult } from "../core/shared/ipc.js";
 
 export type GenerationPhaseName = "idle" | "text" | "voice" | "image" | "done" | "failed";
 
@@ -15,16 +15,26 @@ export interface GenerationViewState {
   total: number;
   synthesized: number;
   missing: number;
+  // 完了したときの画像の結果。null = 画像の結果が届いていない
+  images: GenerationImagesSummary | null;
   reason: string | null;
 }
 
 export type GenerationEvent =
   | { type: "progress"; phase: "text" | "voice" | "image"; done: number; total: number }
-  | { type: "done"; synthesized: number; missing: number }
+  | { type: "done"; synthesized: number; missing: number; images?: GenerationImagesSummary }
   | { type: "failed"; reason: string };
 
 export function initialGenerationState(): GenerationViewState {
-  return { phase: "idle", done: 0, total: 0, synthesized: 0, missing: 0, reason: null };
+  return {
+    phase: "idle",
+    done: 0,
+    total: 0,
+    synthesized: 0,
+    missing: 0,
+    images: null,
+    reason: null,
+  };
 }
 
 export function applyGenerationEvent(
@@ -40,6 +50,7 @@ export function applyGenerationEvent(
         phase: "done",
         synthesized: event.synthesized,
         missing: event.missing,
+        images: event.images ?? null,
         reason: null,
       };
     case "failed":
@@ -64,6 +75,31 @@ const FAILURE_TEXT: Record<string, string> = {
   "already-running": "すでに生成中です",
 };
 
+// 画像の工程に進めなかった理由の文言
+const IMAGE_UNAVAILABLE_TEXT: Record<string, string> = {
+  "runtime-not-installed": "画像生成のモデルの重みがありません",
+  "missing-api-key": "画像プロバイダーの API キーがありません",
+  "consent-required": "画像プロバイダーへの送信に同意していません",
+};
+
+// 完了の文言のうち、画像の部分。画像が欠けても生成は完了だが、欠けたことは必ず見えるようにする
+// (S0036_09 / S0036_10 の「エラーを表示する」)。先頭の区切りも返すのは、全部作れたときは音声と並べ、
+// 欠けたときは文を切って目立たせるため。
+function imagesLabel(images: GenerationImagesSummary | null): string {
+  if (images === null) return "";
+  if (images.unavailableReason !== null) {
+    const why = IMAGE_UNAVAILABLE_TEXT[images.unavailableReason] ?? "画像プロバイダーが使えません";
+    return `。画像は作っていません:${why}`;
+  }
+  if (images.saved === 0) return "。画像は作れませんでした";
+  if (images.saved < images.total) {
+    return `、画像 ${images.saved} 枚。${images.total - images.saved} 枚は作れませんでした`;
+  }
+  return `、画像 ${images.saved} 枚`;
+}
+
+export const START_GENERATION_LABEL = "応援メッセージ・音声・画像を生成";
+
 export function progressLabel(state: GenerationViewState): string {
   switch (state.phase) {
     case "idle":
@@ -76,8 +112,8 @@ export function progressLabel(state: GenerationViewState): string {
       return `画像を生成中… ${state.done} / ${state.total}`;
     case "done":
       return state.missing > 0
-        ? `完了しました(音声 ${state.synthesized} 本、${state.missing} 本は音声なし)`
-        : `完了しました(音声 ${state.synthesized} 本)`;
+        ? `完了しました(音声 ${state.synthesized} 本、${state.missing} 本は音声なし${imagesLabel(state.images)})`
+        : `完了しました(音声 ${state.synthesized} 本${imagesLabel(state.images)})`;
     case "failed":
       return FAILURE_TEXT[state.reason ?? ""] ?? "生成に失敗しました";
   }
