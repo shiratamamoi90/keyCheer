@@ -1,0 +1,54 @@
+# 1論点 = 1変数のみ変更:ローカル画像生成の作り方
+# 平らな key: value だけで書く(src/eval/configFile.ts が読める形)。
+# 強さを決める試し:npm run eval -- <このフォルダ> probe / 本計測:npm run eval -- <このフォルダ>
+# 決定(2026-11-13):このファイルの値が決めた作り方(白の下地・待機 4 ステップ・派生は強さ 0.65 の 8 ステップ・7 色)
+axis: image_process # src/eval/imageProcessComparison.ts
+
+# --- 振る変数 ---
+baseline: text-to-image-same-seed # 今の作り方。論点 0041 の計測の 36 枚をそのまま使う(作り直さない)
+baseline_run: 0041-image-base-model-2026-11-11T07-26-56-957Z # 計測の出力フォルダ(KEYCHEER_EVAL_OUT)の中の名前
+variant: idle-derived-transparent-5color # 新しい作り方
+
+# --- 新しい作り方(人間が承認 2026-11-13)---
+background_removal: key-color # 案T1。単色の背景で描かせ、縁からつながる背景色を透明にする。3 回目から抜く色を固定(1・2 回目は絵の縁から読んだ)
+color_limit: 7 # 2 回目(人間の指示 2026-11-13)。1 回目は 5。透明と背景の色は数えない。輪郭線の色は数える
+color_reduction: prompt-and-postprocess # 案C3。背景を抜いたあとの画素を減色する。5 色は待機画像から決め、ほかの画像にも当てる
+derivation: img2img # 案D1。待機画像を下絵にする
+# 人物・背景・塗りを指す固定のタグ。画像タグの前に足す。背景は白(抜く色は絵の縁から読むので、ここは頼むだけ)
+# 2 回目は腰から上の絵にする(人間の指示 2026-11-13)。1 回目は "solo, full body, standing, simple background, white background, flat color, limited palette"
+fixed_tags: "solo, upper body, simple background, {background}, flat color, limited palette" # {background} は background_tag に置き換える
+background_candidates: white=ffffff, green=00ff00, magenta=ff00ff # 抜く色を決めるための試し(名前 = 抜く色。タグは「<名前> background」)
+# background_tag: 4 回目は書かない(下地から描かせるので、背景の色を言葉で頼まない)。1・2 回目は white background
+# background_color: 書けば抜く色を固定する(6 桁の 16 進数)。書かなければ絵の縁から読む。固定は試しで全滅したので書いていない
+background_tolerance: 48 # 背景の色とみなす色の差(RGB の距離。0〜441)
+strength_candidates: 0.6, 0.65, 0.7, 0.75, 0.8 # 2 回目の試し。0.6〜0.8 を細かく(1 回目は 0.4, 0.6, 0.8)
+derived_steps: 8 # 下絵から描き直す画像だけのステップ数。4 のままだと 0.6〜0.7 と 0.75〜0.8 がそれぞれ同じ絵になる(1 回目は 4)
+# --- 待機画像(4 回目。人間が承認 2026-11-13:単色の下地から描かせ、抜く色は絵の縁から読む)---
+idle_canvas_color: ffffff # 下地の色。手で試した 3 色(マゼンタ・白・灰色)のうち、Counterfeit で背景が揃ったのは白(result.md「4 回目」)
+idle_strength: 0.9 # 下地からどれだけ描き直すか(8 ステップで 7 段)
+idle_steps: 4 # 待機画像のステップ数。決定(2026-11-13)は 4。4 回目は 8 と 4 を測った(強さ 0.9 なので実際に回るのは 3 段)
+strength: 0.65 # 人間が承認 2026-11-13(8 ステップで 5 段)。2 回目は 0.65 と 0.75 を並べた。1 回目は 0.6
+# 避ける語(ネガティブプロンプト)は渡さない。CFG 1 では効かないため(LCM LoRA の前提。論点 0041)
+
+# --- 自動指標の物差し ---
+min_transparent_pct: 5 # 透明の画素がこれより少なければ「背景が抜けなかった」
+max_transparent_pct: 95 # これより多ければ「抜けすぎた」
+min_background_match_pct: 50 # 絵の縁のうち固定した背景の色がこれより少なければ「頼んだ色で塗られなかった」
+changed_tolerance: 48 # 待機画像から「変わった」とみなす色の差(RGB の距離)
+
+# --- 論点 0041 と揃えるもの(モデル・LoRA・sd.cpp の取得元と sha256 は 0041 の config.yaml が正本)---
+models: counterfeit-v3 # 人間が Counterfeit V3.0 を採用(2026-11-13。論点 0041)。1・2 回目は counterfeit-v3, meinamix-v10
+lora: lcm-lora-sdv1-5
+quantization: none
+sampling_method: lcm
+cfg_scale: 1
+steps: 4
+width: 512
+height: 768
+seed: 42 # 試行 i は seed + i
+characters: 3
+generations_per_case: 2 # キャラ 3 × 画像の種類 3 × 2 = モデルごとに 18 枚
+timeout_ms_per_image: 600000
+tag_model: sarashina2.2-3b-instruct
+timeout_ms_per_bucket: 120000
+sdcpp_tag: master-1086-465adf3

@@ -1,28 +1,45 @@
 # 1論点 = 1変数のみ変更:ローカル画像生成のベースモデル
-# 値が「未定」の項目は、計測の前に埋める(埋まるまで計測しない。topic.md の [要確認])
-axis: image_model # 振るのはベースモデル(src/eval に画像の口はまだ無い)
-baseline: 未定 # 候補のうち 1 つを固定する
-candidates: # 論点 0005 が挙げた候補。ライセンスと版の固定を確かめて絞る
-  - name: AnythingV5
-    source: 未定 # 取得元
-    revision: 未定 # コミット
-    sha256: 未定
-  - name: MeinaMix
-    source: 未定
-    revision: 未定
-    sha256: 未定
-  - name: Counterfeit V3
-    source: 未定
-    revision: 未定
-    sha256: 未定
-quantization: 未定 # 全候補で揃える(論点 0005 の宿題)
-lcm_lora: 未定 # 版と sha256。全候補で揃える
+# 平らな key: value だけで書く(src/eval/configFile.ts が読める形)。
+# 取得元・コミット・sha256 の値は scripts/fetch-image-eval.sh と一致させる。
+axis: image_model # 振るのはベースモデル(src/eval/imageModelComparison.ts)
+
+# --- 振る変数 ---
+baseline: counterfeit-v3 # 小さいほうを基準にする(人間が承認 2026-11-11)
+variant: meinamix-v10
+
+baseline_source: https://huggingface.co/gsdf/Counterfeit-V3.0
+baseline_revision: d8ce63b3eb8e9102e54b3fcc07f9cb7a28ef30fc
+baseline_file: Counterfeit-V3.0_fix_fp16.safetensors # 2034 MB
+baseline_sha256: a54c944e4c04e9d9ca43468ef5b90ea0408bb6264829a4980de79a768df7179f
+
+variant_source: https://huggingface.co/Meina/MeinaMix
+variant_revision: ff1db1369784ead73c86d91c7d2b2d66fc5e7361
+variant_file: "Meina V10 - baked VAE.safetensors" # 3363 MB
+variant_sha256: 77b7dc4ef0fca64ed8c3c38e80efa3e559488ee377f4138ec4bce488ef6c8412
+
+# --- 全候補で揃えるもの ---
+lora: lcm-lora-sdv1-5 # プロンプトの末尾に <lora:lcm-lora-sdv1-5:1> として足す
+lora_source: https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
+lora_revision: cf2fced511dbe7e26c8d1d397e728fbab875db4b
+lora_file: pytorch_lora_weights.safetensors # 128 MB
+lora_sha256: 8f90d840e075ff588a58e22c6586e2ae9a6f7922996ee6649a7f01072333afe4
+quantization: none # 配布物のまま。量子化はモデルが決まってから別の論点で測る
+sampling_method: lcm
+cfg_scale: 1
 steps: 4 # 論点 0005
 width: 512
 height: 768
-seed: 42 # 試行 i は seed + i
+seed: 42 # 試行 i は seed + i(画像タグと画像の両方)
 characters: 3 # 評価用キャラクター(論点 0021 以降と同じ)
-image_kinds: 3 # 待機・regular・milestone
-generations_per_case: 未定
-timeout_ms_per_image: 未定 # baseline を測ってから決める
-runtime: 未定 # sd.cpp の版と出所(論点 0040)。CPU を既定にする
+generations_per_case: 2 # キャラ 3 × 画像の種類 3 × 2 = 候補ごとに 18 枚
+timeout_ms_per_image: 600000
+
+# --- 画像タグ(一度作って保存し、全候補で同じものを使う)---
+tag_model: sarashina2.2-3b-instruct # Ollama 上の名前(論点 0029 で取り込んだもの)
+timeout_ms_per_bucket: 120000 # 論点 0021 / 0026 / 0027 と同じ
+
+# --- 実行環境 ---
+sdcpp_tag: master-1086-465adf3 # 公式リリースの Linux 向け CPU 版
+sdcpp_zip_sha256: 7503e04904c55d02ad5835982ea3ec77f6d97c1fec60f23421b78e916675618a
+runtime: scripts/image-eval.Dockerfile(ubuntu:26.04 を digest 固定。libgomp1 16-20260322-1ubuntu1 / time 1.9-0.4)、CPU、ネットワークなし
+tag_runtime: compose.yaml の ollama イメージ(digest 固定)、CPU プロファイル
