@@ -8,15 +8,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Character, Onboarding } from "../../src/core/shared/types.js";
 
-const { created, state } = vi.hoisted(() => ({
+type Listener = (event: { preventDefault: () => void }) => void;
+
+const { created, state, dialogCalls } = vi.hoisted(() => ({
   created: [] as {
     visible: boolean;
     shows: number;
     hides: number;
     focuses: number;
     menuRemoved: boolean;
+    listeners: Map<string, Listener>;
   }[],
   state: { loadFileRejection: null as Error | null },
+  dialogCalls: { count: 0 },
 }));
 
 vi.mock("electron", () => ({
@@ -26,10 +30,13 @@ vi.mock("electron", () => ({
     hides = 0;
     focuses = 0;
     menuRemoved = false;
+    listeners = new Map<string, Listener>();
     constructor() {
       created.push(this);
     }
-    on(): void {}
+    on(name: string, listener: Listener): void {
+      this.listeners.set(name, listener);
+    }
     removeMenu(): void {
       this.menuRemoved = true;
     }
@@ -51,25 +58,42 @@ vi.mock("electron", () => ({
       if (state.loadFileRejection !== null) throw state.loadFileRejection;
     }
   },
-  dialog: { showMessageBox: async () => ({ checkboxChecked: false }) },
+  dialog: {
+    showMessageBox: async () => {
+      dialogCalls.count += 1;
+      return { checkboxChecked: false };
+    },
+  },
 }));
 
 const { createMainWindow } = await import("../../src/main/mainWindow.js");
 
 const NO_CHARACTERS: Character[] = []; // 未作成 = 自動表示の対象
+const ONE_CHARACTER = [
+  { id: "char-1", name: "A", personality: "p", voicevoxSpeakerId: 2 },
+] as Character[];
 const ONBOARDING: Onboarding = { skipMainWindowAutoShow: false };
 
-function deps() {
+function deps(overrides: { characters?: Character[]; isQuitting?: boolean } = {}) {
   return {
-    getCharacters: () => NO_CHARACTERS,
+    getCharacters: () => overrides.characters ?? NO_CHARACTERS,
     getOnboarding: () => ONBOARDING,
     saveOnboarding: () => {},
+    isQuitting: () => overrides.isQuitting ?? false,
   };
+}
+
+// × で閉じる(close イベント)。既定の動作を止めたかを返す
+function closeWindow(): boolean {
+  const preventDefault = vi.fn();
+  created[0]!.listeners.get("close")!({ preventDefault });
+  return preventDefault.mock.calls.length > 0;
 }
 
 beforeEach(() => {
   created.length = 0;
   state.loadFileRejection = null;
+  dialogCalls.count = 0;
 });
 
 afterEach(() => {
@@ -113,5 +137,32 @@ describe("mainWindow / メニューを出さない", () => {
     createMainWindow(deps());
 
     expect(created[0]?.menuRemoved).toBe(true);
+  });
+});
+
+// 回帰:作成済みで × を押すと窓が破棄され、次にトレイから開くと
+// 「TypeError: Object has been destroyed」で落ちていた(S0018_05 は「即座に hide する」)
+describe("mainWindow / 作成済みなら閉じても窓を残して隠す", () => {
+  it("prevents the default close so the hidden window can be reopened from the tray", () => {
+    const mainWindow = createMainWindow(deps({ characters: ONE_CHARACTER }));
+    mainWindow.toggle(); // トレイから開く
+
+    const isPrevented = closeWindow();
+
+    expect(isPrevented).toBe(true); // 既定の動作(破棄)を止める
+    expect(created[0]!.visible).toBe(false);
+    expect(dialogCalls.count).toBe(0);
+  });
+});
+
+// 閉じるのを止めると、トレイの「終了」(app.quit)まで止まる。終了中は止めない
+describe("mainWindow / 終了中は閉じるのを止めない", () => {
+  it("lets the window close without a dialog while the app is quitting", () => {
+    createMainWindow(deps({ characters: NO_CHARACTERS, isQuitting: true }));
+
+    const isPrevented = closeWindow();
+
+    expect(isPrevented).toBe(false);
+    expect(dialogCalls.count).toBe(0);
   });
 });

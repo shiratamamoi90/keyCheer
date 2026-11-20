@@ -28,6 +28,8 @@ export interface MainWindowDeps {
   getCharacters: () => Character[];
   getOnboarding: () => Onboarding;
   saveOnboarding: (onboarding: Onboarding) => void;
+  // アプリの終了中か(app の before-quit の後)。終了中は閉じるのを止めない
+  isQuitting: () => boolean;
 }
 
 export interface MainWindow {
@@ -60,13 +62,17 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
 
   // シナリオ: ウィンドウを閉じても常駐は続く / 未作成のまま閉じるとダイアログが出る
   win.on("close", (event) => {
+    // 終了(トレイの「終了」= app.quit)のときは閉じさせる。止めると終了そのものが取り消される
+    if (deps.isQuitting()) return;
+    // S0018_05 即座に hide する — 既定の動作(窓の破棄)は必ず止める。止めないと隠した直後に窓が破棄され、
+    // 次にトレイから開くと破棄済みの窓に触れて落ちる(TypeError: Object has been destroyed)
+    event.preventDefault();
     const decision = decideOnMainWindowClose(deps.getCharacters());
     if (decision === "hide") {
       win.hide();
       return;
     }
-    // ダイアログ表示中はまだ閉じない(既定動作を止めてから非同期で確認する)。
-    event.preventDefault();
+    // ダイアログ表示中はまだ閉じない(既定動作を止めたうえで非同期で確認する)。
     void dialog
       .showMessageBox(win, {
         type: "question",

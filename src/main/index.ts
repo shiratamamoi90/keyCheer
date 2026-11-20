@@ -60,10 +60,16 @@ function bootstrap(): void {
 
   // メインウィンドウ(将来キャラ作成 UI を載せる場所)。キャラ未作成 かつ 自動表示未スキップなら
   // 起動時に自動表示する(論点 0018)。
+  // 終了中か。メインウィンドウは × では閉じずに隠すので、終了のときだけ閉じさせるために要る
+  let isQuitting = false;
+  app.on("before-quit", () => {
+    isQuitting = true;
+  });
   const mainWindow = createMainWindow({
     getCharacters: () => store.loadCharacters(),
     getOnboarding: () => store.loadOnboarding(),
     saveOnboarding: (onboarding) => store.saveOnboarding(onboarding),
+    isQuitting: () => isQuitting,
   });
   mainWindow.showIfNeeded();
   // 表示中に次の発動が来たら上書き + 表示時間リセット(spec 0007 確定事項 #3)。
