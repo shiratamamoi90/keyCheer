@@ -4,6 +4,7 @@
 // 設定ウィンドウは本スライスに含めない(設定 UI の change で追加する)。
 
 import { BrowserWindow, screen } from "electron";
+import { POPUP_WINDOW_SIZE, type Point, type WorkArea } from "../core/shared/popupLayout.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PRELOAD_PATH } from "./preloadPath.js";
@@ -13,21 +14,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ビルド出力(dist/)基準のパス。dist/main/ から見た相対位置。
 const POPUP_INDEX = join(__dirname, "../renderer/popup.html");
 
-// 窓の大きさ。縦長にして 256x384 のキャラ画像と文言がおさまるようにする(論点 0036)。
-// 見た目の値で仕様では縛らない(docs/popup.md)。
-const POPUP_WIDTH = 320;
-const POPUP_HEIGHT = 520;
-
 // 応援ポップアップ(キャラの窓):枠なし・透過・常に最前面・タスクバー非表示。
-export function createPopupWindow(): BrowserWindow {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const popupWidth = POPUP_WIDTH;
-  const popupHeight = POPUP_HEIGHT;
+// 大きさは core/shared/popupLayout が正本(絵とセリフの配置を renderer と同じ値で決めるため。論点 0052)。
+// 位置は呼び出し側が resolvePopupPosition で決めて渡す(覚えた位置か、既定の右下。S0052_02 / S0052_06 / S0052_07)。
+export function createPopupWindow(position: Point): BrowserWindow {
   const win = new BrowserWindow({
-    width: popupWidth,
-    height: popupHeight,
-    x: width - popupWidth - 24, // 既定 bottom-right(popup.position は設定 UI の change で反映)
-    y: height - popupHeight - 24,
+    width: POPUP_WINDOW_SIZE.width,
+    height: POPUP_WINDOW_SIZE.height,
+    x: position.x,
+    y: position.y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -44,7 +39,7 @@ export function createPopupWindow(): BrowserWindow {
       sandbox: false,
     },
   });
-  win.setIgnoreMouseEvents(true); // 入力の邪魔をしない(打鍵中に前面へ出るため)
+  setPopupCaptureMouse(win, false); // 入力の邪魔をしない(打鍵中に前面へ出るため)
   win.loadFile(POPUP_INDEX).catch((err: unknown) => {
     // シナリオ: renderer の読み込みに失敗した場合 [異常系]
     // ログのみ残し、ユーザーへは通知しない(docs/popup.md)。表示だけが失われ、
@@ -61,9 +56,25 @@ export function createPopupWindow(): BrowserWindow {
 export function applyAlwaysShow(win: BrowserWindow, shouldAlwaysShow: boolean): void {
   if (win.isDestroyed()) return;
   if (shouldAlwaysShow) {
-    win.setIgnoreMouseEvents(true);
+    setPopupCaptureMouse(win, false);
     win.showInactive();
   } else {
     win.hide();
   }
+}
+
+// S0052_03 ポインタが絵の上にある間だけマウスを受け取る
+// クリックを通している間も forward でポインタの動きだけは renderer に届ける。届かないと、
+// ポインタが絵の上に入ったことを renderer が知れず、受け取る状態へ切り替えられない(Windows / macOS で効く)。
+export function setPopupCaptureMouse(win: BrowserWindow, shouldCapture: boolean): void {
+  if (win.isDestroyed()) return;
+  if (shouldCapture) win.setIgnoreMouseEvents(false);
+  else win.setIgnoreMouseEvents(true, { forward: true });
+}
+
+// 全画面の作業領域。先頭は主画面(resolvePopupPosition は先頭を既定の位置の画面に使う)
+export function getWorkAreas(): WorkArea[] {
+  const primary = screen.getPrimaryDisplay();
+  const others = screen.getAllDisplays().filter((display) => display.id !== primary.id);
+  return [primary, ...others].map((display) => ({ ...display.workArea }));
 }

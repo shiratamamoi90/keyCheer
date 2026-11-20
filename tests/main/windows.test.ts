@@ -61,6 +61,9 @@ vi.mock("electron", () => ({
 
 const { applyAlwaysShow, createPopupWindow } = await import("../../src/main/windows.js");
 
+// 窓を置く位置(どこに置くかは popupLayout の resolvePopupPosition が決める。ここでは何でもよい)
+const POSITION = { x: 830, y: 380 };
+
 beforeEach(() => {
   created.length = 0;
   state.loadFileRejection = null;
@@ -72,7 +75,7 @@ afterEach(() => {
 
 describe("windows / ポップアップは入力の邪魔をしない", () => {
   it("S0017_06 creates the popup as non-focusable, click-through and hidden from the taskbar", () => {
-    createPopupWindow();
+    createPopupWindow(POSITION);
 
     const { options, ignoreMouseEvents } = created[0]!;
     expect(options.focusable).toBe(false); // 打鍵中にフォーカスを奪わない
@@ -89,7 +92,7 @@ describe("windows / renderer の読み込みに失敗した場合", () => {
     state.loadFileRejection = new Error("ENOENT popup.html");
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(() => createPopupWindow()).not.toThrow();
+    expect(() => createPopupWindow(POSITION)).not.toThrow();
     await Promise.resolve(); // loadFile の rejection を処理させる
 
     // ユーザーへの通知は行わず、main 側にログを残すだけ(docs/popup.md)。
@@ -102,7 +105,7 @@ describe("windows / renderer の読み込みに失敗した場合", () => {
 describe("windows / 常時表示の窓も入力の邪魔をしない [不変条件]", () => {
   it("S0036_25 shows the always-on window without focus and keeps it click-through", () => {
     // GIVEN 常時表示でキャラの窓を出す
-    const win = createPopupWindow();
+    const win = createPopupWindow(POSITION);
 
     // WHEN 常時表示を当てる(起動時・設定の切り替え時)
     applyAlwaysShow(win, true);

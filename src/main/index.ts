@@ -11,7 +11,14 @@ import { createStore, createAppStore } from "./store.js";
 import { createProviderStore } from "./providerStore.js";
 import { createKeyHook } from "./keyHook.js";
 import { createCheerRuntime } from "./cheerRuntime.js";
-import { applyAlwaysShow, createPopupWindow } from "./windows.js";
+import {
+  applyAlwaysShow,
+  createPopupWindow,
+  getWorkAreas,
+  setPopupCaptureMouse,
+} from "./windows.js";
+import { createPopupPointerHandler } from "./popupPointer.js";
+import { resolvePopupPosition } from "../core/shared/popupLayout.js";
 import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
@@ -46,7 +53,10 @@ function bootstrap(): void {
   const stats = store.loadStats();
 
   registerAudioProtocol(app.getPath("userData"));
-  const popupWindow = createPopupWindow();
+  // S0052_06 / S0052_07 覚えた位置に出す。画面の外になっていれば既定の右下に出す
+  const popupWindow = createPopupWindow(
+    resolvePopupPosition(store.loadPopupPosition(), getWorkAreas()),
+  );
 
   // メインウィンドウ(将来キャラ作成 UI を載せる場所)。キャラ未作成 かつ 自動表示未スキップなら
   // 起動時に自動表示する(論点 0018)。
@@ -62,6 +72,20 @@ function bootstrap(): void {
   // キャラ画像の常時表示(論点 0036)。待機画像と常時表示の設定を窓へ送り、窓を出す・隠す。
   let popupDisplay = store.loadPopupDisplay();
   let idleImagePath: string | null = null;
+  // キャラの窓を絵をつかんで動かす(論点 0052)。絵が出ているのは、常時表示で待機画像があるとき
+  // (常時表示を切ると renderer は絵を描かない。docs/popup.md S0036_24)
+  const popupPointer = createPopupPointerHandler({
+    isImageShown: () => popupDisplay.shouldAlwaysShow && idleImagePath !== null,
+    setCaptureMouse: (shouldCapture) => setPopupCaptureMouse(popupWindow, shouldCapture),
+    getWindowPosition: () => {
+      const [x = 0, y = 0] = popupWindow.getPosition();
+      return { x, y };
+    },
+    setWindowPosition: (position) => {
+      if (!popupWindow.isDestroyed()) popupWindow.setPosition(position.x, position.y);
+    },
+    savePosition: (position) => store.savePopupPosition(position),
+  });
   const sendCharacterDisplay = (): void => {
     if (popupWindow.isDestroyed()) return;
     popupWindow.webContents.send(IpcChannel.CharacterDisplay, {
@@ -70,6 +94,8 @@ function bootstrap(): void {
     });
     if (hideTimer !== undefined) clearTimeout(hideTimer);
     applyAlwaysShow(popupWindow, popupDisplay.shouldAlwaysShow);
+    // 絵が替わった・消えたら、ポインタの状態を忘れてクリックを通す状態へ戻す(S0052_04)
+    popupPointer.reset();
   };
   // 起動直後は renderer の読み込みが終わっていないので、読み込み後にもう一度送る
   popupWindow.webContents.on("did-finish-load", sendCharacterDisplay);
@@ -134,6 +160,7 @@ function bootstrap(): void {
       popupDisplay = next;
       sendCharacterDisplay();
     },
+    onPopupPointer: (raw) => popupPointer.handle(raw),
   });
 
   // キャラ作成(プール・wav 生成)の配線。providers を使うのはこのモジュールの中だけで、

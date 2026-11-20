@@ -86,6 +86,9 @@ export interface AppStore {
   // 常時表示(論点 0036)。検証(真偽値か)は呼び出し側(core/popupDisplayConfig)。
   loadPopupDisplay(): PopupDisplayConfig;
   savePopupDisplay(config: PopupDisplayConfig): void;
+  // キャラの窓を動かした位置(論点 0052)。形と画面の中かの検証は core/shared/popupLayout の resolvePopupPosition が行う
+  loadPopupPosition(): unknown;
+  savePopupPosition(position: { x: number; y: number }): void;
   loadSystem(): SystemConfig;
   // 画像の重みのライセンスへの同意(論点 0047)。形の検証は core/shared/imageWeights の hasLicenseAgreement が行う
   loadImageWeightsLicenseAgreement(): unknown;
@@ -383,6 +386,17 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     // S0036_29 設定画面で常時表示を切り替える — popup のほかの項目は残す
     savePopupDisplay(config) {
       store.set("popup", { ...store.get("popup"), shouldAlwaysShow: config.shouldAlwaysShow });
+    },
+
+    // S0052_06 動かした位置を覚える — popup のほかの項目は残す
+    loadPopupPosition() {
+      return (store.get("popup") as Record<string, unknown> | undefined)?.customPosition ?? null;
+    },
+    savePopupPosition(position) {
+      store.set("popup", {
+        ...store.get("popup"),
+        customPosition: { x: position.x, y: position.y },
+      });
     },
 
     loadOnboarding() {

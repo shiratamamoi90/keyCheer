@@ -32,6 +32,8 @@ export interface IpcDeps {
   onConfigUpdated: (config: TriggerConfig) => void;
   // 常時表示の変更を窓へ即時反映する(再起動なしで出す・隠す。S0036_29)
   onPopupDisplayUpdated: (config: PopupDisplayConfig) => void;
+  // キャラの窓のポインタの通知(論点 0052)。形の検証は受け取る側(main/popupPointer)が行う
+  onPopupPointer: (raw: unknown) => void;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
@@ -102,6 +104,11 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     deps.store.savePopupDisplay(validated.value);
     deps.onPopupDisplayUpdated(validated.value);
     return { ok: true };
+  });
+
+  // S0052_03 / S0052_05 キャラの窓のポインタ(絵の上に入った・出た・ドラッグ)
+  ipcMain.handle(IpcChannel.PopupPointer, (_event, raw: unknown): void => {
+    deps.onPopupPointer(raw);
   });
 
   // 論点 0019: 話者一覧。VOICEVOX 未起動でも unavailable を返すだけで落ちない。

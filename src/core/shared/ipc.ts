@@ -37,6 +37,8 @@ export const IpcChannel = {
   CancelImageWeightsFetch: "keycheer:cancel-image-weights-fetch",
   ImageWeightsProgress: "keycheer:image-weights-progress",
   GetImageWeightsLicenseTexts: "keycheer:get-image-weights-license-texts",
+  // キャラの窓のポインタ(論点 0052)。絵の上に入った・出た・ドラッグの開始・移動・終了を main に伝える
+  PopupPointer: "keycheer:popup-pointer",
   // main → renderer(send:片方向)
   CheerFired: "keycheer:cheer-fired",
   // 待機画像と常時表示の通知(論点 0036)。使用中のキャラクター・設定が変わるたびに送る
@@ -212,3 +214,9 @@ export interface ImageWeightsLicenseTexts {
   "base-model": string;
   "lcm-lora": string;
 }
+
+// renderer(キャラの窓)→ main: ポインタの状態(論点 0052)。座標は画面上の位置。
+// 窓がマウスを受け取るか・どこへ動かすかは main が決める(renderer は窓を動かせない)
+export type PopupPointerEvent =
+  | { type: "enter" | "leave" }
+  | { type: "drag-start" | "drag-move" | "drag-end"; screenX: number; screenY: number };

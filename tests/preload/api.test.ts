@@ -36,6 +36,7 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
     // 追加してもなお Node / Electron のオブジェクトは露出させない。
     // 0032 / 0033 で一覧・削除・切り替え・生成の設定・表示の通知を追加し、getCharacter を外した。
     // 0036 で常時表示の設定(取得・変更)と待機画像の通知を追加した。
+    // 0052 でキャラの窓のポインタの通知(絵をつかんで動かす)を追加した。
     // 0042 / 0047 で画像の重みの状態・取得の開始と中断・進捗の通知を追加した。
     expect(Object.keys(api).sort()).toEqual([
       "activateCharacter",
@@ -60,6 +61,7 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
       "onImageWeightsProgress",
       "onMainWindowShown",
       "saveCharacter",
+      "sendPopupPointer",
       "setGenerationConfig",
       "setPopupDisplay",
       "setProviders",

@@ -74,6 +74,7 @@ function bootstrap() {
     providers: createProviderStore(raw),
     onConfigUpdated: (next) => runtime.setConfig(next),
     onPopupDisplayUpdated: () => {},
+    onPopupPointer: () => {},
   });
 
   const invoke = (channel: string, arg?: unknown): unknown => handlers.get(channel)!({}, arg);

@@ -41,6 +41,8 @@
     "duration": 5000,
     "opacity": 0.95,
     "shouldAlwaysShow": true, // 既定 true。キャラの窓を常に出し待機画像を表示する(論点 0036 → docs/popup.md)
+    // キャラの窓を動かした位置(画面の座標。論点 0052 → docs/popup.md S0052_06)。動かしていなければ持たない
+    "customPosition": { "x": 830, "y": 380 },
   },
   "providers": {
     "text": "local-ollama", // "local-ollama" | "openai" | "anthropic"

@@ -30,30 +30,44 @@
       body.visible {
         opacity: 1;
       }
+      /* 絵とセリフの置き場(位置と大きさ)は popup.ts が core/shared/popupLayout から当てる(論点 0052) */
       #character {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-end;
+        position: relative;
         width: 100%;
         height: 100%;
       }
       #character-image {
-        max-width: 256px;
-        max-height: 384px;
+        position: absolute;
         object-fit: contain;
+        cursor: grab;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+      #character-image:active {
+        cursor: grabbing;
       }
       #character-image[hidden],
       #cheer-message:empty {
         display: none;
       }
+      /* セリフの領域。吹き出しを下端に寄せて、絵のすぐ上に出す(S0052_08)。クリックは通す */
+      #message-area {
+        position: absolute;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        pointer-events: none;
+      }
       #cheer-message {
-        margin: 16px;
-        padding: 12px 16px;
-        border-radius: 12px;
+        box-sizing: border-box;
+        max-width: 100%;
+        max-height: 100%;
+        overflow: hidden;
+        padding: 8px 12px;
+        border-radius: 10px;
         background: rgba(24, 24, 32, 0.92);
         color: #fff;
-        font-size: 18px;
+        font-size: 15px;
         line-height: 1.4;
         text-align: center;
         word-break: break-word;
@@ -62,7 +76,7 @@
   </head>
   <body>
     <div id="character">
-      <div id="cheer-message"></div>
+      <div id="message-area"><div id="cheer-message"></div></div>
       <img id="character-image" alt="" hidden />
     </div>
     <script type="module" src="./popup.js"></script>

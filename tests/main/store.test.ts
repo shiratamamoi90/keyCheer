@@ -625,3 +625,27 @@ describe("store / 画像の重みのライセンスへの同意の記録", () =>
     expect(fake.get("providers")).toEqual({ consent: { openai: true } });
   });
 });
+
+describe("store / 動かした位置を覚え、次の起動でその位置に出す", () => {
+  it("S0052_06 saves the moved position without touching the other popup settings", () => {
+    // GIVEN 窓をドラッグして (830, 380) で離した
+    const fake = fakeStore({ popup: { shouldAlwaysShow: false, duration: 5000 } });
+    createAppStore(fake).savePopupPosition({ x: 830, y: 380 });
+
+    // WHEN アプリを起動し直す(保存データを読み直す)
+    const store = createAppStore(fake);
+
+    // THEN その位置が読める。popup のほかの設定は変化しない
+    expect(store.loadPopupPosition()).toEqual({ x: 830, y: 380 });
+    expect(store.loadPopupDisplay()).toEqual({ shouldAlwaysShow: false });
+    expect(fake.get("popup")).toEqual({
+      shouldAlwaysShow: false,
+      duration: 5000,
+      customPosition: { x: 830, y: 380 },
+    });
+  });
+
+  it("returns null when no position was saved", () => {
+    expect(createAppStore(fakeStore()).loadPopupPosition()).toBeNull();
+  });
+});

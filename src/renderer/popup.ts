@@ -11,6 +11,7 @@ import {
   type PopupState,
 } from "./popupView.js";
 import { AUDIO_SCHEME } from "../core/shared/ipc.js";
+import { computePopupContentLayout, type Rect } from "../core/shared/popupLayout.js";
 import type { KeyCheerApi } from "../preload/api.js";
 
 declare global {
@@ -31,10 +32,68 @@ function imageUrl(imagePath: string): string {
   return `${AUDIO_SCHEME}://image/${encodeURIComponent(imagePath)}`;
 }
 
+function placeAt(element: HTMLElement, rect: Rect): void {
+  element.style.left = `${rect.x}px`;
+  element.style.top = `${rect.y}px`;
+  element.style.width = `${rect.width}px`;
+  element.style.height = `${rect.height}px`;
+}
+
+// S0052_03 / S0052_05 絵の上のポインタとドラッグを main に伝える(窓を動かすのは main)。
+// 絵が隠れている間は img がポインタを受けないので、何も送らない(S0052_04)。
+// 窓を動かす量は画面の座標(screenX / screenY)の差で決める。窓の中の座標は窓が動くとずれるため
+function watchImagePointer(image: HTMLImageElement): { onImageHidden(): void } {
+  const send = window.keycheer.sendPopupPointer;
+  let isOver = false;
+  let isDragging = false;
+  image.addEventListener("pointerenter", () => {
+    isOver = true;
+    send({ type: "enter" });
+  });
+  image.addEventListener("pointerleave", () => {
+    isOver = false;
+    send({ type: "leave" });
+  });
+  image.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    isDragging = true;
+    // 窓の外へポインタが出ても、離すまでこの絵に届けさせる
+    image.setPointerCapture(event.pointerId);
+    send({ type: "drag-start", screenX: event.screenX, screenY: event.screenY });
+  });
+  image.addEventListener("pointermove", (event) => {
+    if (!isDragging) return;
+    send({ type: "drag-move", screenX: event.screenX, screenY: event.screenY });
+  });
+  const endDrag = (event: PointerEvent): void => {
+    if (!isDragging) return;
+    isDragging = false;
+    send({ type: "drag-end", screenX: event.screenX, screenY: event.screenY });
+  };
+  image.addEventListener("pointerup", endDrag);
+  image.addEventListener("pointercancel", endDrag);
+  return {
+    // 絵の上にいるまま絵が消えると pointerleave が来ないことがあるので、ここで出たことにする
+    onImageHidden() {
+      isDragging = false;
+      if (!isOver) return;
+      isOver = false;
+      send({ type: "leave" });
+    },
+  };
+}
+
 function main(): void {
   const root = document.getElementById("cheer-message");
+  const messageArea = document.getElementById("message-area");
   const image = document.getElementById("character-image") as HTMLImageElement | null;
-  if (root === null || image === null) return;
+  if (root === null || messageArea === null || image === null) return;
+
+  // S0052_01 絵は 128x192 に収めて描く / S0052_08 セリフは絵のすぐ上
+  const layout = computePopupContentLayout();
+  placeAt(image, layout.image);
+  placeAt(messageArea, layout.message);
+  const imagePointer = watchImagePointer(image);
 
   let state: PopupState = initialPopupState;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -49,6 +108,7 @@ function main(): void {
       else image.src = imageUrl(state.imagePath);
     }
     image.hidden = state.imagePath === null;
+    if (image.hidden) imagePointer.onImageHidden();
     document.body.classList.toggle("visible", state.visible);
   };
 
