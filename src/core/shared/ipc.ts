@@ -79,6 +79,7 @@ export interface CheerFiredPayload {
 export interface CharacterDisplayPayload {
   idleImagePath: string | null;
   shouldAlwaysShow: boolean;
+  shouldShowMessage: boolean; // 論点 0053
 }
 
 export type SavePopupDisplayResult = { ok: true } | { ok: false; errors: string[] };

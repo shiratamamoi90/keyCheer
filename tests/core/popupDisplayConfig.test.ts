@@ -7,12 +7,31 @@ import { validatePopupDisplayConfig } from "../../src/core/popupDisplayConfig.js
 
 describe("popupDisplayConfig / renderer からの変更を検証する", () => {
   it("accepts only a boolean shouldAlwaysShow and drops unknown fields", () => {
-    expect(validatePopupDisplayConfig({ shouldAlwaysShow: false, extra: 1 })).toEqual({
+    expect(
+      validatePopupDisplayConfig({ shouldAlwaysShow: false, shouldShowMessage: true, extra: 1 }),
+    ).toEqual({
       ok: true,
-      value: { shouldAlwaysShow: false },
+      value: { shouldAlwaysShow: false, shouldShowMessage: true },
     });
-    expect(validatePopupDisplayConfig({ shouldAlwaysShow: "no" }).ok).toBe(false);
+    expect(validatePopupDisplayConfig({ shouldAlwaysShow: "no", shouldShowMessage: true }).ok).toBe(
+      false,
+    );
     expect(validatePopupDisplayConfig(null).ok).toBe(false);
     expect(validatePopupDisplayConfig([true]).ok).toBe(false);
+  });
+});
+
+describe("popupDisplayConfig / セリフを出すかの不正な値は保存しない [不変条件]", () => {
+  it("S0053_09 rejects a non-boolean shouldShowMessage", () => {
+    // GIVEN renderer から shouldShowMessage に真偽値でない値が届く
+    // WHEN main が受け取る(保存の前に検証する)
+    // THEN エラーを返す(保存しない)
+    for (const shouldShowMessage of ["no", 0, null, undefined]) {
+      const result = validatePopupDisplayConfig({ shouldAlwaysShow: true, shouldShowMessage });
+      expect(result.ok).toBe(false);
+    }
+    expect(
+      validatePopupDisplayConfig({ shouldAlwaysShow: true, shouldShowMessage: false }),
+    ).toEqual({ ok: true, value: { shouldAlwaysShow: true, shouldShowMessage: false } });
   });
 });

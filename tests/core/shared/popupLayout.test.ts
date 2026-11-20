@@ -7,9 +7,11 @@ import {
   POPUP_WINDOW_SIZE,
   computeDefaultPopupPosition,
   computeDraggedPosition,
+  computeMessageFontSizePx,
   computePopupContentLayout,
   resolvePopupPosition,
   shouldCaptureMouse,
+  shouldShowWindowOnCheer,
 } from "../../../src/core/shared/popupLayout.js";
 
 const WORK_AREA = { x: 0, y: 0, width: 1536, height: 824 };
@@ -100,28 +102,80 @@ describe("popupLayout / 覚えた位置が画面の外なら既定の位置に�
   });
 });
 
-describe("popupLayout / セリフは絵のすぐ上に、窓の中に収めて出す", () => {
-  it("S0052_08 places the message right above the image, inside the window", () => {
+describe("popupLayout / セリフは絵のすぐ下に出す", () => {
+  it("S0053_01 places the message area right below the image, centered, inside the window", () => {
     // GIVEN キャラの絵が出ている窓(窓の中の配置は窓の位置によらない)
     // WHEN 応援が発動してセリフを出す
     const { image, message } = computePopupContentLayout();
 
-    // THEN 絵は 128x192 のまま窓の中にあり、セリフは絵のすぐ上(隙間 0〜8)で、窓からはみ出さない
+    // THEN 絵は 128x192 のまま窓の中にあり、吹き出しの領域は絵の下端のすぐ下(隙間 0〜8)で、窓からはみ出さない
     expect({ width: image.width, height: image.height }).toEqual({ width: 128, height: 192 });
     expect(image.x).toBeGreaterThanOrEqual(0);
+    expect(image.y).toBeGreaterThanOrEqual(0);
     expect(image.x + image.width).toBeLessThanOrEqual(POPUP_WINDOW_SIZE.width);
-    expect(image.y + image.height).toBeLessThanOrEqual(POPUP_WINDOW_SIZE.height);
 
-    const gap = image.y - (message.y + message.height);
+    const gap = message.y - (image.y + image.height);
     expect(gap).toBeGreaterThanOrEqual(0);
     expect(gap).toBeLessThanOrEqual(8);
     expect(message.x).toBeGreaterThanOrEqual(0);
-    expect(message.y).toBeGreaterThanOrEqual(0);
     expect(message.x + message.width).toBeLessThanOrEqual(POPUP_WINDOW_SIZE.width);
+    expect(message.y + message.height).toBeLessThanOrEqual(POPUP_WINDOW_SIZE.height);
     expect(message.height).toBeGreaterThan(0);
 
-    // セリフは絵の真上にある(横の範囲が重なる)
-    expect(message.x).toBeLessThan(image.x + image.width);
-    expect(message.x + message.width).toBeGreaterThan(image.x);
+    // 左右中央:吹き出しの領域と絵の中心が揃う
+    expect(message.x + message.width / 2).toBe(image.x + image.width / 2);
+  });
+});
+
+describe("popupLayout / 吹き出しは縦 64 × 横 192 を超えない [境界]", () => {
+  it("S0053_02 keeps the message area within a third of the image height and 1.5 times its width", () => {
+    // GIVEN 横 128 × 縦 192 で描くキャラの絵
+    // WHEN 吹き出しの領域を決める
+    const { message } = computePopupContentLayout();
+
+    // THEN 縦 64 以下、横 192 以下
+    expect(message.height).toBeLessThanOrEqual(64);
+    expect(message.width).toBeLessThanOrEqual(192);
+  });
+});
+
+describe("popupLayout / 収まらないセリフは文字を小さくして全部出す [境界]", () => {
+  it("S0053_03 shrinks the font until the whole message fits instead of truncating or widening", () => {
+    // GIVEN 既定の文字の大きさでは上限に収まらないセリフ(収まるのは 12px 以下のときだけ)
+    const tried: number[] = [];
+    const isFitting = (fontSizePx: number): boolean => {
+      tried.push(fontSizePx);
+      return fontSizePx <= 12;
+    };
+
+    // WHEN 吹き出しに描く文字の大きさを決める
+    const fontSizePx = computeMessageFontSizePx(isFitting);
+
+    // THEN 収まる大きさまで小さくする(大きい方から試し、収まった最初の大きさを使う)
+    expect(fontSizePx).toBe(12);
+    expect(tried[0]).toBeGreaterThan(12);
+    expect(tried.every((size, i) => i === 0 || size < tried[i - 1]!)).toBe(true);
+    // 吹き出しの領域は上限のまま広げない
+    expect(computePopupContentLayout().message.height).toBeLessThanOrEqual(64);
+  });
+
+  it("keeps the default font size when the message already fits", () => {
+    const fontSizePx = computeMessageFontSizePx(() => true);
+    expect(fontSizePx).toBe(computeMessageFontSizePx((size) => size <= fontSizePx));
+  });
+});
+
+describe("popupLayout / 応援の発動でキャラの窓を出すか", () => {
+  it("shows the window unless both the always-show and the message are turned off", () => {
+    expect(shouldShowWindowOnCheer({ shouldAlwaysShow: true, shouldShowMessage: true })).toBe(true);
+    expect(shouldShowWindowOnCheer({ shouldAlwaysShow: true, shouldShowMessage: false })).toBe(
+      true,
+    );
+    expect(shouldShowWindowOnCheer({ shouldAlwaysShow: false, shouldShowMessage: true })).toBe(
+      true,
+    );
+    expect(shouldShowWindowOnCheer({ shouldAlwaysShow: false, shouldShowMessage: false })).toBe(
+      false,
+    );
   });
 });

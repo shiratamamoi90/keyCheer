@@ -540,13 +540,15 @@ describe("store / 設定の変更は他の保存データを変えない [否定
 // キャラ画像の常時表示(論点 0036)。docs/data-model.md / docs/main-window.md
 describe("store / `popup.shouldAlwaysShow` の既定値 [境界]", () => {
   it("S0036_27 treats a missing or non-boolean value as true without rewriting it", () => {
-    expect(createAppStore(fakeStore()).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
+    expect(createAppStore(fakeStore()).loadPopupDisplay()).toMatchObject({
+      shouldAlwaysShow: true,
+    });
 
     const fake = fakeStore({ popup: { position: "bottom-right", shouldAlwaysShow: "yes" } });
     const writes = countWrites(fake, ["popup"]);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
+    expect(createAppStore(fake).loadPopupDisplay()).toMatchObject({ shouldAlwaysShow: true });
     expect(fake.raw.popup).toEqual({ position: "bottom-right", shouldAlwaysShow: "yes" });
     expect(writes.count()).toBe(0);
     expect(error).toHaveBeenCalled();
@@ -573,17 +575,71 @@ describe("store / 設定画面で常時表示を切り替える", () => {
     const fake = fakeStore({ popup: { position: "bottom-right", duration: 5000, opacity: 0.95 } });
     const store = createAppStore(fake);
 
-    store.savePopupDisplay({ shouldAlwaysShow: false });
-    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: false });
+    store.savePopupDisplay({ shouldAlwaysShow: false, shouldShowMessage: true });
+    expect(createAppStore(fake).loadPopupDisplay()).toMatchObject({ shouldAlwaysShow: false });
 
-    store.savePopupDisplay({ shouldAlwaysShow: true });
-    expect(createAppStore(fake).loadPopupDisplay()).toEqual({ shouldAlwaysShow: true });
-    expect(fake.raw.popup).toEqual({
+    store.savePopupDisplay({ shouldAlwaysShow: true, shouldShowMessage: true });
+    expect(createAppStore(fake).loadPopupDisplay()).toMatchObject({ shouldAlwaysShow: true });
+    expect(fake.raw.popup).toMatchObject({
       position: "bottom-right",
       duration: 5000,
       opacity: 0.95,
       shouldAlwaysShow: true,
     });
+  });
+});
+
+// セリフを出すかの設定(論点 0053)。docs/data-model.md / docs/main-window.md
+describe("store / `popup.shouldShowMessage` の既定値 [境界]", () => {
+  it("S0053_07 treats a missing or non-boolean value as true without rewriting it", () => {
+    // GIVEN popup.shouldShowMessage が無い設定 JSON / WHEN 読み込む / THEN true
+    expect(createAppStore(fakeStore()).loadPopupDisplay().shouldShowMessage).toBe(true);
+    expect(
+      createAppStore(fakeStore({ popup: { shouldAlwaysShow: false } })).loadPopupDisplay(),
+    ).toEqual({ shouldAlwaysShow: false, shouldShowMessage: true });
+
+    // GIVEN 真偽値でない値 / THEN true として扱い、保存値は書き換えずエラーを記録する
+    const fake = fakeStore({ popup: { shouldAlwaysShow: true, shouldShowMessage: "no" } });
+    const writes = countWrites(fake, ["popup"]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(createAppStore(fake).loadPopupDisplay().shouldShowMessage).toBe(true);
+    expect(fake.raw.popup).toEqual({ shouldAlwaysShow: true, shouldShowMessage: "no" });
+    expect(writes.count()).toBe(0);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("store / 設定画面でセリフを出すかを切り替える", () => {
+  it("S0053_08 persists shouldShowMessage and keeps the other popup settings", () => {
+    // GIVEN popup.shouldShowMessage = true、動かした位置を覚えている
+    const fake = fakeStore({
+      popup: {
+        shouldAlwaysShow: true,
+        shouldShowMessage: true,
+        customPosition: { x: 830, y: 380 },
+      },
+    });
+    const store = createAppStore(fake);
+
+    // WHEN 設定画面で「セリフを表示する」を外して保存する
+    store.savePopupDisplay({ shouldAlwaysShow: true, shouldShowMessage: false });
+
+    // THEN false として永続化し、popup のほかの設定は変化しない
+    expect(createAppStore(fake).loadPopupDisplay()).toEqual({
+      shouldAlwaysShow: true,
+      shouldShowMessage: false,
+    });
+    expect(fake.raw.popup).toEqual({
+      shouldAlwaysShow: true,
+      shouldShowMessage: false,
+      customPosition: { x: 830, y: 380 },
+    });
+
+    // 付け直したら出す
+    store.savePopupDisplay({ shouldAlwaysShow: true, shouldShowMessage: true });
+    expect(createAppStore(fake).loadPopupDisplay().shouldShowMessage).toBe(true);
   });
 });
 
@@ -637,7 +693,7 @@ describe("store / 動かした位置を覚え、次の起動でその位置に�
 
     // THEN その位置が読める。popup のほかの設定は変化しない
     expect(store.loadPopupPosition()).toEqual({ x: 830, y: 380 });
-    expect(store.loadPopupDisplay()).toEqual({ shouldAlwaysShow: false });
+    expect(store.loadPopupDisplay()).toMatchObject({ shouldAlwaysShow: false });
     expect(fake.get("popup")).toEqual({
       shouldAlwaysShow: false,
       duration: 5000,

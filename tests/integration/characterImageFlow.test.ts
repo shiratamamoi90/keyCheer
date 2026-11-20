@@ -101,7 +101,11 @@ describe("総合: 生成 → キャラ画像 → 常時表示の窓 → 応援�
         wavExists: (p) => fs.exists(p),
         imageExists: (p) => fs.exists(p),
         emitCharacterDisplay: ({ idleImagePath }) => {
-          view = applyCharacterDisplay(view, { idleImagePath, shouldAlwaysShow: true });
+          view = applyCharacterDisplay(view, {
+            idleImagePath,
+            shouldAlwaysShow: true,
+            shouldShowMessage: true,
+          });
         },
         random: () => 0,
       },

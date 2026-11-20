@@ -373,19 +373,31 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     },
 
     // S0036_27 `popup.shouldAlwaysShow` の既定値 — 真偽値でない保存値は書き換えない(S0032_31 と同じ)
+    // S0036_27 / S0053_07 無い・真偽値でない項目は既定値として読む(保存値は書き換えない)
     loadPopupDisplay() {
-      const stored = store.get("popup")?.shouldAlwaysShow;
-      if (stored === undefined) return DEFAULT_POPUP_DISPLAY_CONFIG;
-      if (typeof stored !== "boolean") {
-        console.error("[keycheer] popup.shouldAlwaysShow が真偽値ではありません", stored);
-        return DEFAULT_POPUP_DISPLAY_CONFIG;
-      }
-      return { shouldAlwaysShow: stored };
+      const popup = store.get("popup") as Record<string, unknown> | undefined;
+      const readFlag = (key: keyof PopupDisplayConfig): boolean => {
+        const stored = popup?.[key];
+        if (stored === undefined) return DEFAULT_POPUP_DISPLAY_CONFIG[key];
+        if (typeof stored !== "boolean") {
+          console.error(`[keycheer] popup.${key} が真偽値ではありません`, stored);
+          return DEFAULT_POPUP_DISPLAY_CONFIG[key];
+        }
+        return stored;
+      };
+      return {
+        shouldAlwaysShow: readFlag("shouldAlwaysShow"),
+        shouldShowMessage: readFlag("shouldShowMessage"),
+      };
     },
 
-    // S0036_29 設定画面で常時表示を切り替える — popup のほかの項目は残す
+    // S0036_29 / S0053_08 設定画面で切り替える — popup のほかの項目は残す
     savePopupDisplay(config) {
-      store.set("popup", { ...store.get("popup"), shouldAlwaysShow: config.shouldAlwaysShow });
+      store.set("popup", {
+        ...store.get("popup"),
+        shouldAlwaysShow: config.shouldAlwaysShow,
+        shouldShowMessage: config.shouldShowMessage,
+      });
     },
 
     // S0052_06 動かした位置を覚える — popup のほかの項目は残す

@@ -4,6 +4,7 @@
 // (core/providers・agent の生成系は import しない — 発動経路の不変条件)。
 
 import type { CharacterDisplayPayload, CheerFiredPayload } from "../core/shared/ipc.js";
+import { shouldShowWindowOnCheer } from "../core/shared/popupLayout.js";
 
 export interface PopupState {
   visible: boolean;
@@ -13,6 +14,7 @@ export interface PopupState {
   imagePath: string | null; // いま描くキャラ画像。null = 画像を描かない
   idleImagePath: string | null; // 使用中のキャラクターの待機画像
   shouldAlwaysShow: boolean; // 常時表示(popup.shouldAlwaysShow)
+  shouldShowMessage: boolean; // セリフを出すか(popup.shouldShowMessage。論点 0053)
 }
 
 // 窓の設定が届くまでは常時表示しない(論点 0017 の挙動)。起動時に main が CharacterDisplay を送る
@@ -24,6 +26,7 @@ export const initialPopupState: PopupState = {
   imagePath: null,
   idleImagePath: null,
   shouldAlwaysShow: false,
+  shouldShowMessage: true,
 };
 
 export interface PopupUpdate {
@@ -47,6 +50,7 @@ export function applyCharacterDisplay(
     ...state,
     idleImagePath: display.idleImagePath,
     shouldAlwaysShow: display.shouldAlwaysShow,
+    shouldShowMessage: display.shouldShowMessage,
   };
   if (!display.shouldAlwaysShow) {
     return { ...next, imagePath: null, visible: isCheering(state) };
@@ -60,12 +64,14 @@ export function applyCharacterDisplay(
 // シナリオ: wav がある発動で音声も再生する / wav が無い発動はテキストのみ [異常系]
 // S0036_19 応援でその応援種別の画像に切り替える / S0036_20 その画像が無ければ待機画像
 // S0036_24 常時表示を切っているときは画像を描かない
+// S0053_04 セリフを出さない設定ではセリフを描かない / S0053_05 それでも音声は鳴らす
+// S0053_06 セリフも常時表示も切っているときは窓を出さない
 export function showCheer(state: PopupState, payload: CheerFiredPayload, now: number): PopupUpdate {
   return {
     state: {
       ...state,
-      visible: true,
-      text: payload.message,
+      visible: shouldShowWindowOnCheer(state),
+      text: state.shouldShowMessage ? payload.message : "",
       shownAt: now,
       durationMs: payload.popupDurationMs,
       imagePath: state.shouldAlwaysShow ? (payload.imagePath ?? state.idleImagePath) : null,

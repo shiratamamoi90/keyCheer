@@ -355,8 +355,11 @@ function App(): ReactNS.ReactElement {
   };
 
   // S0036_29 設定画面で常時表示を切り替える(保存すると main が再起動なしで窓を出す・隠す)
-  const changeAlwaysShow = (checked: boolean): void => {
-    const next = { shouldAlwaysShow: checked };
+  // S0053_08 設定画面でセリフを出すかを切り替える(次の応援から効く)
+  // 2 つは同じ設定(popup の表示)として保存する。変えていない方は読み込んだ値のまま送る
+  const changePopupDisplay = (change: Partial<PopupDisplayConfig>): void => {
+    if (popupDisplay === null) return;
+    const next = { ...popupDisplay, ...change };
     void window.keycheer.setPopupDisplay(next).then((result) => {
       if (result.ok) setPopupDisplay(next);
     });
@@ -811,9 +814,22 @@ function App(): ReactNS.ReactElement {
         type: "checkbox",
         checked: popupDisplay?.shouldAlwaysShow ?? true,
         disabled: popupDisplay === null,
-        onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) => changeAlwaysShow(e.target.checked),
+        onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+          changePopupDisplay({ shouldAlwaysShow: e.target.checked }),
       }),
       "キャラを常に表示する",
+    ),
+    React.createElement(
+      "label",
+      { key: "show-message", className: "agree" },
+      React.createElement("input", {
+        type: "checkbox",
+        checked: popupDisplay?.shouldShowMessage ?? true,
+        disabled: popupDisplay === null,
+        onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+          changePopupDisplay({ shouldShowMessage: e.target.checked }),
+      }),
+      "セリフを表示する(外しても音声は鳴ります)",
     ),
     ...imageWeightsSection(),
   ];

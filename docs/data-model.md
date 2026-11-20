@@ -41,6 +41,7 @@
     "duration": 5000,
     "opacity": 0.95,
     "shouldAlwaysShow": true, // 既定 true。キャラの窓を常に出し待機画像を表示する(論点 0036 → docs/popup.md)
+    "shouldShowMessage": true, // 既定 true。応援のセリフを出す。false でも音声は鳴らす(論点 0053 → docs/popup.md)
     // キャラの窓を動かした位置(画面の座標。論点 0052 → docs/popup.md S0052_06)。動かしていなければ持たない
     "customPosition": { "x": 830, "y": 380 },
   },
@@ -391,6 +392,12 @@
 - GIVEN `popup.shouldAlwaysShow` が無い、または真偽値でない設定 JSON
 - WHEN 起動時に読み込む
 - THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0032_31 と同じ扱い)
+
+### S0053_07 `popup.shouldShowMessage` の既定値 [境界]
+
+- GIVEN `popup.shouldShowMessage` が無い、または真偽値でない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0036_27 と同じ扱い)
 
 ### S0036_28 旧形式の `imagePaths` は読まず、書き換えもしない [否定]
 

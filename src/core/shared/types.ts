@@ -132,14 +132,17 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   shouldActivateOnComplete: true,
 };
 
-// 常時表示の設定(論点 0036。設定 JSON では popup.shouldAlwaysShow)。
-// true ならキャラの窓を常に出し、待機画像を表示する。false なら発動時だけ文言を出す(論点 0017 のまま)。
+// キャラの窓の表示の設定(設定 JSON では popup.shouldAlwaysShow / popup.shouldShowMessage)。
+// shouldAlwaysShow(論点 0036):true ならキャラの窓を常に出し、待機画像を表示する。false なら発動時だけ文言を出す。
+// shouldShowMessage(論点 0053):false なら応援のセリフを描かない(音声は鳴らす)。
 export interface PopupDisplayConfig {
   shouldAlwaysShow: boolean;
+  shouldShowMessage: boolean;
 }
 
 export const DEFAULT_POPUP_DISPLAY_CONFIG: PopupDisplayConfig = {
   shouldAlwaysShow: true,
+  shouldShowMessage: true,
 };
 
 // オンボーディング状態(論点 0018)。

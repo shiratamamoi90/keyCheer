@@ -18,7 +18,7 @@ import {
   setPopupCaptureMouse,
 } from "./windows.js";
 import { createPopupPointerHandler } from "./popupPointer.js";
-import { resolvePopupPosition } from "../core/shared/popupLayout.js";
+import { resolvePopupPosition, shouldShowWindowOnCheer } from "../core/shared/popupLayout.js";
 import { createMainWindow } from "./mainWindow.js";
 import { createTray } from "./tray.js";
 import { registerIpcHandlers } from "./ipc.js";
@@ -91,6 +91,7 @@ function bootstrap(): void {
     popupWindow.webContents.send(IpcChannel.CharacterDisplay, {
       idleImagePath,
       shouldAlwaysShow: popupDisplay.shouldAlwaysShow,
+      shouldShowMessage: popupDisplay.shouldShowMessage,
     });
     if (hideTimer !== undefined) clearTimeout(hideTimer);
     applyAlwaysShow(popupWindow, popupDisplay.shouldAlwaysShow);
@@ -113,6 +114,11 @@ function bootstrap(): void {
       },
       emitCheer: (payload) => {
         if (popupWindow.isDestroyed()) return;
+        // S0053_06 セリフも常時表示も切っているときは窓を出さない。音声は renderer が鳴らすので、ペイロードは送る
+        if (!shouldShowWindowOnCheer(popupDisplay)) {
+          popupWindow.webContents.send(IpcChannel.CheerFired, payload);
+          return;
+        }
         popupWindow.showInactive(); // フォーカスを奪わずに表示する
         popupWindow.webContents.send(IpcChannel.CheerFired, payload);
         if (hideTimer !== undefined) clearTimeout(hideTimer);

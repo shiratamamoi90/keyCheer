@@ -200,6 +200,19 @@
 - THEN `popup.shouldAlwaysShow` を `false` として永続化し、再起動しなくてもキャラの窓を消す(以降は S0036_24)。
   付け直したら再起動しなくても窓を出す
 
+### S0053_08 設定画面でセリフを出すかを切り替える
+
+- GIVEN `popup.shouldShowMessage = true`
+- WHEN 設定画面で「セリフを表示する」を外して保存する
+- THEN `popup.shouldShowMessage` を `false` として永続化し、再起動しなくても次の応援からセリフを出さない(S0053_04)。
+  `popup` のほかの設定(`shouldAlwaysShow`・`customPosition`)は変化しない。付け直したら次の応援から出す
+
+### S0053_09 セリフを出すかの不正な値は保存しない [不変条件]
+
+- GIVEN renderer から `shouldShowMessage` に真偽値でない値を指定したリクエストが届く
+- WHEN main が受け取る
+- THEN 保存せず、エラーを返す。窓の表示も変えない(S0033_15 と同じ扱い)
+
 ### S0033_14 設定の変更は他の保存データを変えない [否定]
 
 - GIVEN 保存済みのキャラクター・使用中のキャラクター・トリガー設定・統計

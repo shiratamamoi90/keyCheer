@@ -106,12 +106,14 @@ describe("popupView / wav が無い発動はテキストのみ [異常系]", () 
 describe("popupView / 入力内容は renderer に渡らない [不変条件]", () => {
   it("keeps only display fields in the view state", () => {
     const { state } = showCheer(initialPopupState, payload(), 1_000);
-    // 論点 0036 で画像のパス(待機画像・いま描く画像)と常時表示を足した。どれも表示に使う値で、入力内容ではない
+    // 論点 0036 で画像のパス(待機画像・いま描く画像)と常時表示を、論点 0053 でセリフを出すかを足した。
+    // どれも表示に使う値で、入力内容ではない
     expect(Object.keys(state).sort()).toEqual([
       "durationMs",
       "idleImagePath",
       "imagePath",
       "shouldAlwaysShow",
+      "shouldShowMessage",
       "shownAt",
       "text",
       "visible",
@@ -129,6 +131,7 @@ describe("popupView / 常時表示なら待機画像を出し続ける", () => {
     const state = applyCharacterDisplay(initialPopupState, {
       idleImagePath: IDLE,
       shouldAlwaysShow: true,
+      shouldShowMessage: true,
     });
 
     // THEN 窓が表示され、待機画像を描き、文言は描かない
@@ -144,6 +147,7 @@ describe("popupView / 応援でその応援種別の画像に切り替え、表�
     const idle = applyCharacterDisplay(initialPopupState, {
       idleImagePath: IDLE,
       shouldAlwaysShow: true,
+      shouldShowMessage: true,
     });
 
     // WHEN milestone の応援が発動する
@@ -169,6 +173,7 @@ describe("popupView / その応援種別の画像が無ければ待機画像を�
     const idle = applyCharacterDisplay(initialPopupState, {
       idleImagePath: IDLE,
       shouldAlwaysShow: true,
+      shouldShowMessage: true,
     });
 
     const { state } = showCheer(idle, payload({ imagePath: null }), 1_000);
@@ -183,6 +188,7 @@ describe("popupView / 待機画像も無ければ画像を出さない [異常�
     const idle = applyCharacterDisplay(initialPopupState, {
       idleImagePath: null,
       shouldAlwaysShow: true,
+      shouldShowMessage: true,
     });
     expect(idle.imagePath).toBeNull();
 
@@ -204,6 +210,7 @@ describe("popupView / 常時表示を切ると発動時だけ文言を出す [�
     const idle = applyCharacterDisplay(initialPopupState, {
       idleImagePath: IDLE,
       shouldAlwaysShow: false,
+      shouldShowMessage: true,
     });
     // 応援が出ていない間は窓を出さない
     expect(idle.visible).toBe(false);
@@ -214,5 +221,65 @@ describe("popupView / 常時表示を切ると発動時だけ文言を出す [�
     expect(state.imagePath).toBeNull();
     // 表示時間が過ぎたら消える(論点 0017 の挙動のまま)
     expect(tick(state, 6_000).visible).toBe(false);
+  });
+});
+
+// セリフを出すかの設定(論点 0053)。docs/popup.md
+const WAV = "/userData/characters/c/voices/m.wav";
+
+describe("popupView / セリフを出さない設定ではセリフを描かない [否定]", () => {
+  it("S0053_04 draws no message but still switches to the cheer image", () => {
+    // GIVEN セリフを出さない設定、常時表示でキャラの窓が出ている
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: true,
+      shouldShowMessage: false,
+    });
+
+    // WHEN 応援が発動する
+    const { state } = showCheer(idle, payload({ imagePath: MILESTONE }), 1_000);
+
+    // THEN セリフを描かず、絵は応援種別の画像に切り替わり、表示時間の後に待機画像へ戻る
+    expect(state.visible).toBe(true);
+    expect(state.text).toBe("");
+    expect(state.imagePath).toBe(MILESTONE);
+    expect(tick(state, 6_000).imagePath).toBe(IDLE);
+  });
+});
+
+describe("popupView / セリフを出さない設定でも音声は鳴らす", () => {
+  it("S0053_05 still returns the wav to play once", () => {
+    // GIVEN セリフを出さない設定、wav のあるペイロード
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: true,
+      shouldShowMessage: false,
+    });
+
+    // WHEN 応援が発動する
+    const { playWavPath } = showCheer(idle, payload({ wavPath: WAV }), 1_000);
+
+    // THEN その wav を再生する
+    expect(playWavPath).toBe(WAV);
+  });
+});
+
+describe("popupView / セリフも常時表示も切っているときは窓を出さず音声だけ鳴らす [境界]", () => {
+  it("S0053_06 keeps the window hidden and plays only the wav", () => {
+    // GIVEN セリフを出さない・常時表示を切っている
+    const idle = applyCharacterDisplay(initialPopupState, {
+      idleImagePath: IDLE,
+      shouldAlwaysShow: false,
+      shouldShowMessage: false,
+    });
+
+    // WHEN 応援が発動する
+    const { state, playWavPath } = showCheer(idle, payload({ wavPath: WAV }), 1_000);
+
+    // THEN 窓を出さず、wav だけ再生する
+    expect(state.visible).toBe(false);
+    expect(state.text).toBe("");
+    expect(state.imagePath).toBeNull();
+    expect(playWavPath).toBe(WAV);
   });
 });

@@ -11,7 +11,11 @@ import {
   type PopupState,
 } from "./popupView.js";
 import { AUDIO_SCHEME } from "../core/shared/ipc.js";
-import { computePopupContentLayout, type Rect } from "../core/shared/popupLayout.js";
+import {
+  computeMessageFontSizePx,
+  computePopupContentLayout,
+  type Rect,
+} from "../core/shared/popupLayout.js";
 import type { KeyCheerApi } from "../preload/api.js";
 
 declare global {
@@ -89,7 +93,7 @@ function main(): void {
   const image = document.getElementById("character-image") as HTMLImageElement | null;
   if (root === null || messageArea === null || image === null) return;
 
-  // S0052_01 絵は 128x192 に収めて描く / S0052_08 セリフは絵のすぐ上
+  // S0052_01 絵は 128x192 に収めて描く / S0053_01 セリフは絵のすぐ下
   const layout = computePopupContentLayout();
   placeAt(image, layout.image);
   placeAt(messageArea, layout.message);
@@ -98,9 +102,21 @@ function main(): void {
   let state: PopupState = initialPopupState;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  // S0053_03 収まらないセリフは文字を小さくして全部出す。吹き出しは領域(縦 64 × 横 192)を超えないので、
+  // 中身の大きさ(scroll*)が領域に収まるかを、文字の大きさを変えながら測る
+  const fitMessage = (): void => {
+    if (state.text === "") return;
+    const fontSizePx = computeMessageFontSizePx((size) => {
+      root.style.fontSize = `${size}px`;
+      return root.scrollHeight <= layout.message.height && root.scrollWidth <= layout.message.width;
+    });
+    root.style.fontSize = `${fontSizePx}px`;
+  };
+
   let renderedImagePath: string | null = null;
   const render = (): void => {
     root.textContent = state.text;
+    fitMessage();
     // 同じ画像なら読み直さない(切り替えのたびのちらつきを避ける)
     if (state.imagePath !== renderedImagePath) {
       renderedImagePath = state.imagePath;
