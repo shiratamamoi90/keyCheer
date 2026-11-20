@@ -141,7 +141,7 @@ describe("mainWindow / メニューを出さない", () => {
 });
 
 // 回帰:作成済みで × を押すと窓が破棄され、次にトレイから開くと
-// 「TypeError: Object has been destroyed」で落ちていた(S0018_05 は「即座に hide する」)
+// 「TypeError: Object has been destroyed」で落ちていた(要件は「閉じても窓を残して隠す」)
 describe("mainWindow / 作成済みなら閉じても窓を残して隠す", () => {
   it("prevents the default close so the hidden window can be reopened from the tray", () => {
     const mainWindow = createMainWindow(deps({ characters: ONE_CHARACTER }));

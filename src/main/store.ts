@@ -30,7 +30,7 @@ import {
   type PopupDisplayConfig,
 } from "../core/shared/types.js";
 
-// electron-store に持たせる最小スキーマ(Phase 1。popup は UI 実装時に追加)。
+// electron-store に持たせる最小スキーマ。
 interface PersistedSchema {
   triggers: TriggerConfig;
   stats: Stats;
