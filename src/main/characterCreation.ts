@@ -115,7 +115,7 @@ export type GenerationResult =
       cleared?: (keyof GeneratedBy)[];
     };
 
-// 画像だけ作り直す(論点 0050)。image.seed は既定のシード(記録が無いときの元。S0050_12)
+// 画像だけ作り直す(論点 0050 / 0068)。image.seed は既定のシード(記録が無いときの元。S0068_02)
 export interface StartImagesOnlyInput {
   characterId: string;
   character: { name: string; personality: string };
@@ -350,7 +350,8 @@ export function createGenerationRunner(): GenerationRunner {
         const shouldCancel = (): boolean => cancelled || (input.shouldCancel?.() ?? false);
         const image = input.image;
         const record = loadImageGenerationRecord(input.fs, input.userDataDir, input.characterId);
-        // S0050_09 記録のシード + 1 / S0050_12 記録が無ければ既定のシード + 1
+        // S0068_01 記録のシード + 1 / S0068_02 記録が無ければ既定のシード + 1。画像タグの要求にも同じシードを渡す
+        // (同じシードだとテキストモデルが同じ画像タグを返しやすく、作り直しても見た目が変わらないため。論点 0068)
         const seed = (record?.seed ?? image.seed) + 1;
         const local =
           image.local !== undefined && image.generator.id === "local-sdcpp"
@@ -372,7 +373,7 @@ export function createGenerationRunner(): GenerationRunner {
           width: image.width,
           height: image.height,
           timeoutMsPerImage: image.timeoutMsPerImage ?? DEFAULT_TIMEOUT_MS_PER_IMAGE,
-          ...(record !== null ? { imageTags: record.imageTags } : {}),
+          // S0068_04 記録の画像タグは渡さない — 3 枚とも画像タグを出させ直す
           writeImage: (kind, bytes) => {
             made.set(kind, encode !== undefined ? encode(bytes) : bytes);
           },

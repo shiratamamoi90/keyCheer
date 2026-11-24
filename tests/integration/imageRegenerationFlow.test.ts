@@ -59,7 +59,8 @@ const text: TextGenerator & ImageTagGenerator = {
   id: "local-ollama",
   generateMessages: async ({ scenarioKey, count }) =>
     Array.from({ length: count }, (_, i) => `${scenarioKey}#${i}`),
-  generateImageTags: async ({ prompt }) => ({ tags: [`tag-${kindOf(prompt)}`] }),
+  // 画像タグにシードを入れる(画像だけ作り直すときに、画像タグを s + 1 で出させ直したかを見るため。論点 0068)
+  generateImageTags: async ({ prompt, seed }) => ({ tags: [`tag-${kindOf(prompt)}-s${seed}`] }),
 };
 const voice: VoiceSynthesizer = {
   id: "local-voicevox",
@@ -71,7 +72,7 @@ function images(isFailing = false): ImageGenerator {
   return {
     id: "local-sdcpp",
     generateImages: async ({ prompt, seed }) => {
-      if (isFailing && prompt === "tag-regular") throw new Error("sd.cpp failed");
+      if (isFailing && prompt.startsWith("tag-regular-")) throw new Error("sd.cpp failed");
       return [new TextEncoder().encode(`${prompt}@${seed}`)];
     },
   };
@@ -81,7 +82,7 @@ const picture = (fs: ReturnType<typeof fakeFs>, kind: (typeof CHARACTER_IMAGE_KI
   new TextDecoder().decode(fs.files[resolveImagePath(USER_DATA, CHAR_ID, kind)] as Uint8Array);
 
 describe("総合: 生成 → 3 枚の確認 → 画像だけ作り直す", () => {
-  it("記録の画像タグとシード + 1 で 3 枚が置き換わり、失敗した作り直しでは前の 3 枚が残る", async () => {
+  it("画像タグを出させ直してシード + 1 で 3 枚が置き換わり、失敗した作り直しでは前の 3 枚が残る", async () => {
     const fs = fakeFs();
     const raw: Record<string, unknown> = {
       characters: [
@@ -111,7 +112,7 @@ describe("総合: 生成 → 3 枚の確認 → 画像だけ作り直す", () =>
       image: imageInput(images()),
     });
     expect(generated.ok).toBe(true);
-    expect(picture(fs, "regular")).toBe("tag-regular@42");
+    expect(picture(fs, "regular")).toBe("tag-regular-s42@42");
     expect(loadImageGenerationRecord(fs, USER_DATA, CHAR_ID)?.seed).toBe(42);
 
     // --- 画面:一覧に 3 枚のパスが載り、3 枚とも出せる
@@ -143,8 +144,9 @@ describe("総合: 生成 → 3 枚の確認 → 画像だけ作り直す", () =>
       image: imageInput(images()),
     });
     expect(remade).toEqual({ ok: true, completed: { image: "local-sdcpp" } });
-    expect(picture(fs, "regular")).toBe("tag-regular@43");
+    expect(picture(fs, "regular")).toBe("tag-regular-s43@43");
     expect(loadImageGenerationRecord(fs, USER_DATA, CHAR_ID)?.seed).toBe(43);
+    expect(loadImageGenerationRecord(fs, USER_DATA, CHAR_ID)?.imageTags.idle).toBe("tag-idle-s43");
     expect(JSON.stringify(loadPool(fs, USER_DATA, CHAR_ID))).toBe(poolBefore);
 
     // --- 失敗した作り直しでは前の 3 枚と記録が残る
@@ -157,7 +159,7 @@ describe("総合: 生成 → 3 枚の確認 → 画像だけ作り直す", () =>
       image: imageInput(images(true)),
     });
     expect(failed).toEqual({ ok: false, reason: "images-failed" });
-    expect(picture(fs, "idle")).toBe("tag-idle@43");
+    expect(picture(fs, "idle")).toBe("tag-idle-s43@43");
     expect(loadImageGenerationRecord(fs, USER_DATA, CHAR_ID)?.seed).toBe(43);
   });
 });

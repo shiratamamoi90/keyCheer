@@ -67,8 +67,6 @@ export interface GenerateCharacterImagesInput {
   timeoutMsPerImage: number;
   // 作る画像(再開時は保存済みを除いて渡す)。省略時は 3 枚すべて
   kinds?: readonly CharacterImageKind[];
-  // 画像だけ作り直すとき(論点 0050 S0050_09)は、記録した画像タグを渡す。渡した種類は画像タグを要求しない
-  imageTags?: Partial<Record<CharacterImageKind, string>>;
   // ローカル画像生成の作り方に要る I/O
   local?: LocalImageProcess;
   writeImage: (kind: CharacterImageKind, bytes: Uint8Array) => void | Promise<void>;
@@ -96,8 +94,6 @@ export async function generateCharacterImages(
   const tags: Partial<Record<CharacterImageKind, string>> = {};
 
   const requestTags = async (kind: CharacterImageKind): Promise<string | null> => {
-    const given = input.imageTags?.[kind];
-    if (given !== undefined) return given;
     const raw = await input.tagGenerator.generateImageTags({
       prompt: buildImageTagPrompt(input.character, kind, input.pool),
       seed: input.seed,
@@ -178,9 +174,6 @@ async function generateLocalImages(
   if (source !== null) tags.idle = source.tags;
 
   const requestTags = async (kind: CharacterImageKind): Promise<string | null> => {
-    // S0050_09 記録した画像タグがあれば要求しない
-    const given = input.imageTags?.[kind];
-    if (given !== undefined) return given;
     // S0049_01 / S0062_05 待機画像は見た目を、応援種別の画像は表情だけを訊く
     const raw = await input.tagGenerator.generateImageTags({
       prompt: buildLocalImageTagPrompt(input.character, kind, input.pool),

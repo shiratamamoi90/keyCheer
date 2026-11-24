@@ -124,7 +124,7 @@ export function clearIdleSource(fs: CharacterFs, userDataDir: string, characterI
 }
 
 // --- 画像の生成記録(論点 0050。docs/data-model.md「画像ファイル」)---
-// 最後に 3 枚をそろえた画像タグとシード。画像だけ作り直すときに使う(S0050_09)。応援発動経路は読まない
+// 最後に 3 枚をそろえた画像タグとシード。画像だけ作り直すときはシードだけを使う(S0068_01。画像タグは出させ直す)。応援発動経路は読まない
 export interface ImageGenerationRecord {
   seed: number;
   imageTags: Record<CharacterImageKind, string>;
@@ -144,7 +144,7 @@ export function saveImageGenerationRecord(
   fs.writeFile(imageGenerationRecordPath(userDataDir, characterId), JSON.stringify(record));
 }
 
-// 読めない・形が違うときは記録が無いものとして扱い、ファイルは書き換えない(S0050_12)
+// 読めない・形が違うときは記録が無いものとして扱い、ファイルは書き換えない(S0068_02)
 export function loadImageGenerationRecord(
   fs: CharacterFs,
   userDataDir: string,

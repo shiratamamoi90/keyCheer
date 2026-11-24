@@ -192,7 +192,7 @@ export const LOCAL_DERIVED_STEPS = 8;
 //
 // なぜ応援種別の画像にも待機画像の画像タグを入れるか:表情とポーズの語だけだと、描き直しで髪や服が変わり
 // 別の人物になる(計測はこの形で 3 枚が同じ人物に見えることを確かめた)。
-// 記録した画像タグ(images/generation.json。S0050_09)には表情だけを残し、ポーズの語はここで毎回足す。
+// 記録する画像タグ(images/generation.json。S0050_08)には表情だけを残し、ポーズの語はここで毎回足す。
 export function buildLocalImagePrompt(
   idleTags: string,
   derived?: { kind: CheerType; tags: string },

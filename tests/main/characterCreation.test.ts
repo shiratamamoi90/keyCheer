@@ -1023,24 +1023,101 @@ describe("characterCreation / 生成で画像タグとシードを記録する",
   });
 });
 
-describe("characterCreation / 画像だけ作り直すと、記録の画像タグとシード + 1 で 3 枚を作る", () => {
-  it("S0050_09 reuses the recorded tags without asking for tags and uses the recorded seed plus one", async () => {
+// 画像タグの要求に渡ったシードを記録する(作り直しで s + 1 が渡るかを見る)
+function seededTags(malformed: ImageKind | null = null) {
+  const seeds: number[] = [];
+  const prompts: string[] = [];
+  const generator: ImageTagGenerator = {
+    id: "local-ollama",
+    generateImageTags: vi.fn(async ({ prompt, seed }) => {
+      seeds.push(seed);
+      prompts.push(prompt);
+      const kind = kindOfTagPrompt(prompt) as ImageKind;
+      return kind === malformed ? "not json" : { tags: [kind] };
+    }),
+  };
+  return { generator, seeds, prompts };
+}
+
+describe("characterCreation / 画像だけ作り直すと、画像タグを出させ直してシード + 1 で 3 枚を作る", () => {
+  it("S0068_01 asks for new tags and makes the images with the recorded seed plus one", async () => {
+    // GIVEN 記録(シード 50・前の画像タグ)と 3 枚がある
     const fs = fakeFs();
     writeImages(fs, BYTES_2);
-    writeRecord(fs, 50);
-    const tagGenerator = fakeTags();
+    writeRecord(fs, 50, { idle: "old-idle", regular: "old-regular", milestone: "old-milestone" });
+    const tags = seededTags();
     const generator = seededImages();
 
+    // WHEN 画像だけ作り直す
     const result = await createGenerationRunner().startImagesOnly(
-      imagesOnlyInput(fs, generator, tagGenerator),
+      imagesOnlyInput(fs, generator, tags.generator),
     );
 
+    // THEN 画像タグを 3 つ要求し、要求にも画像にも 51 を渡す。置き換えて、新しい画像タグとシードを記録する
     expect(result).toEqual({ ok: true, completed: { image: "local-sdcpp" } });
-    expect(tagGenerator.generateImageTags).not.toHaveBeenCalled();
+    expect(tags.seeds).toEqual([51, 51, 51]);
     expect(generator.seeds).toEqual([51, 51, 51]);
     expect(generator.prompts).toEqual(["idle", "regular", "milestone"]);
     expect(fs.files[imagePath(CHAR_ID, "idle")]).toEqual(new Uint8Array([52]));
     expect(readRecord(fs)).toEqual({ seed: 51, imageTags: TAGS });
+  });
+});
+
+describe("characterCreation / 記録が無ければ既定のシード + 1 で同じように作る [境界]", () => {
+  it("S0068_02 asks for the tags with the default seed plus one when there is no record", async () => {
+    // GIVEN 記録が無い
+    const fs = fakeFs();
+    writeImages(fs, BYTES_2);
+    const tags = seededTags();
+    const generator = seededImages();
+
+    // WHEN 画像だけ作り直す
+    const result = await createGenerationRunner().startImagesOnly(
+      imagesOnlyInput(fs, generator, tags.generator),
+    );
+
+    // THEN 既定のシード 42 + 1 で画像タグと 3 枚を作り、記録する
+    expect(result.ok).toBe(true);
+    expect(tags.seeds).toEqual([43, 43, 43]);
+    expect(generator.seeds).toEqual([43, 43, 43]);
+    expect(readRecord(fs)).toEqual({ seed: 43, imageTags: TAGS });
+  });
+});
+
+describe("characterCreation / 画像タグの形式違反があれば前の 3 枚と記録を残す [異常系]", () => {
+  it("S0068_03 keeps the previous images and record when a tag response is malformed", async () => {
+    // GIVEN 前の 3 枚と記録がある。milestone の画像タグの応答が形式違反になる
+    const fs = fakeFs();
+    writeImages(fs, BYTES_2);
+    writeRecord(fs, 50);
+    const before = { ...fs.files };
+
+    // WHEN 画像だけ作り直す
+    const result = await createGenerationRunner().startImagesOnly(
+      imagesOnlyInput(fs, seededImages(), seededTags("milestone").generator),
+    );
+
+    // THEN 失敗にし、前の 3 枚と記録をそのまま残す
+    expect(result).toEqual({ ok: false, reason: "images-failed" });
+    expect(fs.files).toEqual(before);
+  });
+});
+
+describe("characterCreation / 記録の画像タグを要求に混ぜない [否定]", () => {
+  it("S0068_04 puts none of the recorded tags into the prompts or the tag requests", async () => {
+    // GIVEN 記録に前の画像タグ old-hair がある
+    const fs = fakeFs();
+    writeRecord(fs, 50, { idle: "old-hair", regular: "old-hair", milestone: "old-hair" });
+    const tags = seededTags();
+    const generator = seededImages();
+
+    // WHEN 画像だけ作り直す
+    await createGenerationRunner().startImagesOnly(imagesOnlyInput(fs, generator, tags.generator));
+
+    // THEN sd.cpp のプロンプトにも画像タグの要求にも old-hair が入らない
+    expect(generator.prompts.some((p) => p.includes("old-hair"))).toBe(false);
+    expect(tags.prompts.some((p) => p.includes("old-hair"))).toBe(false);
+    expect(generator.prompts).toEqual(["idle", "regular", "milestone"]);
   });
 });
 
@@ -1087,38 +1164,6 @@ describe("characterCreation / 3 枚そろわなければ前の 3 枚と記録を
     const cancelled = await runner.startImagesOnly({ ...cancelling, shouldCancel: () => true });
     expect(cancelled).toEqual({ ok: false, reason: "cancelled" });
     expect(fs.files).toEqual(before);
-  });
-});
-
-describe("characterCreation / 記録が無ければ画像タグを出させて記録してから作る [境界]", () => {
-  it("S0050_12 asks for the tags and uses the default seed plus one when there is no record", async () => {
-    const fs = fakeFs();
-    writeImages(fs, BYTES_2);
-    const tagGenerator = fakeTags();
-    const generator = seededImages();
-
-    const result = await createGenerationRunner().startImagesOnly(
-      imagesOnlyInput(fs, generator, tagGenerator),
-    );
-
-    expect(result.ok).toBe(true);
-    expect(tagGenerator.generateImageTags).toHaveBeenCalledTimes(3);
-    expect(generator.seeds).toEqual([43, 43, 43]);
-    expect(readRecord(fs)).toEqual({ seed: 43, imageTags: TAGS });
-  });
-});
-
-describe("characterCreation / 同じ画像タグとシードなら同じ絵になる [不変条件]", () => {
-  it("S0050_13 makes the same three images from the same record twice", async () => {
-    const made: Record<string, unknown>[] = [];
-    for (let i = 0; i < 2; i++) {
-      const fs = fakeFs();
-      writeRecord(fs, 50);
-      await createGenerationRunner().startImagesOnly(imagesOnlyInput(fs, seededImages()));
-      made.push(Object.fromEntries(imageFiles(fs).map((p) => [p, fs.files[p]])));
-    }
-    expect(made[0]).toEqual(made[1]);
-    expect(Object.keys(made[0]!)).toHaveLength(3);
   });
 });
 
