@@ -109,6 +109,7 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 ├── README.md                       # **使用者向け**:導入と使い方。開発の話は書かない(git 追跡)
 ├── DEVELOPMENT.md                  # このファイル。**開発者向け**:構成・テスト・進め方(git 追跡)
 ├── .gitignore                      # 追跡範囲の正本(4区分の除外)
+├── .npmrc                          # onnxruntime-node のインストール時のスクリプト(CUDA 版の取得)を止める(論点 0066)
 ├── .claude/
 │   ├── settings.json               # hooks の配線: format on edit, test on stop(Core)
 │   ├── settings.team.json          # チーム用 hooks の配線: veto, validate(Scale, マージで有効化)
@@ -139,7 +140,9 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
     ├── hooks.sh                    # hooks の実体。format|test(Core)/ veto|validate(Scale)を引数で切替
     ├── postbuild.mjs               # このプロジェクト固有:dist を Electron が読める形に整える
     ├── fetch-image-eval.sh / image-eval.Dockerfile  # 画像の計測用:sd.cpp と重みの取得、計測用コンテナ(論点 0041 / 0045)
-    └── fetch-sdcpp.sh              # 同梱する sd.cpp(Windows 向け CPU 版)を vendor/sdcpp/ に取得する(論点 0040)
+    ├── fetch-seg-eval.sh           # 切り抜きの計測用:u2netp と onnxruntime-node をリポジトリの外に取得(論点 0063)
+    ├── fetch-sdcpp.sh              # 同梱する sd.cpp(Windows 向け CPU 版)を vendor/sdcpp/ に取得する(論点 0040)
+    └── fetch-u2netp.sh             # 同梱する u2netp(人物の切り抜き)を sha256 で照合して vendor/u2netp/ に取得する(論点 0063 / 0066)
 ```
 
 ## 依存方向

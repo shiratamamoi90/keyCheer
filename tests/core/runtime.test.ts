@@ -102,7 +102,7 @@ describe("runtime / マイルストーン発動と数値補間", () => {
       ...initialRuntimeState,
       counter: { count: 999, lastKeyTimestamp: now - 100, activeMs: 0 },
     };
-    // GIVEN マイルストーン = [1000, 5000, 10000](docs/cheer-trigger.md S0013_03。既定値には頼らない)
+    // GIVEN マイルストーン = [1000, 5000, 10000](docs/cheer-trigger.md の GIVEN のとおり。既定値には頼らない)
     const config = { ...DEFAULT_TRIGGER_CONFIG, milestones: [1000, 5000, 10000] };
     const result = onKeyPress({ ...baseInput(), config, now, pool, state });
     expect(result.cheer!.type).toBe("milestone");

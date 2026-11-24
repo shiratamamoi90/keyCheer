@@ -46,7 +46,7 @@
 | プール生成 | `poolGeneration` | — | `genPool` | キャラ作成時にプールと `wav` をまとめて作る処理 |
 | キャラ画像 | `characterImage` | — | `charImage`, `standingImage` | キャラ作成時に生成するキャラの絵。1 キャラ 3 枚(待機画像・`regular`・`milestone`。論点 0036) |
 | 待機画像 | `idleImage` | — | `normalImage`, `defaultImage` | 応援が出ていないときに表示するキャラ画像(画像の種類 `idle`) |
-| 画像の生成記録 | `imageGenerationRecord` | — | `imageRecipe` | キャラクターの画像を作った画像タグ 3 つとシード。画像だけ作り直すときに使う(論点 0050) |
+| 画像の生成記録 | `imageGenerationRecord` | — | `imageRecipe` | キャラクターの画像を作った画像タグ 3 つとシード。画像だけ作り直すときはシードだけを使う(論点 0050 / 0068) |
 | 画像タグ | `imageTag` | — | `imageKeyword` | 画像のプロンプトに入れる英語の短い語句。テキストプロバイダーに出させる |
 | 常時表示 | `alwaysShow` | — | `residentMode` | キャラの窓を常に画面に出しておく表示方法。設定 `popup.shouldAlwaysShow`(既定 true) |
 | 同梱ランタイム | `bundledRuntime` | — | `sidecar`, `embeddedRuntime` | アプリに同梱し、メインウィンドウの表示中だけアプリが起動する Ollama / VOICEVOX ENGINE の実行ファイル(論点 0034) |
