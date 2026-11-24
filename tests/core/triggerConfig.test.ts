@@ -7,10 +7,10 @@ import {
 } from "../../src/core/triggerConfig.js";
 
 describe("trigger-config / defaults", () => {
-  it("既定値: regular=50, milestones=[1000,5000,10000,50000,100000], activeThresholdSec=60", () => {
+  it("既定値: regular=50, milestones=[250,1250,2500,12500,25000], activeThresholdSec=60", () => {
     expect(DEFAULT_TRIGGER_CONFIG).toEqual({
       regular: 50,
-      milestones: [1000, 5000, 10000, 50000, 100000],
+      milestones: [250, 1250, 2500, 12500, 25000],
       activeThresholdSec: 60,
     });
   });

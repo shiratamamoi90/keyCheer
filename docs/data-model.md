@@ -33,7 +33,7 @@
   },
   "triggers": {
     "regular": 50, // 既定 50、1 ≦ N ≦ 10000(設定可能)
-    "milestones": [1000, 5000, 10000, 50000, 100000], // 設定可能、各値 1 以上・昇順・重複なし、最大 20、空配列許容(milestone OFF)
+    "milestones": [250, 1250, 2500, 12500, 25000], // 論点 0069 で旧既定の 4 分の 1。設定可能、各値 1 以上・昇順・重複なし、最大 20、空配列許容(milestone OFF)
     "activeThresholdSec": 60, // 既定 60、5 ≦ s ≦ 600(設定可能、KPM 窓とは独立)
   },
   "popup": {
@@ -329,6 +329,36 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 - WHEN プール生成を要求する
 - THEN S0016_18 と同じく、エラーを表示してキャラ作成を完了させない(クラッシュしない)。
   **`gemma2:2b` へ自動で戻さない**、別プロバイダーへも切り替えない
+
+### S0069_01 `triggers.milestones` の既定値 [境界]
+
+- GIVEN `triggers.milestones` が保存されていない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `triggers.milestones` は `[250, 1250, 2500, 12500, 25000]` になる(S0015_01 の既定値補完)
+
+### S0069_02 旧既定値の節目を移行する
+
+- GIVEN 保存値 `triggers.milestones = [1000, 5000, 10000, 50000, 100000]`
+- WHEN 起動時に読み込む
+- THEN `triggers.milestones` は `[250, 1250, 2500, 12500, 25000]` になり、その値が保存し直される。通知は出さない
+
+### S0069_03 利用者が変えた節目は移行しない [否定]
+
+- GIVEN 保存値 `triggers.milestones` が旧既定値と完全には同じでない(例 `[1000, 5000]`・`[1000, 5000, 10000, 50000, 100000, 200000]`・`[]`)
+- WHEN 起動時に読み込む
+- THEN `triggers.milestones` は**変化せず**、設定も保存し直さない
+
+### S0069_04 移行済みの節目は再び書き換えない [境界]
+
+- GIVEN 保存値 `triggers.milestones = [250, 1250, 2500, 12500, 25000]`
+- WHEN 起動時に読み込む
+- THEN 値は変化せず、設定も保存し直さない
+
+### S0069_05 節目の移行は他の設定項目に波及しない [否定]
+
+- GIVEN 保存値 `triggers.milestones` が旧既定値で、`triggers.regular = 30`・`triggers.activeThresholdSec = 90`
+- WHEN 起動時に読み込んで移行する
+- THEN `triggers.milestones` 以外の値は**変化しない**
 
 ### S0032_24 旧形式の `character` を読み込み時に移行する
 

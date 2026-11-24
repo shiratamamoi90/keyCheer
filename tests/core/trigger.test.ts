@@ -52,10 +52,11 @@ describe("trigger / マイルストーン空配列(milestone OFF)[境界]", () =
 });
 
 describe("trigger / default config 動作", () => {
-  it("既定 regular=50、milestones=[1000,5000,...]", () => {
+  it("既定 regular=50、milestones=[250,1250,...](論点 0069)", () => {
     expect(shouldFire(50, DEFAULT_TRIGGER_CONFIG)).toBe("regular");
-    expect(shouldFire(1000, DEFAULT_TRIGGER_CONFIG)).toBe("milestone"); // milestone 優先
-    expect(shouldFire(100_000, DEFAULT_TRIGGER_CONFIG)).toBe("milestone");
+    expect(shouldFire(250, DEFAULT_TRIGGER_CONFIG)).toBe("milestone"); // milestone 優先
+    expect(shouldFire(25_000, DEFAULT_TRIGGER_CONFIG)).toBe("milestone");
+    expect(shouldFire(1000, DEFAULT_TRIGGER_CONFIG)).toBe("regular"); // 旧既定の節目はもう節目ではない
     expect(shouldFire(49, DEFAULT_TRIGGER_CONFIG)).toBeNull();
   });
 });

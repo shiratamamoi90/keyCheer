@@ -5,7 +5,7 @@
 トリガー設定値(既定):
 
 - `triggers.regular = 50`(設定可、1 ≦ N ≦ 10000)
-- `triggers.milestones = [1000, 5000, 10000, 50000, 100000]`(設定可、空配列 = milestone OFF を許容)
+- `triggers.milestones = [250, 1250, 2500, 12500, 25000]`(設定可、空配列 = milestone OFF を許容。論点 0069 で旧既定の 4 分の 1 にした)
 - 詳細は `docs/data-model.md` および `論点 0009(`decisions/decided/0009-configurable-triggers/`)`。
 
 ### S0013_01 通常応援を N 回ごとに発動

@@ -6,6 +6,7 @@ import Store from "electron-store";
 import {
   mergeWithDefaults,
   validateTriggerConfig,
+  applyMilestoneDefaultMigration,
   migrateLegacyDefaults,
   DEFAULT_TRIGGER_CONFIG,
 } from "../core/index.js";
@@ -175,16 +176,18 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
 
       // 移行は 1 回だけ。以降 regular=100 はユーザーの明示設定として尊重する。
       const meta = (store.get("meta") as AppMeta | undefined) ?? {};
-      const { config, migrated } = migrateLegacyDefaults(
+      const { config: regularMigrated, migrated } = migrateLegacyDefaults(
         base,
         meta.regularDefaultMigrated === true,
       );
       if (migrated) {
         store.set("meta", { ...meta, regularDefaultMigrated: true });
       }
+      const config = applyMilestoneDefaultMigration(regularMigrated);
 
-      // 補完・移行・置換の結果を書き戻して JSON を正規化する
-      store.set("triggers", config);
+      // 補完・移行・置換の結果を書き戻して JSON を正規化する。変わらなければ書かない
+      // (S0069_03 / S0069_04 移行しない値は保存し直さない)
+      if (JSON.stringify(raw) !== JSON.stringify(config)) store.set("triggers", config);
       return { config, migrated };
     },
 

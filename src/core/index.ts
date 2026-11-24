@@ -32,6 +32,7 @@ export {
   DEFAULT_TRIGGER_CONFIG,
   validateTriggerConfig,
   mergeWithDefaults,
+  applyMilestoneDefaultMigration,
   migrateLegacyDefaults,
   type ValidateResult,
 } from "./triggerConfig.js";

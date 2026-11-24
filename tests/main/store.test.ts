@@ -71,6 +71,102 @@ describe("store / `triggers.regular = 100` のマイグレーション [境界]"
   });
 });
 
+// --- 節目の既定値(論点 0069)---
+
+const LEGACY_MILESTONES = [1000, 5000, 10000, 50000, 100000];
+const QUARTER_MILESTONES = [250, 1250, 2500, 12500, 25000];
+
+// set の呼び出しを数える(保存し直したかを見る)
+function countingStore(initial: Record<string, unknown>) {
+  const fake = fakeStore(initial);
+  const setKeys: string[] = [];
+  const set = fake.set;
+  fake.set = ((key: string, value: unknown) => {
+    setKeys.push(key);
+    (set as (k: string, v: unknown) => void)(key, value);
+  }) as StoreLike["set"];
+  return { fake, setKeys };
+}
+
+describe("store / `triggers.milestones` の既定値 [境界]", () => {
+  it("S0069_01 fills the missing milestones with a quarter of the former defaults", () => {
+    // GIVEN triggers.milestones が保存されていない
+    const fake = fakeStore({ triggers: { regular: 50, activeThresholdSec: 60 } });
+
+    // WHEN 起動時に読み込む
+    const { config } = createAppStore(fake).loadTriggerConfig();
+
+    // THEN [250, 1250, 2500, 12500, 25000] になる
+    expect(config.milestones).toEqual(QUARTER_MILESTONES);
+  });
+});
+
+describe("store / 旧既定値の節目を移行する", () => {
+  it("S0069_02 moves the former default milestones to the new ones, saves them and does not notify", () => {
+    // GIVEN 保存値が旧既定値
+    const fake = fakeStore({
+      triggers: { regular: 50, milestones: LEGACY_MILESTONES, activeThresholdSec: 60 },
+    });
+
+    // WHEN 起動時に読み込む
+    const { config, migrated } = createAppStore(fake).loadTriggerConfig();
+
+    // THEN 新しい既定値になり保存し直される。通知(migrated)は出さない
+    expect(config.milestones).toEqual(QUARTER_MILESTONES);
+    expect((fake.raw.triggers as { milestones: number[] }).milestones).toEqual(QUARTER_MILESTONES);
+    expect(migrated).toBe(false);
+  });
+});
+
+describe("store / 利用者が変えた節目は移行しない [否定]", () => {
+  it("S0069_03 keeps milestones that differ from the former defaults and does not save them again", () => {
+    for (const milestones of [[1000, 5000], [...LEGACY_MILESTONES, 200000], []]) {
+      // GIVEN 旧既定値と完全には同じでない節目
+      const { fake, setKeys } = countingStore({
+        triggers: { regular: 50, milestones, activeThresholdSec: 60 },
+      });
+
+      // WHEN 起動時に読み込む
+      const { config } = createAppStore(fake).loadTriggerConfig();
+
+      // THEN 変化せず、保存し直さない
+      expect(config.milestones).toEqual(milestones);
+      expect(setKeys).not.toContain("triggers");
+    }
+  });
+});
+
+describe("store / 移行済みの節目は再び書き換えない [境界]", () => {
+  it("S0069_04 leaves the new default milestones as they are without saving them again", () => {
+    // GIVEN 保存値が新しい既定値
+    const { fake, setKeys } = countingStore({
+      triggers: { regular: 50, milestones: QUARTER_MILESTONES, activeThresholdSec: 60 },
+    });
+
+    // WHEN 起動時に読み込む
+    const { config } = createAppStore(fake).loadTriggerConfig();
+
+    // THEN 変化せず、保存し直さない
+    expect(config.milestones).toEqual(QUARTER_MILESTONES);
+    expect(setKeys).not.toContain("triggers");
+  });
+});
+
+describe("store / 節目の移行は他の設定項目に波及しない [否定]", () => {
+  it("S0069_05 changes nothing but the milestones when moving them", () => {
+    // GIVEN 節目が旧既定値で、regular = 30・activeThresholdSec = 90
+    const fake = fakeStore({
+      triggers: { regular: 30, milestones: LEGACY_MILESTONES, activeThresholdSec: 90 },
+    });
+
+    // WHEN 起動時に読み込んで移行する
+    const { config } = createAppStore(fake).loadTriggerConfig();
+
+    // THEN 節目以外は変化しない
+    expect(config).toEqual({ regular: 30, milestones: QUARTER_MILESTONES, activeThresholdSec: 90 });
+  });
+});
+
 describe("store / 統計の追記", () => {
   it("recordKeyCount accumulates total and per-day counts", () => {
     const fake = fakeStore({ stats: EMPTY_STATS });

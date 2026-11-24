@@ -100,3 +100,15 @@ export function migrateLegacyDefaults(
   }
   return { config, migrated: false };
 }
+
+// S0069_02 旧既定値の節目を移行する / S0069_03 利用者が変えた節目は移行しない
+// 旧既定値と完全に同じときだけ移す(既定のまま変えていない人だけを新しい既定に乗せる。論点 0069)。
+// 通知はしない(migrateLegacyDefaults の migrated とは別。節目が増えるのは応援が出れば分かる)
+const LEGACY_MILESTONES_DEFAULT: readonly number[] = [1000, 5000, 10000, 50000, 100000];
+
+export function applyMilestoneDefaultMigration(config: TriggerConfig): TriggerConfig {
+  const isLegacy =
+    config.milestones.length === LEGACY_MILESTONES_DEFAULT.length &&
+    config.milestones.every((value, i) => value === LEGACY_MILESTONES_DEFAULT[i]);
+  return isLegacy ? { ...config, milestones: [...DEFAULT_TRIGGER_CONFIG.milestones] } : config;
+}

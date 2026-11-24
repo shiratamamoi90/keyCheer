@@ -34,7 +34,8 @@ export interface TriggerConfig {
 
 export const DEFAULT_TRIGGER_CONFIG: TriggerConfig = {
   regular: 50,
-  milestones: [1000, 5000, 10000, 50000, 100000],
+  // 論点 0069 旧既定 [1000, 5000, 10000, 50000, 100000] の 4 分の 1。全期間の累計で数えるので、旧既定では節目の応援が一生で 5 回しか出なかった
+  milestones: [250, 1250, 2500, 12500, 25000],
   activeThresholdSec: 60,
 };
 

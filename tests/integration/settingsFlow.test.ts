@@ -49,18 +49,22 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
 }
 
 /** 起動時の配線をそのまま組む(main/index.ts と同じ順序・同じ結線)。 */
-function bootstrap() {
+function bootstrap(initial: Record<string, unknown> = {}) {
   handlers.clear();
-  const raw = fakeStore();
+  const raw = fakeStore(initial);
   const store = createAppStore(raw);
   const { config } = store.loadTriggerConfig();
 
   const fired: number[] = [];
+  const firedTypes: string[] = [];
   const runtime = createCheerRuntime(
     {
       userDataDir: "/userdata",
       popupDurationMs: 5000,
-      emitCheer: (payload) => fired.push(payload.count),
+      emitCheer: (payload) => {
+        fired.push(payload.count);
+        firedTypes.push(payload.type);
+      },
       recordHistory: () => {},
       wavExists: () => false,
       random: () => 0,
@@ -77,7 +81,7 @@ function bootstrap() {
   });
 
   const invoke = (channel: string, arg?: unknown): unknown => handlers.get(channel)!({}, arg);
-  return { raw, store, runtime, fired, invoke, config };
+  return { raw, store, runtime, fired, firedTypes, invoke, config };
 }
 
 describe("総合: 設定更新が永続化と発動間隔の両方に届く", () => {
@@ -128,5 +132,27 @@ describe("総合: 設定更新が永続化と発動間隔の両方に届く", ()
     );
     for (let i = 1; i <= DEFAULT_TRIGGER_CONFIG.regular; i++) runtime.handleKeyPress(T0 + i);
     expect(fired).toEqual([DEFAULT_TRIGGER_CONFIG.regular]);
+  });
+});
+
+describe("総合: 旧既定の節目を保存していた設定が、起動で新しい節目に移って発動する(論点 0069)", () => {
+  it("moves the former default milestones on launch and fires the first milestone at 250", () => {
+    const { raw, runtime, fired, firedTypes } = bootstrap({
+      triggers: {
+        regular: 50,
+        milestones: [1000, 5000, 10000, 50000, 100000],
+        activeThresholdSec: 60,
+      },
+    });
+
+    // 起動の読み込みで新しい節目に移り、保存し直されている
+    expect((raw.raw["triggers"] as { milestones: number[] }).milestones).toEqual([
+      250, 1250, 2500, 12500, 25000,
+    ]);
+
+    // 250 打目で節目の応援が出る(50 の倍数でもあるが節目が優先)
+    for (let i = 1; i <= 250; i++) runtime.handleKeyPress(T0 + i);
+    expect(fired.at(-1)).toBe(250);
+    expect(firedTypes.at(-1)).toBe("milestone");
   });
 });
