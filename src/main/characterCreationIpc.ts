@@ -24,6 +24,11 @@ import {
 } from "./providerFactory.js";
 import { applyRedBlueSwap, computeImageSize, type RgbaImage } from "../core/characterImage.js";
 import { createChildTracker, resolveSdcppPaths } from "./bundledSdcpp.js";
+import {
+  createOnnxSegmentationRuntime,
+  createPersonSegmenter,
+  resolveSegmentationModelPath,
+} from "./bundledSegmentation.js";
 import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
 import { resolveImagePath } from "../agent/cheerPlayer.js";
@@ -100,6 +105,14 @@ function decodeScaledImage(bytes: Uint8Array): RgbaImage {
   return applyRedBlueSwap({ width, height, pixels: new Uint8Array(scaled.toBitmap()) });
 }
 
+// S0063_01 人物を切り抜くモデルには縮小の前の絵を渡す(縮めるのは core の入力の組み立て)
+function decodeFullImage(bytes: Uint8Array): RgbaImage {
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (image.isEmpty()) throw new Error("image could not be decoded");
+  const { width, height } = image.getSize();
+  return applyRedBlueSwap({ width, height, pixels: new Uint8Array(image.toBitmap()) });
+}
+
 function encodeImagePng(image: RgbaImage): Uint8Array {
   const bitmap = Buffer.from(applyRedBlueSwap(image).pixels);
   return new Uint8Array(
@@ -140,6 +153,16 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
           removeFile: (path: string) => rmSync(path, { force: true }),
           tempDir: deps.sdcpp.tempDir,
         };
+  // 人物の切り抜き(論点 0063)。sd.cpp と同じ同梱物の置き場から読む(S0066_01)。重みが無い・壊れていれば
+  // 切り抜きは毎回失敗し、色で抜くやり方に戻る(S0063_04)
+  const segmentPerson =
+    deps.sdcpp === undefined
+      ? undefined
+      : createPersonSegmenter({
+          modelPath: resolveSegmentationModelPath(deps.sdcpp.resourcesDir),
+          runtime: createOnnxSegmentationRuntime(),
+          decodeImage: decodeFullImage,
+        });
 
   const runner = createGenerationRunner();
   // どのキャラクターを生成中か。削除(S0032_08)・切り替え(S0032_13)・一覧(S0033_11)が見る。
@@ -212,6 +235,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
               makeCanvas: makeWhiteCanvas,
               decodeScaled: decodeScaledImage,
               encodePng: encodeImagePng,
+              ...(segmentPerson !== undefined ? { segmentPerson } : {}),
             },
           }
         : undefined;
@@ -345,6 +369,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
               makeCanvas: makeWhiteCanvas,
               decodeScaled: decodeScaledImage,
               encodePng: encodeImagePng,
+              ...(segmentPerson !== undefined ? { segmentPerson } : {}),
             },
           },
           onProgress: (p) =>

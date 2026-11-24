@@ -5,13 +5,16 @@ import { describe, it, expect } from "vitest";
 import {
   applyBackgroundRemoval,
   applyImagePalette,
+  applyPersonProbabilityMask,
   applyRedBlueSwap,
   buildImageTagPrompt,
   buildImageTagText,
   buildLocalImagePrompt,
   buildLocalImageTagPrompt,
+  buildSegmentationInput,
   computeImagePalette,
   computeImageSize,
+  computePersonProbability,
   type RgbaImage,
 } from "../../src/core/characterImage.js";
 import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/core/messagePool.js";
@@ -134,53 +137,75 @@ const NINE_COLORS: Readonly<Record<string, Rgb>> = {
 };
 
 describe("characterImage / プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる", () => {
-  it("S0046_01 puts the fixed tags, the image tags and the LoRA in this order", () => {
+  it("S0067_01 puts the fixed tags, the image tags and the LoRA in this order", () => {
     // GIVEN 待機画像の画像タグが `1girl, long hair`
     // WHEN 待機画像のプロンプトを組み立てる
     const prompt = buildLocalImagePrompt("1girl, long hair");
 
     // THEN 固定の語、画像タグ、LoRA の指定の順になる
     expect(prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>",
     );
   });
 });
 
 describe("characterImage / 人物の語が画像タグに無ければ 1girl を足す [境界]", () => {
-  it("S0046_02 adds 1girl right after the fixed tags when no person tag is present", () => {
+  it("S0067_02 adds 1girl right after the fixed tags when no person tag is present", () => {
     // GIVEN 待機画像の画像タグが `long hair`
     // WHEN 待機画像のプロンプトを組み立てる
     const prompt = buildLocalImagePrompt("long hair");
 
     // THEN 固定の語の直後に 1girl が入る
     expect(prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>",
     );
   });
 });
 
 describe("characterImage / 通常の応援の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・通常のポーズの語の順に組み立てる", () => {
-  it("S0062_01 appends the expression and the regular pose to the idle tags", () => {
+  it("S0067_03 appends the expression and the regular pose to the idle tags", () => {
     // GIVEN 待機画像の画像タグが `1girl, long hair`、regular の画像の画像タグ(表情)が `smile`
     // WHEN regular の画像のプロンプトを組み立てる
     const prompt = buildLocalImagePrompt("1girl, long hair", { kind: "regular", tags: "smile" });
 
     // THEN 待機画像の画像タグ・表情・通常のポーズの語の順に続く
     expect(prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, smile, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, long hair, smile, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
     );
   });
 });
 
 describe("characterImage / 節目の応援の画像のプロンプトには節目のポーズの語を足す", () => {
-  it("S0062_02 appends the expression and the milestone pose to the idle tags", () => {
+  it("S0067_04 appends the expression and the milestone pose to the idle tags", () => {
     // GIVEN 待機画像の画像タグが `1girl, long hair`、milestone の画像の画像タグ(表情)が `grin`
     // WHEN milestone の画像のプロンプトを組み立てる
     const prompt = buildLocalImagePrompt("1girl, long hair", { kind: "milestone", tags: "grin" });
 
     // THEN 節目のポーズの語が続く
     expect(prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, grin, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, long hair, grin, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
+    );
+  });
+});
+
+describe("characterImage / アプリが足す語に色の語を含めない [否定]", () => {
+  it("S0067_05 adds neither flat color nor limited palette, and keeps them only when the image tags have them", () => {
+    // GIVEN 画像タグに色の語が無い 3 枚と、画像タグに `flat color` がある待機画像
+    // WHEN 3 枚それぞれのプロンプトを組み立てる
+    const prompts = [
+      buildLocalImagePrompt("1girl, long hair"),
+      buildLocalImagePrompt("1girl, long hair", { kind: "regular", tags: "smile" }),
+      buildLocalImagePrompt("1girl, long hair", { kind: "milestone", tags: "grin" }),
+    ];
+    const withColorTag = buildLocalImagePrompt("1girl, flat color");
+
+    // THEN アプリが足す語に色の語は無い。画像タグにあればそのまま 1 回だけ残る
+    for (const prompt of prompts) {
+      expect(prompt).not.toContain("flat color");
+      expect(prompt).not.toContain("limited palette");
+    }
+    expect(withColorTag).toBe(
+      "solo, upper body, simple background, 1girl, flat color, <lora:lcm-lora-sdv1-5:1>",
     );
   });
 });
@@ -358,5 +383,81 @@ describe("characterImage / 応援種別の画像の画像タグの要求は表�
     expect(prompt).toContain("1〜2 個");
     expect(prompt).toContain("ポーズ・髪・目・服は書かないでください");
     expect(prompt).not.toContain("表情とポーズ");
+  });
+});
+
+// --- 人物の切り抜き(論点 0063)---
+
+const SEGMENTATION_SIZE = 320;
+
+describe("characterImage / 人物を切り抜くモデルの入力は 320x320 に縮めて正規化した絵にする", () => {
+  it("S0063_01 scales to 320x320 with aligned corners, divides by the max value and normalizes each channel first", () => {
+    // GIVEN 左の列が黒、右の列が (200, 100, 50) の 2x2 の絵(縮小の前の絵の代わり)
+    const pixels = new Uint8Array(2 * 2 * 4);
+    for (const offset of [4, 12]) pixels.set([200, 100, 50, 255], offset);
+    for (const offset of [0, 8]) pixels.set([0, 0, 0, 255], offset);
+    const image: RgbaImage = { width: 2, height: 2, pixels };
+    const before = Uint8Array.from(pixels);
+
+    // WHEN 人物を切り抜くモデルへの入力を作る
+    const input = buildSegmentationInput(image);
+
+    // THEN 1 x 3 x 320 x 320 を R・G・B の順にチャンネルを先にして並べる。両端は元の両端の画素の値(全部の値の最大 200 で割り、平均を引いて標準偏差で割る)
+    const plane = SEGMENTATION_SIZE * SEGMENTATION_SIZE;
+    expect(input).toHaveLength(3 * plane);
+    const last = SEGMENTATION_SIZE - 1;
+    expect(input[0]).toBeCloseTo((0 - 0.485) / 0.229, 5);
+    expect(input[last]).toBeCloseTo((1 - 0.485) / 0.229, 5);
+    expect(input[plane + last]).toBeCloseTo((0.5 - 0.456) / 0.224, 5);
+    expect(input[2 * plane + last]).toBeCloseTo((0.25 - 0.406) / 0.225, 5);
+    // 双線形補間:x = 1 は右の列から 1/319 の重み
+    expect(input[1]).toBeCloseTo(((1 / 319) * 1 - 0.485) / 0.229, 5);
+    // 引数の絵を書き換えない
+    expect(Array.from(image.pixels)).toEqual(Array.from(before));
+  });
+});
+
+describe("characterImage / 人物である確率が 0.5 未満の画素を透明にする", () => {
+  it("S0063_02 stretches the output to 0..1, resizes it to the saved size and makes pixels under 0.5 transparent", () => {
+    // GIVEN モデルの最初の出力:左の端の列が -2、右の端の列が 6、ほかが 2(引き伸ばすと 0 / 1 / 0.5)
+    const output = new Float32Array(SEGMENTATION_SIZE * SEGMENTATION_SIZE).fill(2);
+    for (let y = 0; y < SEGMENTATION_SIZE; y++) {
+      output[y * SEGMENTATION_SIZE] = -2;
+      output[y * SEGMENTATION_SIZE + SEGMENTATION_SIZE - 1] = 6;
+    }
+    // 縮小した絵:3x1。まん中の画素は半透明
+    const small: RgbaImage = {
+      width: 3,
+      height: 1,
+      pixels: new Uint8Array([10, 20, 30, 255, 40, 50, 60, 128, 70, 80, 90, 255]),
+    };
+
+    // WHEN 保存する絵の背景を透明にする
+    const probability = computePersonProbability(output, small.width, small.height);
+    const masked = applyPersonProbabilityMask(small, probability);
+
+    // THEN 左(0)は透明、まん中(0.5)と右(1)は完全に不透明。色は変えない
+    expect(Array.from(probability)).toEqual([0, 0.5, 1]);
+    expect(Array.from(masked.pixels)).toEqual([0, 0, 0, 0, 40, 50, 60, 255, 70, 80, 90, 255]);
+  });
+
+  it("treats an output whose values are all the same as probability 0", () => {
+    const output = new Float32Array(SEGMENTATION_SIZE * SEGMENTATION_SIZE).fill(3);
+    expect(Array.from(computePersonProbability(output, 2, 1))).toEqual([0, 0]);
+  });
+});
+
+describe("characterImage / 人物と判定した画素は背景の色に近くても透明にしない [否定]", () => {
+  it("S0063_03 keeps pixels judged as the person opaque even when they match the border color", () => {
+    // GIVEN 縁まで白い服が届いた 3x3 の絵(全部が縁の色と同じ)で、どの画素も人物である確率が 0.5 以上
+    const small: RgbaImage = { width: 3, height: 3, pixels: new Uint8Array(3 * 3 * 4).fill(255) };
+    const probability = new Float32Array(9).fill(0.9);
+
+    // WHEN 背景を透明にする
+    const masked = applyPersonProbabilityMask(small, probability);
+
+    // THEN 色で抜くやり方を重ねず、どの画素も不透明のまま
+    const alphas = Array.from(masked.pixels).filter((_, i) => i % 4 === 3);
+    expect(alphas).toEqual([255, 255, 255, 255, 255, 255, 255, 255, 255]);
   });
 });

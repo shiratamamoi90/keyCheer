@@ -16,10 +16,13 @@ export interface ChildHandleLike {
 export type SpawnLike = (command: string, args: string[]) => ChildHandleLike;
 
 const DEFAULT_STEPS = 4;
-// S0046_05 どの画像もサンプラー lcm・CFG 1 で作る。LCM LoRA の前提(論点 0041)で、既定のサンプラーと CFG では
-// 少ないステップ数でまともな絵にならない。CFG 1 では避ける語(ネガティブプロンプト)が効かないので渡さない(S0046_04)。
+// S0065_01 どの画像もサンプラー lcm・CFG 1.5 で作る。LCM LoRA の前提(論点 0041)で、既定のサンプラーと CFG では
+// 少ないステップ数でまともな絵にならない。CFG を 1 より上げるのは避ける語を効かせるため(CFG 1 では sd.cpp が避ける語を使わない)。
+// 1 枚あたりの時間は約 1.4 倍になるが、頭が 2 つ描かれる崩れが消えた(論点 0065)
 const SAMPLING_METHOD = "lcm";
-const CFG_SCALE = 1;
+const CFG_SCALE = 1.5;
+// S0065_02 / S0065_04 避ける語は固定。画像タグ(テキストモデルの出力)を混ぜると、避けたい語を外から差し込めてしまう
+const NEGATIVE_PROMPT = "multiple heads, extra arms, extra hands, bad anatomy, fused body";
 
 export interface SdcppConfig {
   binPath: string;
@@ -69,6 +72,8 @@ export function createSdcppImageGenerator(config: SdcppConfig): ImageGenerator {
       SAMPLING_METHOD,
       "--cfg-scale",
       String(CFG_SCALE),
+      "--negative-prompt",
+      NEGATIVE_PROMPT,
       "--steps",
       String(request.steps ?? steps),
       "-W",

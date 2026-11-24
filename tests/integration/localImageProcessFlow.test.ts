@@ -24,6 +24,11 @@ import type {
   VoiceSynthesizer,
 } from "../../src/core/providers/types.js";
 import { decodePng, encodePng } from "../../src/eval/png.js";
+import {
+  createPersonSegmenter,
+  resolveSegmentationModelPath,
+  type SegmentationRuntime,
+} from "../../src/main/bundledSegmentation.js";
 
 const USER_DATA = "/userdata";
 const CHAR_ID = "char-local-image";
@@ -163,12 +168,17 @@ describe("総合: local-sdcpp の作り方でキャラ画像 3 枚を作る", ()
     expect(spawned.map((args) => valueAfter(args, "--strength"))).toEqual(["0.9", "0.65", "0.65"]);
     expect(spawned.map((args) => valueAfter(args, "--steps"))).toEqual(["4", "8", "8"]);
     expect(spawned.map((args) => valueAfter(args, "-s"))).toEqual(["42", "42", "42"]);
+    // 論点 0065:3 枚とも CFG 1.5 と固定の避ける語で描く
+    expect(spawned.map((args) => valueAfter(args, "--cfg-scale"))).toEqual(["1.5", "1.5", "1.5"]);
+    expect(new Set(spawned.map((args) => valueAfter(args, "--negative-prompt")))).toEqual(
+      new Set(["multiple heads, extra arms, extra hands, bad anatomy, fused body"]),
+    );
     const initImages = spawned.map((args) => inputs[valueAfter(args, "--init-img")!]!);
     expect(Array.from(initImages[0]!)).toEqual(Array.from(canvas));
     expect(Array.from(initImages[1]!)).toEqual(Array.from(PICTURES[0]!));
     expect(Array.from(initImages[2]!)).toEqual(Array.from(PICTURES[0]!));
     expect(valueAfter(spawned[1]!, "-p")).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle, regular, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, idle, regular, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
     );
 
     // 保存された 3 枚:縁の背景は透明、囲まれた背景の色の画素は残り、色は待機画像の色だけ
@@ -192,5 +202,118 @@ describe("総合: local-sdcpp の作り方でキャラ画像 3 枚を作る", ()
         !path.includes("/images/"),
     );
     expect(leftovers).toEqual([]);
+  });
+
+  // --- 人物の切り抜き(論点 0063 / 0066)---
+
+  function makeFlowGenerator() {
+    const spawned: string[][] = [];
+    const spawn: SpawnLike = (_command, args) => {
+      const handlers: Record<string, ((arg: unknown) => void)[]> = {};
+      const child: ChildHandleLike = {
+        on: (event, listener) => {
+          (handlers[event] ??= []).push(listener);
+        },
+        kill: () => {},
+      };
+      spawned.push(args);
+      queueMicrotask(() => handlers["close"]?.forEach((h) => h(0)));
+      return child;
+    };
+    return createSdcppImageGenerator({
+      binPath: "/bundled/sd",
+      modelPath: "/weights/Counterfeit-V3.0_fix_fp16.safetensors",
+      loraPath: "/weights",
+      spawn,
+      readOutput: () => PICTURES[spawned.length - 1]!,
+      writeInput: () => {},
+    });
+  }
+
+  async function runWithSegmentation(runtime: SegmentationRuntime) {
+    const fs = fakeFs();
+    const segmentPerson = createPersonSegmenter({
+      modelPath: resolveSegmentationModelPath("/bundled"),
+      runtime,
+      decodeImage: decodePng,
+    });
+    const canvas = encodePng({
+      width: SIZE,
+      height: SIZE,
+      pixels: new Uint8Array(SIZE * SIZE * 4).fill(255),
+    });
+    const result = await createGenerationRunner().start({
+      characterId: CHAR_ID,
+      character: { name: "チア", personality: "元気いっぱい" },
+      userDataDir: USER_DATA,
+      fs,
+      textGenerator: text,
+      synthesizer: voice,
+      image: {
+        generator: makeFlowGenerator(),
+        tagGenerator: text,
+        seed: 42,
+        width: 512,
+        height: 768,
+        local: { makeCanvas: () => canvas, decodeScaled: decodePng, encodePng, segmentPerson },
+      },
+    });
+    const saved = (["idle", "regular", "milestone"] as const).map((kind) =>
+      decodePng(fs.files[`${USER_DATA}/characters/${CHAR_ID}/images/${kind}.png`] as Uint8Array),
+    );
+    return { result, saved };
+  }
+
+  const alphaAt = (image: RgbaImage, x: number, y: number): number =>
+    image.pixels[(y * SIZE + x) * 4 + 3]!;
+
+  it("cuts out the person of each picture with the bundled u2netp instead of the border color", async () => {
+    // モデルは右半分を人物と判定する(右上の角は背景の色だが、人物として残る)
+    const createdPaths: string[] = [];
+    let runs = 0;
+    const runtime: SegmentationRuntime = {
+      createSession: async (path) => {
+        createdPaths.push(path);
+        return {
+          run: async (input) => {
+            runs += 1;
+            expect(input).toHaveLength(3 * 320 * 320);
+            const output = new Float32Array(320 * 320);
+            for (let i = 0; i < output.length; i++) output[i] = i % 320 >= 160 ? 1 : 0;
+            return output;
+          },
+        };
+      },
+    };
+
+    const { result, saved } = await runWithSegmentation(runtime);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.images?.missing).toEqual([]);
+    expect(createdPaths).toEqual(["/bundled/u2netp/u2netp.onnx"]);
+    expect(runs).toBe(3);
+    for (const image of saved) {
+      expect(alphaAt(image, 0, 0)).toBe(0);
+      expect(alphaAt(image, SIZE - 1, 0)).toBe(255);
+    }
+  });
+
+  it("falls back to the border color removal when the bundled u2netp cannot be loaded", async () => {
+    const runtime: SegmentationRuntime = {
+      createSession: async () => {
+        throw new Error("u2netp.onnx not found");
+      },
+    };
+
+    const { result, saved } = await runWithSegmentation(runtime);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.images?.missing).toEqual([]);
+    for (const image of saved) {
+      expect(alphaAt(image, SIZE - 1, 0)).toBe(0);
+      expect(alphaAt(image, 3, 3)).toBe(255);
+    }
   });
 });

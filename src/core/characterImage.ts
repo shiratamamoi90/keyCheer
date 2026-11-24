@@ -119,8 +119,9 @@ export function computeImageSize(width: number, height: number): { width: number
 // 値はどれも論点 0045 が計測で決めたもの(decisions/decided/0045-image-generation-process/config.yaml)。
 // 変えるときは計測し直す。外部の画像プロバイダーには当てない(S0046_16)。
 
-// アプリが画像タグの前に足す語。背景の色は言葉で頼まない(頼んだ色で塗られず、色が人物に移るため。論点 0045 の 3 回目)
-const LOCAL_IMAGE_FIXED_TAGS = "solo, upper body, simple background, flat color, limited palette";
+// アプリが画像タグの前に足す語。背景の色は言葉で頼まない(頼んだ色で塗られず、色が人物に移るため。論点 0045 の 3 回目)。
+// 色の語(flat color, limited palette)は 1 色に寄るのを減らす役に立たず、外したほうが肌が自然に見えたので外した(S0067_05。論点 0067)
+const LOCAL_IMAGE_FIXED_TAGS = "solo, upper body, simple background";
 // LCM LoRA のファイル名(拡張子なし)。sd.cpp はプロンプトの <lora:名前:強さ> で読む
 const LOCAL_IMAGE_LORA_NAME = "lcm-lora-sdv1-5";
 // 人物を指す語。画像タグに無いと、人物の描かれない絵が出うる(論点 0041 の result.md)
@@ -144,7 +145,7 @@ const LOCAL_POSE_KIND_LINE: Readonly<Record<CheerType, string>> = {
 //
 // 文面は論点 0045 の計測で使ったもの(src/eval/imageProcessComparison.ts と同じ文)。絵を確かめたのはこの文だけなので、
 // 言い回しを変えるときは計測し直す。待機画像で見た目を決めておくのは、その画像タグを応援種別の画像にも足して
-// 人物を保つため(S0062_01)。応援種別の画像で髪・目・服を訊かないのは、待機画像と食い違う語が出ると別の人物になるため。
+// 人物を保つため(S0067_03)。応援種別の画像で髪・目・服を訊かないのは、待機画像と食い違う語が出ると別の人物になるため。
 // ポーズを訊かないのは、テキストモデルの返すポーズの語が造語になりやすく、画像のモデルが読めないため(論点 0062。
 // 文面は 0062 の計測で使ったもの = src/eval/cheerImageDifference.ts と同じ文)。
 // 外部の画像プロバイダーには使わない(S0049_03。外部は 3 枚を別々に作るので buildImageTagPrompt のまま)。
@@ -184,9 +185,9 @@ export const LOCAL_IDLE_STEPS = 4;
 export const LOCAL_DERIVED_STRENGTH = 0.65;
 export const LOCAL_DERIVED_STEPS = 8;
 
-// S0046_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
-// S0046_02 人物の語が画像タグに無ければ 1girl を足す
-// S0062_01 / S0062_02 応援種別の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・その応援種別のポーズの語の順
+// S0067_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
+// S0067_02 人物の語が画像タグに無ければ 1girl を足す
+// S0067_03 / S0067_04 応援種別の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・その応援種別のポーズの語の順
 // S0062_03 / S0062_04 待機画像にポーズの語を足さない。ほかの応援種別のポーズの語と演出の語を足さない
 //
 // なぜ応援種別の画像にも待機画像の画像タグを入れるか:表情とポーズの語だけだと、描き直しで髪や服が変わり
@@ -446,6 +447,113 @@ export function applyImagePalette(image: RgbaImage, palette: readonly ImageColor
       nearestByColor.set(colorKey(color), nearest);
     }
     pixels.set(nearest, offset);
+  }
+  return { width: image.width, height: image.height, pixels };
+}
+
+// --- 人物の切り抜き(u2netp。論点 0063)---
+// 入力の作り方・出力の扱いは rembg の u2netp と同じ(論点 0063 の計測で使ったもの = src/eval/segmentationMask.ts)。
+// 同じ作り方でないと、計測で確かめた切り抜け方にならない。
+
+export const SEGMENTATION_INPUT_SIZE = 320;
+// ImageNet の平均・標準偏差(u2netp の学習のときの正規化)
+const SEGMENTATION_CHANNEL_MEAN = [0.485, 0.456, 0.406] as const;
+const SEGMENTATION_CHANNEL_STD = [0.229, 0.224, 0.225] as const;
+// S0063_02 人物である確率がこれ未満の画素を透明にする
+const MIN_PERSON_PROBABILITY = 0.5;
+const RGB_CHANNEL_COUNT = 3;
+
+// 両端をそろえた双線形補間で 1 つの値を読む(fx, fy は元の格子の座標)
+function sampleBilinear(
+  read: (x: number, y: number) => number,
+  width: number,
+  height: number,
+  fx: number,
+  fy: number,
+): number {
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const x1 = Math.min(x0 + 1, width - 1);
+  const y1 = Math.min(y0 + 1, height - 1);
+  const tx = fx - x0;
+  const ty = fy - y0;
+  const top = read(x0, y0) * (1 - tx) + read(x1, y0) * tx;
+  const bottom = read(x0, y1) * (1 - tx) + read(x1, y1) * tx;
+  return top * (1 - ty) + bottom * ty;
+}
+
+// 両端をそろえるときの、出力の 1 画素あたりの元の格子の進み
+function computeAlignedScale(from: number, to: number): number {
+  return to > 1 ? (from - 1) / (to - 1) : 0;
+}
+
+// S0063_01 人物を切り抜くモデルの入力は 320x320 に縮めて正規化した絵にする(1 x 3 x 320 x 320。チャンネルが先)
+export function buildSegmentationInput(image: RgbaImage): Float32Array {
+  const size = SEGMENTATION_INPUT_SIZE;
+  const plane = size * size;
+  const values = new Float32Array(RGB_CHANNEL_COUNT * plane);
+  const sx = computeAlignedScale(image.width, size);
+  const sy = computeAlignedScale(image.height, size);
+  let max = 0;
+  for (let c = 0; c < RGB_CHANNEL_COUNT; c++) {
+    const read = (x: number, y: number): number =>
+      image.pixels[(y * image.width + x) * RGBA_BYTES + c]!;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const value = sampleBilinear(read, image.width, image.height, x * sx, y * sy);
+        values[c * plane + y * size + x] = value;
+        if (value > max) max = value;
+      }
+    }
+  }
+  // 最大値で割るのはチャンネルごとではなく全部の値で 1 回(rembg と同じ)
+  for (let c = 0; c < RGB_CHANNEL_COUNT; c++) {
+    for (let i = 0; i < plane; i++) {
+      const index = c * plane + i;
+      const scaled = max === 0 ? 0 : values[index]! / max;
+      values[index] = (scaled - SEGMENTATION_CHANNEL_MEAN[c]!) / SEGMENTATION_CHANNEL_STD[c]!;
+    }
+  }
+  return values;
+}
+
+// S0063_02 モデルの最初の出力(320x320)を 0〜1 に引き伸ばし(全部同じ値なら 0)、保存する大きさに縮める
+export function computePersonProbability(
+  output: Float32Array,
+  width: number,
+  height: number,
+): Float32Array {
+  const size = SEGMENTATION_INPUT_SIZE;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of output) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  const range = max - min;
+  const read = (x: number, y: number): number =>
+    range === 0 ? 0 : (output[y * size + x]! - min) / range;
+  const probability = new Float32Array(width * height);
+  const sx = computeAlignedScale(size, width);
+  const sy = computeAlignedScale(size, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      probability[y * width + x] = sampleBilinear(read, size, size, x * sx, y * sy);
+    }
+  }
+  return probability;
+}
+
+// S0063_02 確率が 0.5 未満の画素を透明に、ほかを完全に不透明にする(S0046_11 半透明の画素を持たない)
+// S0063_03 人物と判定した画素は、背景の色に近くても透明にしない — 色で抜くやり方(applyBackgroundRemoval)を重ねない
+export function applyPersonProbabilityMask(image: RgbaImage, probability: Float32Array): RgbaImage {
+  const pixels = Uint8Array.from(image.pixels);
+  for (let i = 0; i < image.width * image.height; i++) {
+    if (probability[i]! < MIN_PERSON_PROBABILITY) {
+      pixels.fill(0, i * RGBA_BYTES, (i + 1) * RGBA_BYTES);
+    } else {
+      pixels[i * RGBA_BYTES + 3] = OPAQUE_ALPHA;
+    }
   }
   return { width: image.width, height: image.height, pixels };
 }

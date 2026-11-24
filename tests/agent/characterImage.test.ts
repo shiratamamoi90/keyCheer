@@ -232,7 +232,7 @@ describe("characterImage / 待機画像は白の下地から強さ 0.9・4 ス�
     expect(idle.strength).toBe(0.9);
     expect(idle.steps).toBe(4);
     expect(idle.prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, idle-tag, <lora:lcm-lora-sdv1-5:1>",
     );
   });
 });
@@ -256,8 +256,8 @@ describe("characterImage / 応援種別の画像は待機画像を下絵に強�
       expect(call.steps).toBe(8);
     }
     expect(derived.map((call) => call.prompt)).toEqual([
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, regular-tag, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, milestone-tag, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, idle-tag, regular-tag, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, 1girl, idle-tag, milestone-tag, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
     ]);
   });
 });
@@ -356,5 +356,71 @@ describe("characterImage / 背景が抜けなかった絵・全部抜けた絵�
     expect(result.failed).toEqual([]);
     expect(written.map((w) => w.kind)).toEqual(["idle", "regular", "milestone"]);
     expect(alphaOf(local.encoded[0]!)).toEqual([0, 0, 0, 0]);
+  });
+});
+
+// --- 人物の切り抜き(論点 0063)---
+
+const MAP_SIZE = 320;
+
+// 指定した 1 画素だけが 1 で、ほかが 0 のモデルの出力(縮小すると、その角の画素だけが人物になる)
+function outputWithOne(index: number): Float32Array {
+  const output = new Float32Array(MAP_SIZE * MAP_SIZE);
+  output[index] = 1;
+  return output;
+}
+
+describe("characterImage / 切り抜きに失敗したら色で抜くやり方に戻す [異常系]", () => {
+  it("S0063_04 falls back to the border color removal when the segmentation fails", async () => {
+    // GIVEN 人物を切り抜くモデルの実行がエラーになる
+    const local = fakeLocalProcess();
+    let attempts = 0;
+    const process: LocalImageProcess = {
+      ...local.process,
+      segmentPerson: async () => {
+        attempts += 1;
+        throw new Error("u2netp.onnx not found");
+      },
+    };
+    const { input, written } = baseInput({ imageGenerator: fakeLocalGenerator(), local: process });
+
+    // WHEN 画像を保存する
+    const result = await generateCharacterImages(input);
+
+    // THEN 切り抜きを試したうえで、縁からつながる背景を色で透明にして保存し、画像の工程を失敗にしない
+    expect(attempts).toBe(3);
+    expect(result.failed).toEqual([]);
+    expect(written.map((w) => w.kind)).toEqual(["idle", "regular", "milestone"]);
+    expect(alphaOf(local.encoded[0]!)).toEqual([0, 0, 0, 0, 255, 0, 0, 0, 0]);
+  });
+});
+
+describe("characterImage / 3 枚それぞれを切り抜く", () => {
+  it("S0063_05 segments each of the three images from its own picture", async () => {
+    // GIVEN 3 枚を作る。モデルは、渡された絵ごとに別の角を人物と判定する
+    const local = fakeLocalProcess();
+    const segmented: number[][] = [];
+    const cornerOf: Record<number, number> = {
+      1: 0,
+      2: MAP_SIZE - 1,
+      3: (MAP_SIZE - 1) * MAP_SIZE,
+    };
+    const process: LocalImageProcess = {
+      ...local.process,
+      segmentPerson: async (bytes) => {
+        segmented.push(Array.from(bytes));
+        return outputWithOne(cornerOf[bytes[0]!]!);
+      },
+    };
+    const { input } = baseInput({ imageGenerator: fakeLocalGenerator(), local: process });
+
+    // WHEN 背景を透明にする
+    await generateCharacterImages(input);
+
+    // THEN 3 枚それぞれ、その絵(縮小の前)から出した確率で切り抜く(待機画像の切り抜きを流用しない)
+    expect(segmented).toEqual([[1], [2], [3]]);
+    expect(alphaOf(local.encoded[0]!)).toEqual([255, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(alphaOf(local.encoded[1]!)).toEqual([0, 0, 255, 0, 0, 0, 0, 0, 0]);
+    expect(alphaOf(local.encoded[2]!)).toEqual([0, 0, 0, 0, 0, 0, 255, 0, 0]);
   });
 });

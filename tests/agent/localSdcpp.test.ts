@@ -195,25 +195,11 @@ function valueAfter(args: string[], flag: string): string | undefined {
   return index < 0 ? undefined : args[index + 1];
 }
 
-describe("localSdcpp / 背景の色の語と避ける語を渡さない [否定]", () => {
-  it("S0046_04 passes no negative prompt and adds no word to the prompt", async () => {
-    // GIVEN providers.image = local-sdcpp
-    // WHEN 下絵つき・下絵なしの引数を組み立てる
-    const withInit = await runWith({ initImage: new Uint8Array([9]), strength: 0.9, steps: 4 });
-    const plain = await runWith({});
+const NEGATIVE_PROMPT = "multiple heads, extra arms, extra hands, bad anatomy, fused body";
 
-    // THEN 避ける語の引数が無く、プロンプトは渡されたものそのまま(背景の色の語を足さない)
-    for (const args of [...withInit, ...plain]) {
-      expect(args).not.toContain("-n");
-      expect(args).not.toContain("--negative-prompt");
-      expect(valueAfter(args, "-p")).toBe("anime girl");
-    }
-  });
-});
-
-describe("localSdcpp / どの画像もサンプラー lcm・CFG 1・512x768・同じシードで作る", () => {
-  it("S0046_05 passes lcm, CFG 1, the size, the seed and the LoRA for every image", async () => {
-    // GIVEN providers.image = local-sdcpp
+describe("localSdcpp / どの画像もサンプラー lcm・CFG 1.5・512x768・同じシードで作る", () => {
+  it("S0065_01 passes lcm, CFG 1.5, the size, the seed and the LoRA for every image", async () => {
+    // GIVEN 画像の工程を実行できる状態
     // WHEN 待機画像(下地から)と応援種別の画像(待機画像から)を同じシードで生成する
     const idle = await runWith({
       seed: 777,
@@ -228,15 +214,57 @@ describe("localSdcpp / どの画像もサンプラー lcm・CFG 1・512x768・�
       steps: 8,
     });
 
-    // THEN どちらもサンプラー lcm・CFG 1・512x768・同じ seed・LoRA の置き場を渡す
+    // THEN どちらもサンプラー lcm・CFG 1.5・512x768・同じ seed・LoRA の置き場を渡す
     for (const args of [...idle, ...derived]) {
       expect(valueAfter(args, "--sampling-method")).toBe("lcm");
-      expect(valueAfter(args, "--cfg-scale")).toBe("1");
+      expect(valueAfter(args, "--cfg-scale")).toBe("1.5");
       expect(valueAfter(args, "-W")).toBe("512");
       expect(valueAfter(args, "-H")).toBe("768");
       expect(valueAfter(args, "-s")).toBe("777");
       expect(valueAfter(args, "--lora-model-dir")).toBe("/opt/sd/lcm.safetensors");
     }
+  });
+});
+
+describe("localSdcpp / どの画像にも避ける語を渡す", () => {
+  it("S0065_02 passes the negative prompt for the idle and the derived images", async () => {
+    // GIVEN 画像の工程を実行できる状態
+    // WHEN 下絵つき・下絵なしの引数を組み立てる
+    const withInit = await runWith({ initImage: new Uint8Array([9]), strength: 0.65, steps: 8 });
+    const plain = await runWith({});
+
+    // THEN どちらも避ける語をネガティブプロンプトの引数として渡す
+    for (const args of [...withInit, ...plain]) {
+      expect(valueAfter(args, "--negative-prompt")).toBe(NEGATIVE_PROMPT);
+    }
+  });
+});
+
+describe("localSdcpp / 背景の色の語を足さない [否定]", () => {
+  it("S0065_03 adds no background color word to the prompt or the negative prompt", async () => {
+    // GIVEN 画像の工程を実行できる状態
+    // WHEN 下絵つき・下絵なしの引数を組み立てる
+    const withInit = await runWith({ initImage: new Uint8Array([9]), strength: 0.9, steps: 4 });
+    const plain = await runWith({});
+
+    // THEN プロンプトは渡されたものそのままで、避ける語にも背景の色の語が無い
+    for (const args of [...withInit, ...plain]) {
+      expect(valueAfter(args, "-p")).toBe("anime girl");
+      expect(valueAfter(args, "--negative-prompt")).not.toMatch(/background/);
+    }
+  });
+});
+
+describe("localSdcpp / 避ける語に画像タグを混ぜない [否定]", () => {
+  it("S0065_04 keeps the negative prompt fixed whatever the prompt holds", async () => {
+    // GIVEN プロンプト(画像タグを含む)に `multiple heads` や任意の語が入っている
+    // WHEN 避ける語の引数を組み立てる
+    const spawned = await runWith({ prompt: "1girl, multiple heads, zzz-unique-tag" });
+
+    // THEN 避ける語は固定の文字列のままで、画像タグはプロンプトの側にだけ入る
+    const args = spawned[0]!;
+    expect(valueAfter(args, "--negative-prompt")).toBe(NEGATIVE_PROMPT);
+    expect(valueAfter(args, "-p")).toBe("1girl, multiple heads, zzz-unique-tag");
   });
 });
 

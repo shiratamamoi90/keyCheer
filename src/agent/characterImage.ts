@@ -14,12 +14,14 @@
 import {
   applyBackgroundRemoval,
   applyImagePalette,
+  applyPersonProbabilityMask,
   buildImageTagPrompt,
   buildImageTagText,
   buildLocalImagePrompt,
   buildLocalImageTagPrompt,
   CHARACTER_IMAGE_KINDS,
   computeImagePalette,
+  computePersonProbability,
   LOCAL_DERIVED_STEPS,
   LOCAL_DERIVED_STRENGTH,
   LOCAL_IDLE_STEPS,
@@ -49,6 +51,9 @@ export interface LocalImageProcess {
   encodePng(image: RgbaImage): Uint8Array;
   loadIdleSource(): LocalIdleSource | null;
   saveIdleSource(source: LocalIdleSource): void;
+  // 人物を切り抜くモデル(u2netp。論点 0063)に sd.cpp が出した絵(縮小の前)を渡し、最初の出力(320x320)を返す。
+  // 渡さないとき・失敗したときは色で抜く(S0063_04)
+  segmentPerson?: (bytes: Uint8Array) => Promise<Float32Array>;
 }
 
 export interface GenerateCharacterImagesInput {
@@ -135,9 +140,27 @@ export async function generateCharacterImages(
   return { saved, failed, cancelled: false, tags };
 }
 
-// 縮小 → 背景を透明に(S0046_09)。色を減らすのは呼び出し側(待機画像は自分の色、応援種別の画像は待機画像の色)
-function decodeWithoutBackground(local: LocalImageProcess, bytes: Uint8Array): RgbaImage {
-  return applyBackgroundRemoval(local.decodeScaled(bytes));
+// 縮小 → 背景を透明に。色を減らすのは呼び出し側(待機画像は自分の色、応援種別の画像は待機画像の色)
+// S0063_05 3 枚それぞれ、その絵自身から出した確率で切り抜く
+// S0063_04 切り抜きに失敗したら色で抜くやり方(S0046_09)に戻す。重みや実行ライブラリが壊れていても、
+// 画像なしにするより色で抜いた絵を残すほうがよい(論点 0063 の決定)
+async function decodeWithoutBackground(
+  local: LocalImageProcess,
+  bytes: Uint8Array,
+): Promise<RgbaImage> {
+  const small = local.decodeScaled(bytes);
+  if (local.segmentPerson !== undefined) {
+    try {
+      const output = await local.segmentPerson(bytes);
+      return applyPersonProbabilityMask(
+        small,
+        computePersonProbability(output, small.width, small.height),
+      );
+    } catch {
+      // 下の色で抜くやり方に戻す
+    }
+  }
+  return applyBackgroundRemoval(small);
 }
 
 async function generateLocalImages(
@@ -172,7 +195,7 @@ async function generateLocalImages(
     strength: number,
     steps: number,
   ): Promise<Uint8Array | undefined> => {
-    // S0046_05 どの画像も同じシード・同じ大きさで作る
+    // S0065_01 どの画像も同じシード・同じ大きさで作る
     const [bytes] = await input.imageGenerator.generateImages({
       prompt,
       seed: input.seed,
@@ -199,7 +222,7 @@ async function generateLocalImages(
       LOCAL_IDLE_STEPS,
     );
     if (bytes === undefined) return null;
-    const cut = decodeWithoutBackground(local, bytes);
+    const cut = await decodeWithoutBackground(local, bytes);
     const palette = computeImagePalette(cut);
     const made = { bytes, tags, palette };
     local.saveIdleSource(made);
@@ -218,7 +241,7 @@ async function generateLocalImages(
       LOCAL_DERIVED_STEPS,
     );
     if (bytes === undefined) return false;
-    const cut = decodeWithoutBackground(local, bytes);
+    const cut = await decodeWithoutBackground(local, bytes);
     await input.writeImage(kind, local.encodePng(applyImagePalette(cut, idle.palette)));
     tags[kind] = kindTags;
     return true;

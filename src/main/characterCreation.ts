@@ -72,7 +72,7 @@ export interface ImageGenerationInput {
   encode?: (bytes: Uint8Array) => Uint8Array;
   // local-sdcpp の作り方(論点 0046)に要る画素の読み書き。generator が local-sdcpp のときだけ使い、
   // そのときは encode を通さない(縮小は decodeScaled が行い、後処理のあとに encodePng で PNG にする)
-  local?: Pick<LocalImageProcess, "makeCanvas" | "decodeScaled" | "encodePng">;
+  local?: Pick<LocalImageProcess, "makeCanvas" | "decodeScaled" | "encodePng" | "segmentPerson">;
 }
 
 // images: 画像の工程を通したときだけ持つ。missing = 作れなかった画像(S0036_10 のエラー表示に使う)

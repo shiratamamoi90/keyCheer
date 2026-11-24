@@ -20,7 +20,8 @@
     "services:model": "bash scripts/import-sarashina.sh",
     "services:status": "docker compose --profile cpu --profile gpu ps",
     "fetch:sdcpp": "bash scripts/fetch-sdcpp.sh",
-    "package:win": "npm run fetch:sdcpp && npm run build && electron-builder --win --dir",
+    "fetch:u2netp": "bash scripts/fetch-u2netp.sh",
+    "package:win": "npm run fetch:sdcpp && npm run fetch:u2netp && npm run build && electron-builder --win --dir",
     "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh"
   },
   "build": {
@@ -30,10 +31,29 @@
     "files": [
       "dist/**/*",
       "assets/licenses/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-node/bin/napi-v*/{linux,darwin}/**",
+      "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",
+      "!node_modules/onnxruntime-node/bin/napi-v*/win32/x64/DirectML.dll",
+      "!node_modules/onnxruntime-node/bin/napi-v*/win32/x64/dxcompiler.dll",
+      "!node_modules/onnxruntime-node/script/**",
+      "!node_modules/adm-zip/**",
+      "!node_modules/global-agent/**",
+      "!node_modules/matcher/**",
+      "!node_modules/serialize-error/**",
+      "!node_modules/globalthis/**",
+      "!node_modules/define-properties/**",
+      "!node_modules/object-keys/**",
+      "!node_modules/define-data-property/**",
+      "!node_modules/es-define-property/**",
+      "!node_modules/es-errors/**",
+      "!node_modules/gopd/**",
+      "!node_modules/has-property-descriptors/**",
+      "!node_modules/escape-string-regexp/**"
     ],
     "asarUnpack": [
-      "node_modules/uiohook-napi/**/*"
+      "node_modules/uiohook-napi/**/*",
+      "node_modules/onnxruntime-node/**/*"
     ],
     "extraResources": [
       {
@@ -45,6 +65,13 @@
           "!sd-server.exe",
           "!start-server.*"
         ]
+      },
+      {
+        "from": "vendor/u2netp",
+        "to": "u2netp",
+        "filter": [
+          "u2netp.onnx"
+        ]
       }
     ],
     "npmRebuild": false,
@@ -54,6 +81,7 @@
   },
   "dependencies": {
     "electron-store": "10.0.1",
+    "onnxruntime-node": "1.31.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "uiohook-napi": "1.5.4"
