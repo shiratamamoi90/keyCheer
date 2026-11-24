@@ -66,7 +66,7 @@ const voice: VoiceSynthesizer = {
   synthesize: async () => new Uint8Array([1]),
 };
 const image: ImageGenerator = {
-  id: "stability-ai",
+  id: "local-sdcpp",
   generateImages: async ({ prompt }) => [new TextEncoder().encode(prompt)],
 };
 
@@ -87,7 +87,7 @@ describe("総合: 生成 → キャラ画像 → 常時表示の窓 → 応援�
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.completed.image).toBe("stability-ai");
+    expect(result.completed.image).toBe("local-sdcpp");
 
     // --- 発動経路(index.ts と同じ受け渡し。表示状態は popup.ts と同じく popupView に通す)
     const emitted: CheerFiredPayload[] = [];

@@ -1,37 +1,33 @@
 // characterCreationIpc: キャラ作成(プール・wav 生成)の IPC 配線。
 // spec: 論点 0020
 //
-// **このモジュールだけが providers を import する。** index.ts(発動経路の配線)には
+// **このモジュールだけがプロバイダー実装を(providerFactory 経由で)使う。** index.ts(発動経路の配線)には
 // 混ぜない — 発動経路は外部依存ゼロという不変条件をコードの構造としても保つため
 // (index.ts 冒頭のコメントと eslint.config.js の mainCheerPathRestrictedPatterns)。
-// 生成先は providers 設定に従う(既定はローカル一式)。外部を選んだ場合は
-// checkGenerationGate で同意・API キーを確かめてからでないと組み立てに進まない。
+// 生成はローカルの 3 つだけ(論点 0054)。
 //
 // テスト対象外の I/O グルー。判定ロジックは characterCreation / characterStore 側にあり、
 // そちらで注入して縛っている。
 
 import { spawn as spawnChild } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { ipcMain, nativeImage, safeStorage, type BrowserWindow } from "electron";
-import Store from "electron-store";
-import { createSecretStore } from "../agent/secrets.js";
+import { ipcMain, nativeImage, type BrowserWindow } from "electron";
 import {
   buildImagesSummary,
   createGenerationRunner,
   saveGenerationResult,
 } from "./characterCreation.js";
 import {
-  createImageGeneratorFor,
-  createTextGeneratorFor,
-  createVoiceSynthesizerFor,
+  createImageGenerator,
+  createTextGenerator,
+  createVoiceSynthesizer,
 } from "./providerFactory.js";
-import { checkGenerationGate } from "../core/providers/gate.js";
-import { checkGenerationPreconditions } from "../core/providers/consent.js";
 import { applyRedBlueSwap, computeImageSize, type RgbaImage } from "../core/characterImage.js";
 import { createChildTracker, resolveSdcppPaths } from "./bundledSdcpp.js";
-import { registerImageWeights } from "./imageWeightsIpc.js";
 import type { ImageGenerationInput } from "./characterCreation.js";
 import { loadPool, loadGeneratedProfile, type CharacterFs } from "./characterStore.js";
+import { resolveImagePath } from "../agent/cheerPlayer.js";
+import { CHARACTER_IMAGE_KINDS } from "../core/characterImage.js";
 import { resolveGenerationStart } from "./generationStart.js";
 import { deleteCharacter } from "./characterDeletion.js";
 import { activateCharacter, loadCharacterList } from "./characterSelection.js";
@@ -41,20 +37,15 @@ import type {
   CharacterListItem,
   DeleteCharacterResult,
   GenerationProgressPayload,
+  ImageRegenerationProgressPayload,
+  RegenerateImagesResult,
   StartGenerationResult,
 } from "../core/shared/ipc.js";
 import type { MessagePool } from "../core/messagePool.js";
-import type { ProviderId } from "../core/shared/types.js";
 import type { AppStore } from "./store.js";
-import type { ProviderStore } from "./providerStore.js";
 
 export interface CharacterCreationDeps {
   store: AppStore;
-  providers: ProviderStore;
-  // API キー・voice ID の解決。既定は safeStorage(下の createDefaultSecretAccess)。
-  // 注入可能にしてあるのは、index.ts に secrets を import させないため
-  // (index.ts は発動経路の配線に徹する。eslint.config.js)。
-  secrets?: SecretAccess;
   fs: CharacterFs;
   userDataDir: string;
   // 使用中になったキャラクターのプールを発動経路へ渡す(再起動なしで使わせる)
@@ -88,31 +79,6 @@ function encodeCharacterImage(bytes: Uint8Array): Uint8Array {
   if (image.isEmpty()) throw new Error("image could not be decoded");
   const { width, height } = image.getSize();
   return new Uint8Array(image.resize(computeImageSize(width, height)).toPNG());
-}
-
-// API キーと voice ID の解決だけを表す最小の口。値はここで保持しない。
-export interface SecretAccess {
-  apiKeyFor: (id: ProviderId) => string | null;
-  voiceIdFor: (id: ProviderId) => string | null;
-}
-
-// 既定の解決:キーは safeStorage(平文 JSON に出さない — 不変条件)。
-// voice ID は [要確認] のため常に null。決まるまで ElevenLabs は組み立てに進まない。
-function createDefaultSecretAccess(): SecretAccess {
-  const blobs = new Store<Record<string, string>>({ name: "secrets" });
-  const secretStore = createSecretStore({
-    safeStorage,
-    backend: {
-      get: (id) => blobs.get(id),
-      set: (id, value) => blobs.set(id, value),
-      has: (id) => blobs.has(id),
-      delete: (id) => blobs.delete(id),
-    },
-  });
-  return {
-    apiKeyFor: (id) => secretStore.getApiKey(id),
-    voiceIdFor: () => null,
-  };
 }
 
 // --- local-sdcpp の作り方に要る画素の読み書き(論点 0046)。Electron の nativeImage の画素は B・G・R・A の順 ---
@@ -185,7 +151,6 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
   };
   const loadPoolOf = (characterId: string): MessagePool | null =>
     loadPool(deps.fs, deps.userDataDir, characterId);
-  const secrets = deps.secrets ?? createDefaultSecretAccess();
 
   const emit = (payload: GenerationProgressPayload): void => {
     const win = deps.getWindow();
@@ -206,7 +171,6 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       }
 
       // 再開か作り直しか(論点 0038)。作り直しで確認がまだなら、何も組み立てず・何も消さずに返す。
-      // 同意・キーの確認より先に置く — 確認で取りやめる人に同意ダイアログを出さないため。
       // 確認済みの印は true のときだけ受け付ける(renderer からの値は信頼境界の外)。
       const isRebuildConfirmed =
         typeof options === "object" &&
@@ -227,64 +191,33 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
         return { ok: false, reason: "rebuild-confirmation-required" };
       }
 
-      const system = deps.store.loadSystem();
-      const selection = deps.providers.loadProviders();
-
-      // シナリオ: 外部選択時は同意ダイアログを経る / APIキー未設定で外部を選んだ場合 [異常系]
-      // ここを通らない限り外部への送信は起こらない(組み立てにも進まない)。
-      const gate = checkGenerationGate({
-        selection,
-        consent: deps.providers.loadConsent(),
-        hasApiKey: (id) => secrets.apiKeyFor(id) !== null,
-      });
-      if (!gate.ok) return { ok: false, reason: gate.reason, provider: gate.provider };
-
       const factoryDeps = {
-        system,
-        apiKeyFor: secrets.apiKeyFor,
-        voiceIdFor: secrets.voiceIdFor,
+        system: deps.store.loadSystem(),
         ...(sdcppRuntime !== undefined ? { sdcpp: sdcppRuntime } : {}),
       };
-      const text = createTextGeneratorFor(selection.text, factoryDeps);
-      if (!text.ok) return { ok: false, reason: text.reason, provider: selection.text };
-      const voice = createVoiceSynthesizerFor(selection.voice, factoryDeps);
-      if (!voice.ok) return { ok: false, reason: voice.reason, provider: selection.voice };
+      const textGenerator = createTextGenerator(factoryDeps);
+      const synthesizer = createVoiceSynthesizer(factoryDeps);
 
-      // 画像(論点 0036)。画像プロバイダーが使えないときは文言・音声を止めず、画像なしで生成する(S0036_10)。
-      // 外部の画像プロバイダーは同意とキーが揃わない限り組み立てない — ここを通らなければ送信は起こらない
-      // (checkGenerationGate は text / voice だけを見る)。
-      const imagePrecondition = checkGenerationPreconditions({
-        provider: selection.image,
-        hasApiKey: secrets.apiKeyFor(selection.image) !== null,
-        consent: deps.providers.loadConsent(),
-      });
-      const imageBuilt = imagePrecondition.ok
-        ? createImageGeneratorFor(selection.image, factoryDeps)
-        : null;
-      const image: ImageGenerationInput | undefined =
-        imageBuilt !== null && imageBuilt.ok
-          ? {
-              generator: imageBuilt.generator,
-              tagGenerator: text.generator,
-              seed: IMAGE_SEED,
-              width: IMAGE_GENERATION_WIDTH,
-              height: IMAGE_GENERATION_HEIGHT,
-              encode: encodeCharacterImage,
-              // local-sdcpp のときだけ使われる(外部の画像プロバイダーには当てない。S0046_16)
-              local: {
-                makeCanvas: makeWhiteCanvas,
-                decodeScaled: decodeScaledImage,
-                encodePng: encodeImagePng,
-              },
-            }
-          : undefined;
+      // 画像(論点 0036)。sd.cpp か重みが無いときは文言・音声を止めず、画像なしで生成する(S0036_10)。
+      const imageBuilt = createImageGenerator(factoryDeps);
+      const image: ImageGenerationInput | undefined = imageBuilt.ok
+        ? {
+            generator: imageBuilt.generator,
+            tagGenerator: textGenerator,
+            seed: IMAGE_SEED,
+            width: IMAGE_GENERATION_WIDTH,
+            height: IMAGE_GENERATION_HEIGHT,
+            encode: encodeCharacterImage,
+            local: {
+              makeCanvas: makeWhiteCanvas,
+              decodeScaled: decodeScaledImage,
+              encodePng: encodeImagePng,
+            },
+          }
+        : undefined;
 
       // 画像の工程に進めない理由(完了の通知に載せて画面に出す。S0036_10)
-      const imageUnavailableReason = !imagePrecondition.ok
-        ? imagePrecondition.reason
-        : imageBuilt !== null && !imageBuilt.ok
-          ? imageBuilt.reason
-          : null;
+      const imageUnavailableReason = imageBuilt.ok ? null : imageBuilt.reason;
 
       // 再開なら未完了バケットだけを続行する。作り直しでは渡さない(古い画像も消してから作る。S0036_13)
       const resumeFrom = start.resumeFrom;
@@ -295,8 +228,8 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
         character: { name: character.name, personality: character.personality },
         userDataDir: deps.userDataDir,
         fs: deps.fs,
-        textGenerator: text.generator,
-        synthesizer: voice.synthesizer,
+        textGenerator,
+        synthesizer,
         speakerId: character.voicevoxSpeakerId,
         ...(resumeFrom !== undefined ? { resumeFrom } : {}),
         ...(image !== undefined ? { image } : {}),
@@ -340,6 +273,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
     },
   );
 
+  // 中断は生成と画像だけの作り直しで共通(runner を共有する)
   ipcMain.handle(IpcChannel.CancelGeneration, () => {
     runner.cancel();
   });
@@ -350,7 +284,88 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       loadPool: loadPoolOf,
       generation,
       loadGeneratedProfile: (id) => loadGeneratedProfile(deps.fs, deps.userDataDir, id),
+      loadImagePaths: (id) =>
+        Object.fromEntries(
+          CHARACTER_IMAGE_KINDS.map((kind) => [
+            kind,
+            resolveImagePath(deps.userDataDir, id, kind),
+          ]).filter(([, path]) => deps.fs.exists(path as string)),
+        ),
     }),
+  );
+
+  // S0050_07 画像の重み・sd.cpp が置き場にあって画像を作れるか
+  ipcMain.handle(
+    IpcChannel.CanMakeImages,
+    (): boolean =>
+      createImageGenerator({
+        system: deps.store.loadSystem(),
+        ...(sdcppRuntime !== undefined ? { sdcpp: sdcppRuntime } : {}),
+      }).ok,
+  );
+
+  // 論点 0050 画像だけ作り直す。文言・wav は変えない(S0050_10)。生成と重ねない(S0050_14。runner を共有する)
+  const emitImages = (payload: ImageRegenerationProgressPayload): void => {
+    const win = deps.getWindow();
+    if (win !== null && !win.isDestroyed()) {
+      win.webContents.send(IpcChannel.ImageRegenerationProgress, payload);
+    }
+  };
+  ipcMain.handle(
+    IpcChannel.RegenerateImages,
+    (_event, characterId: unknown): RegenerateImagesResult => {
+      const character = deps.store.loadCharacters().find((c) => c.id === characterId);
+      if (character === undefined) return { ok: false, reason: "no-character" };
+      const pool = loadPoolOf(character.id);
+      if (pool === null) return { ok: false, reason: "no-pool" };
+      if (runner.isRunning()) return { ok: false, reason: "already-running" };
+      const factoryDeps = {
+        system: deps.store.loadSystem(),
+        ...(sdcppRuntime !== undefined ? { sdcpp: sdcppRuntime } : {}),
+      };
+      const imageBuilt = createImageGenerator(factoryDeps);
+      if (!imageBuilt.ok) return { ok: false, reason: imageBuilt.reason };
+
+      generatingCharacterId = character.id;
+      void runner
+        .startImagesOnly({
+          characterId: character.id,
+          character: { name: character.name, personality: character.personality },
+          pool,
+          userDataDir: deps.userDataDir,
+          fs: deps.fs,
+          image: {
+            generator: imageBuilt.generator,
+            tagGenerator: createTextGenerator(factoryDeps),
+            seed: IMAGE_SEED,
+            width: IMAGE_GENERATION_WIDTH,
+            height: IMAGE_GENERATION_HEIGHT,
+            encode: encodeCharacterImage,
+            local: {
+              makeCanvas: makeWhiteCanvas,
+              decodeScaled: decodeScaledImage,
+              encodePng: encodeImagePng,
+            },
+          },
+          onProgress: (p) =>
+            emitImages({
+              type: "progress",
+              characterId: character.id,
+              done: p.done,
+              total: p.total,
+            }),
+        })
+        .then((result) => {
+          generatingCharacterId = null;
+          if (result.ok) {
+            deps.store.recordGeneratedBy(character.id, result.completed, []);
+            emitImages({ type: "done", characterId: character.id });
+          } else if (result.reason !== "already-running") {
+            emitImages({ type: "failed", characterId: character.id, reason: result.reason });
+          }
+        });
+      return { ok: true };
+    },
   );
 
   ipcMain.handle(
@@ -384,13 +399,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       ),
   );
 
-  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)。生成側の関心なので、ここから登録する
-  registerImageWeights({
-    store: deps.store,
-    providers: deps.providers,
-    userDataDir: deps.userDataDir,
-    getWindow: deps.getWindow,
-  });
+  // 画像の重みのライセンスの表示(論点 0047)。生成側の関心なので、ここから登録する
 
   return { stopSdcpp: () => sdcppChildren.stopAll() };
 }

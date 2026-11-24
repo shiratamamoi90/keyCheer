@@ -30,8 +30,11 @@ import {
   clearImages,
   loadIdleSource,
   saveIdleSource,
+  loadImageGenerationRecord,
+  saveImageGenerationRecord,
   type CharacterFs,
 } from "./characterStore.js";
+import type { LocalIdleSource } from "../agent/characterImage.js";
 
 export type GenerationPhase = "text" | "voice" | "image";
 
@@ -112,8 +115,25 @@ export type GenerationResult =
       cleared?: (keyof GeneratedBy)[];
     };
 
+// 画像だけ作り直す(論点 0050)。image.seed は既定のシード(記録が無いときの元。S0050_12)
+export interface StartImagesOnlyInput {
+  characterId: string;
+  character: { name: string; personality: string };
+  pool: MessagePool;
+  userDataDir: string;
+  fs: CharacterFs;
+  image: ImageGenerationInput;
+  shouldCancel?: () => boolean;
+  onProgress?: (progress: GenerationProgress) => void;
+}
+
+export type ImagesOnlyResult =
+  | { ok: true; completed: GeneratedBy }
+  | { ok: false; reason: "images-failed" | "cancelled" | "already-running" };
+
 export interface GenerationRunner {
   start(input: StartGenerationInput): Promise<GenerationResult>;
+  startImagesOnly(input: StartImagesOnlyInput): Promise<ImagesOnlyResult>;
   isRunning(): boolean;
   cancel(): void;
 }
@@ -299,6 +319,14 @@ export function createGenerationRunner(): GenerationRunner {
         // S0036_16 3 枚揃ったら image を記録 / S0036_17 欠けたら記録せず、前の記録も消す
         const saved = CHARACTER_IMAGE_KINDS.filter(isSaved);
         const isComplete = saved.length === CHARACTER_IMAGE_KINDS.length;
+        // S0050_08 生成で画像タグとシードを記録する(3 枚そろい、3 つの画像タグが分かるときだけ)
+        const recordTags = completeTags(images.tags);
+        if (isComplete && recordTags !== null) {
+          saveImageGenerationRecord(input.fs, input.userDataDir, input.characterId, {
+            seed: image.seed,
+            imageTags: recordTags,
+          });
+        }
         return {
           ok: true,
           pool: state.pool,
@@ -312,7 +340,84 @@ export function createGenerationRunner(): GenerationRunner {
         running = false;
       }
     },
+
+    async startImagesOnly(input: StartImagesOnlyInput): Promise<ImagesOnlyResult> {
+      // S0050_14 実行中は生成と画像だけの作り直しを重ねない(running を生成と共有する)
+      if (running) return { ok: false, reason: "already-running" };
+      running = true;
+      cancelled = false;
+      try {
+        const shouldCancel = (): boolean => cancelled || (input.shouldCancel?.() ?? false);
+        const image = input.image;
+        const record = loadImageGenerationRecord(input.fs, input.userDataDir, input.characterId);
+        // S0050_09 記録のシード + 1 / S0050_12 記録が無ければ既定のシード + 1
+        const seed = (record?.seed ?? image.seed) + 1;
+        const local =
+          image.local !== undefined && image.generator.id === "local-sdcpp"
+            ? image.local
+            : undefined;
+
+        // S0050_11 3 枚そろうまでは書かない — 作った絵はここに溜め、そろったら置き換える
+        const made = new Map<CharacterImageKind, Uint8Array>();
+        const encode = local === undefined ? (image.encode ?? ((b: Uint8Array) => b)) : undefined;
+        // 縮小前の待機画像は、この回の中だけで使う(中断しても再開しない。置き場にも残さない)
+        let idleSource: LocalIdleSource | null = null;
+
+        const images = await generateCharacterImages({
+          character: input.character,
+          pool: input.pool,
+          tagGenerator: image.tagGenerator,
+          imageGenerator: image.generator,
+          seed,
+          width: image.width,
+          height: image.height,
+          timeoutMsPerImage: image.timeoutMsPerImage ?? DEFAULT_TIMEOUT_MS_PER_IMAGE,
+          ...(record !== null ? { imageTags: record.imageTags } : {}),
+          writeImage: (kind, bytes) => {
+            made.set(kind, encode !== undefined ? encode(bytes) : bytes);
+          },
+          ...(local !== undefined
+            ? {
+                local: {
+                  ...local,
+                  loadIdleSource: () => idleSource,
+                  saveIdleSource: (source) => {
+                    idleSource = source;
+                  },
+                },
+              }
+            : {}),
+          shouldCancel,
+          onProgress: (done, total) => input.onProgress?.({ phase: "image", done, total }),
+        });
+
+        if (images.cancelled) return { ok: false, reason: "cancelled" };
+        const tags = completeTags(images.tags);
+        if (made.size !== CHARACTER_IMAGE_KINDS.length || tags === null) {
+          return { ok: false, reason: "images-failed" };
+        }
+
+        const write = createImageWriter(input.fs, input.userDataDir, input.characterId);
+        for (const kind of CHARACTER_IMAGE_KINDS) write(kind, made.get(kind)!);
+        saveImageGenerationRecord(input.fs, input.userDataDir, input.characterId, {
+          seed,
+          imageTags: tags,
+        });
+        return { ok: true, completed: { image: image.generator.id } };
+      } finally {
+        running = false;
+      }
+    },
   };
+}
+
+// 3 つの画像タグがそろっていればその組を、欠けていれば null を返す
+function completeTags(
+  tags: Partial<Record<CharacterImageKind, string>>,
+): Record<CharacterImageKind, string> | null {
+  const { idle, regular, milestone } = tags;
+  if (idle === undefined || regular === undefined || milestone === undefined) return null;
+  return { idle, regular, milestone };
 }
 
 export interface GenerationResultDeps {

@@ -37,36 +37,35 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
     // 0032 / 0033 で一覧・削除・切り替え・生成の設定・表示の通知を追加し、getCharacter を外した。
     // 0036 で常時表示の設定(取得・変更)と待機画像の通知を追加した。
     // 0052 でキャラの窓のポインタの通知(絵をつかんで動かす)を追加した。
-    // 0042 / 0047 で画像の重みの状態・取得の開始と中断・進捗の通知を追加した。
+    // 0047 で画像の重みのライセンスの全文を追加した(取得の口は 0055 で外した)。
+    // 0054 で外部プロバイダーの選択と同意を外した。0057 でテーマ(取得・変更・OS の変化の通知)を追加した。
+    // 0050 で画像だけ作り直す(開始・進捗の通知)と、画像を作れるかの問い合わせを追加した。
     expect(Object.keys(api).sort()).toEqual([
       "activateCharacter",
+      "canMakeImages",
       "cancelGeneration",
-      "cancelImageWeightsFetch",
       "deleteCharacter",
-      "getConsent",
       "getGenerationConfig",
-      "getImageWeightsLicenseTexts",
-      "getImageWeightsStatus",
       "getPopupDisplay",
-      "getProviders",
       "getSpeakers",
       "getStats",
+      "getTheme",
       "getTriggerConfig",
-      "grantConsent",
       "listCharacters",
       "onCharacterDisplay",
       "onCheerFired",
       "onConfigMigrated",
       "onGenerationProgress",
-      "onImageWeightsProgress",
+      "onImageRegenerationProgress",
       "onMainWindowShown",
+      "onOsThemeChanged",
+      "regenerateImages",
       "saveCharacter",
       "sendPopupPointer",
       "setGenerationConfig",
       "setPopupDisplay",
-      "setProviders",
+      "setTheme",
       "startGeneration",
-      "startImageWeightsFetch",
       "updateTriggerConfig",
     ]);
     for (const value of Object.values(api)) {
@@ -126,25 +125,5 @@ describe("preload / IPC の橋渡し", () => {
       l({}, { field: "regular", from: 100, to: 50 });
     }
     expect(seen).toEqual([]);
-  });
-});
-
-describe("preload / 同意ダイアログに ToS リンクと必須チェック", () => {
-  it("S0016_04 bridges grantConsent to its own channel with the provider id", async () => {
-    const ipc = fakeIpc();
-    await createKeyCheerApi(ipc).grantConsent("openai");
-    expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GrantConsent, "openai");
-  });
-
-  it("bridges getConsent without arguments", async () => {
-    const ipc = fakeIpc();
-    await createKeyCheerApi(ipc).getConsent();
-    expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GetConsent);
-  });
-
-  it("keeps consent off the cheer channels [不変条件]", () => {
-    // 同意は生成側の関心。発動経路のチャンネルに相乗りさせない。
-    expect(IpcChannel.GrantConsent).not.toBe(IpcChannel.CheerFired);
-    expect(IpcChannel.GetConsent).not.toBe(IpcChannel.CheerFired);
   });
 });

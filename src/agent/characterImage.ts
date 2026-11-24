@@ -4,10 +4,12 @@
 // 画像 1 枚ごとに、テキストプロバイダーへ画像タグを要求 → 同じシードで画像プロバイダーへ 1 枚要求 → 書き出し。
 // プロバイダーと書き出し先は注入する(実 HTTP・子プロセス・ファイルはテストで起こさない)。
 // 1 枚の失敗は握り潰さず failed に数え、残りの画像は続ける(生成全体の成否は呼び出し側が決める)。
-// 自動で別プロバイダーへ切り替えない・自動リトライしない(S0016_06 / C6)。
+// 自動リトライしない(C6)。
 //
-// local-sdcpp だけは作り方が違う(論点 0045 / 0046。docs/integrations.md「ローカル画像生成の作り方」):
-// 待機画像を白の下地から描き、応援種別の画像は待機画像を下絵に描き直す。保存の前に縮小し、背景を透明にして色を減らす。
+// 作り方(論点 0045 / 0046。docs/integrations.md「ローカル画像生成の作り方」):待機画像を白の下地から描き、
+// 応援種別の画像は待機画像を下絵に描き直す。保存の前に縮小し、背景を透明にして色を減らす。
+// `local`(画素の読み書き)を渡さない呼び出しは、画像タグだけで 3 枚を作る単純な経路になる。
+// 生成は local-sdcpp だけ(論点 0054)なので本番は必ず `local` を渡す。単純な経路は画像タグの要求の部品(S0036_01〜05)を縛るのに残す
 
 import {
   applyBackgroundRemoval,
@@ -29,6 +31,7 @@ import {
   type RgbaImage,
 } from "../core/characterImage.js";
 import type { MessagePool } from "../core/messagePool.js";
+import type { CheerType } from "../core/shared/types.js";
 import type { ImageGenerator, ImageTagGenerator } from "../core/providers/types.js";
 
 // 応援種別の画像を作るのに要る、待機画像の情報。中断して再開するまでの間だけ残す(S0046_17〜19)。
@@ -59,7 +62,9 @@ export interface GenerateCharacterImagesInput {
   timeoutMsPerImage: number;
   // 作る画像(再開時は保存済みを除いて渡す)。省略時は 3 枚すべて
   kinds?: readonly CharacterImageKind[];
-  // local-sdcpp の作り方に要る I/O。imageGenerator が local-sdcpp のときだけ使う(S0046_16)
+  // 画像だけ作り直すとき(論点 0050 S0050_09)は、記録した画像タグを渡す。渡した種類は画像タグを要求しない
+  imageTags?: Partial<Record<CharacterImageKind, string>>;
+  // ローカル画像生成の作り方に要る I/O
   local?: LocalImageProcess;
   writeImage: (kind: CharacterImageKind, bytes: Uint8Array) => void | Promise<void>;
   shouldCancel?: () => boolean;
@@ -70,35 +75,43 @@ export interface CharacterImagesResult {
   saved: CharacterImageKind[];
   failed: CharacterImageKind[];
   cancelled: boolean;
+  // 保存した画像に使った画像タグ(画像の生成記録に残す。論点 0050 S0050_08)
+  tags: Partial<Record<CharacterImageKind, string>>;
 }
 
 export async function generateCharacterImages(
   input: GenerateCharacterImagesInput,
 ): Promise<CharacterImagesResult> {
   const kinds = input.kinds ?? CHARACTER_IMAGE_KINDS;
-  // S0046_16 外部の画像プロバイダーにはローカルの作り方を当てない
-  if (input.local !== undefined && input.imageGenerator.id === "local-sdcpp") {
+  if (input.local !== undefined) {
     return generateLocalImages(input, input.local, kinds);
   }
   const saved: CharacterImageKind[] = [];
   const failed: CharacterImageKind[] = [];
+  const tags: Partial<Record<CharacterImageKind, string>> = {};
+
+  const requestTags = async (kind: CharacterImageKind): Promise<string | null> => {
+    const given = input.imageTags?.[kind];
+    if (given !== undefined) return given;
+    const raw = await input.tagGenerator.generateImageTags({
+      prompt: buildImageTagPrompt(input.character, kind, input.pool),
+      seed: input.seed,
+      timeoutMs: input.timeoutMsPerImage,
+    });
+    return validateImageTagResponse(raw).length > 0 ? null : buildImageTagText(raw);
+  };
 
   for (const kind of kinds) {
     // 中断:残りの画像は saved にも failed にも入れない(再開で作る)
-    if (input.shouldCancel?.()) return { saved, failed, cancelled: true };
+    if (input.shouldCancel?.()) return { saved, failed, cancelled: true, tags };
 
     try {
-      const raw = await input.tagGenerator.generateImageTags({
-        prompt: buildImageTagPrompt(input.character, kind, input.pool),
-        seed: input.seed,
-        timeoutMs: input.timeoutMsPerImage,
-      });
-      if (validateImageTagResponse(raw).length > 0) {
+      const tagText = await requestTags(kind);
+      if (tagText === null) {
         failed.push(kind);
       } else {
-        // S0036_06 3 枚は同じシードで作る — 違うのはプロンプトの画像タグだけ
         const [bytes] = await input.imageGenerator.generateImages({
-          prompt: buildImageTagText(raw),
+          prompt: tagText,
           seed: input.seed,
           count: 1,
           width: input.width,
@@ -110,6 +123,7 @@ export async function generateCharacterImages(
         } else {
           await input.writeImage(kind, bytes);
           saved.push(kind);
+          tags[kind] = tagText;
         }
       }
     } catch {
@@ -118,7 +132,7 @@ export async function generateCharacterImages(
     input.onProgress?.(saved.length + failed.length, kinds.length);
   }
 
-  return { saved, failed, cancelled: false };
+  return { saved, failed, cancelled: false, tags };
 }
 
 // 縮小 → 背景を透明に(S0046_09)。色を減らすのは呼び出し側(待機画像は自分の色、応援種別の画像は待機画像の色)
@@ -135,11 +149,16 @@ async function generateLocalImages(
   const kinds = CHARACTER_IMAGE_KINDS.filter((kind) => requestedKinds.includes(kind));
   const saved: CharacterImageKind[] = [];
   const failed: CharacterImageKind[] = [];
+  const tags: Partial<Record<CharacterImageKind, string>> = {};
   // 待機画像を作らない回(再開)は、残してある待機画像の情報を使う(S0046_17)
   let source = kinds.includes("idle") ? null : local.loadIdleSource();
+  if (source !== null) tags.idle = source.tags;
 
   const requestTags = async (kind: CharacterImageKind): Promise<string | null> => {
-    // S0049_01 / S0049_02 待機画像は見た目を、応援種別の画像は表情とポーズだけを訊く
+    // S0050_09 記録した画像タグがあれば要求しない
+    const given = input.imageTags?.[kind];
+    if (given !== undefined) return given;
+    // S0049_01 / S0062_05 待機画像は見た目を、応援種別の画像は表情だけを訊く
     const raw = await input.tagGenerator.generateImageTags({
       prompt: buildLocalImageTagPrompt(input.character, kind, input.pool),
       seed: input.seed,
@@ -189,11 +208,11 @@ async function generateLocalImages(
   };
 
   // S0046_07 応援種別の画像は待機画像を下絵に描く / S0046_13 待機画像の色だけで塗る
-  const makeDerived = async (kind: CharacterImageKind, idle: LocalIdleSource): Promise<boolean> => {
-    const tags = await requestTags(kind);
-    if (tags === null) return false;
+  const makeDerived = async (kind: CheerType, idle: LocalIdleSource): Promise<boolean> => {
+    const kindTags = await requestTags(kind);
+    if (kindTags === null) return false;
     const bytes = await requestImage(
-      buildLocalImagePrompt(idle.tags, tags),
+      buildLocalImagePrompt(idle.tags, { kind, tags: kindTags }),
       idle.bytes,
       LOCAL_DERIVED_STRENGTH,
       LOCAL_DERIVED_STEPS,
@@ -201,11 +220,12 @@ async function generateLocalImages(
     if (bytes === undefined) return false;
     const cut = decodeWithoutBackground(local, bytes);
     await input.writeImage(kind, local.encodePng(applyImagePalette(cut, idle.palette)));
+    tags[kind] = kindTags;
     return true;
   };
 
   for (const kind of kinds) {
-    if (input.shouldCancel?.()) return { saved, failed, cancelled: true };
+    if (input.shouldCancel?.()) return { saved, failed, cancelled: true, tags };
 
     if (kind === "idle") {
       try {
@@ -213,7 +233,10 @@ async function generateLocalImages(
       } catch {
         source = null;
       }
-      if (source !== null) saved.push(kind);
+      if (source !== null) {
+        saved.push(kind);
+        tags.idle = source.tags;
+      }
     } else if (source !== null) {
       let isMade = false;
       try {
@@ -229,10 +252,10 @@ async function generateLocalImages(
       const rest = kinds.filter((k) => !saved.includes(k) && !failed.includes(k));
       failed.push(...rest);
       input.onProgress?.(saved.length + failed.length, kinds.length);
-      return { saved, failed, cancelled: false };
+      return { saved, failed, cancelled: false, tags };
     }
     input.onProgress?.(saved.length + failed.length, kinds.length);
   }
 
-  return { saved, failed, cancelled: false };
+  return { saved, failed, cancelled: false, tags };
 }

@@ -23,7 +23,6 @@ vi.mock("electron", () => ({
 
 const { registerIpcHandlers } = await import("../../src/main/ipc.js");
 const { createAppStore } = await import("../../src/main/store.js");
-const { createProviderStore } = await import("../../src/main/providerStore.js");
 const { createCheerRuntime } = await import("../../src/main/cheerRuntime.js");
 const { IpcChannel } = await import("../../src/core/shared/ipc.js");
 const { DEFAULT_TRIGGER_CONFIG } = await import("../../src/core/shared/types.js");
@@ -71,7 +70,7 @@ function bootstrap() {
 
   registerIpcHandlers({
     store,
-    providers: createProviderStore(raw),
+    isOsDark: () => false,
     onConfigUpdated: (next) => runtime.setConfig(next),
     onPopupDisplayUpdated: () => {},
     onPopupPointer: () => {},

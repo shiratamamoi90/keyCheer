@@ -57,7 +57,7 @@ function makeProviders(names: readonly string[]) {
     synthesize: async () => new Uint8Array([1]),
   };
   const image: ImageGenerator = {
-    id: "stability-ai",
+    id: "local-sdcpp",
     generateImages: async ({ prompt }) => [new TextEncoder().encode(prompt)],
   };
   return { text, voice, image, textCalls };

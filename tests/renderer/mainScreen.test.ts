@@ -1,5 +1,5 @@
 // renderer/mainScreen: メインウィンドウの画面(タブ)の状態遷移と、各画面に並べる一覧(純粋関数)。
-// 要件: docs/main-window.md「メインウィンドウの画面」(論点 0033)
+// 要件: docs/main-window.md「メインウィンドウの画面」(論点 0033 / 0061)
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここでは「どの画面を出すか」「何を並べるか」だけを縛る。
 //
 // 一覧の元は main が渡すキャラクターの一覧(id・プロフィール・プールの有無・生成中・使用中)。
@@ -12,7 +12,7 @@ import {
   resolveInitialScreen,
   generationTabBadge,
   canShowGenerationControls,
-  buildGenerationCandidates,
+  buildGenerationHeading,
   buildSwitchList,
   switchEmptyNotice,
   type MainScreenState,
@@ -30,6 +30,7 @@ function item(id: string, over: Partial<CharacterListItem> = {}): CharacterListI
     isGenerating: false,
     isActive: false,
     hasProfileChanged: false,
+    images: {},
     ...over,
   };
 }
@@ -46,9 +47,9 @@ function stateOn(screen: MainScreenState["screen"]): MainScreenState {
   return { ...initialMainScreenState(), screen };
 }
 
-describe("mainScreen / 4 つの画面をタブでいつでも切り替えられる", () => {
-  it("S0033_01 switches to any of the four screens from any screen, even while generating", () => {
-    expect(MAIN_SCREENS).toEqual(["save", "generate", "switch", "settings"]);
+describe("mainScreen / 3 つの画面をタブでいつでも切り替えられる", () => {
+  it("S0061_01 switches to any of the three screens from any screen, even while generating", () => {
+    expect(MAIN_SCREENS).toEqual(["character", "switch", "settings"]);
     for (const from of MAIN_SCREENS) {
       for (const to of MAIN_SCREENS) {
         const state = { ...stateOn(from), generation: GENERATING };
@@ -58,9 +59,9 @@ describe("mainScreen / 4 つの画面をタブでいつでも切り替えられ�
   });
 });
 
-describe("mainScreen / キャラクターが 0 件なら保存画面を最初に出す", () => {
-  it("S0033_02 resolves the save screen for an empty list", () => {
-    expect(resolveInitialScreen([])).toBe("save");
+describe("mainScreen / キャラクターが 0 件ならキャラクター画面を最初に出す", () => {
+  it("S0033_02 resolves the character screen for an empty list", () => {
+    expect(resolveInitialScreen([])).toBe("character");
   });
 });
 
@@ -72,9 +73,9 @@ describe("mainScreen / プールのあるキャラクターがあれば切り替
   });
 });
 
-describe("mainScreen / 保存済みでもプールのあるものが無ければ生成画面を最初に出す [境界]", () => {
-  it("S0033_04 resolves the generate screen when characters exist but none has a pool", () => {
-    expect(resolveInitialScreen([item("char-c"), item("char-d")])).toBe("generate");
+describe("mainScreen / 保存済みでもプールのあるものが無ければキャラクター画面を最初に出す [境界]", () => {
+  it("S0033_04 resolves the character screen when characters exist but none has a pool", () => {
+    expect(resolveInitialScreen([item("char-c"), item("char-d")])).toBe("character");
   });
 });
 
@@ -100,17 +101,17 @@ describe("mainScreen / 表示中のウィンドウは開いている画面を変
 
 describe("mainScreen / 生成中にほかの画面へ移っても生成は続く [否定]", () => {
   it("S0033_06 keeps the generation progress across tab changes", () => {
-    const state = { ...stateOn("generate"), generation: GENERATING };
+    const state = { ...stateOn("character"), generation: GENERATING };
 
     const away = applyMainScreenEvent(state, { type: "tab-selected", screen: "switch" });
-    const back = applyMainScreenEvent(away, { type: "tab-selected", screen: "generate" });
+    const back = applyMainScreenEvent(away, { type: "tab-selected", screen: "character" });
 
     expect(away.generation).toEqual(GENERATING);
     expect(back.generation).toEqual(GENERATING);
   });
 });
 
-describe("mainScreen / 生成中はほかの画面でも生成タブに「生成中」と示す", () => {
+describe("mainScreen / 生成中はほかの画面でもキャラクタータブに「生成中」と示す", () => {
   it("S0033_07 shows the badge while generating and clears it when generation ends", () => {
     const done = applyGenerationEvent(GENERATING, { type: "done", synthesized: 1, missing: 0 });
     const failed = applyGenerationEvent(GENERATING, { type: "failed", reason: "cancelled" });
@@ -122,25 +123,38 @@ describe("mainScreen / 生成中はほかの画面でも生成タブに「生成
   });
 });
 
-describe("mainScreen / 進捗と中断は生成画面だけに出す [否定]", () => {
-  it("S0033_08 shows progress and cancel only on the generate screen", () => {
-    expect(canShowGenerationControls("generate", GENERATING)).toBe(true);
-    for (const screen of ["save", "switch", "settings"] as const) {
+describe("mainScreen / 進捗と中断はキャラクター画面だけに出す [否定]", () => {
+  it("S0033_08 shows progress and cancel only on the character screen", () => {
+    expect(canShowGenerationControls("character", GENERATING)).toBe(true);
+    for (const screen of ["switch", "settings"] as const) {
       expect(canShowGenerationControls(screen, GENERATING)).toBe(false);
     }
   });
 });
 
-describe("mainScreen / 生成画面で選べるのは保存済みのキャラクターだけ [否定]", () => {
-  it("S0033_09 lists saved characters only and never the unsaved draft", () => {
-    const state: MainScreenState = {
-      ...stateOn("generate"),
-      items: [item("char-c"), item("char-d", { hasPool: true })],
-      draft: { name: "書きかけ", personality: "未保存", speakerId: 1 },
-    };
+describe("mainScreen / 進捗と結果には生成しているキャラクターの名前を示す [境界]", () => {
+  it("S0061_06 names the generating character even after another one is selected for editing", () => {
+    const loaded = applyMainScreenEvent(stateOn("character"), {
+      type: "characters-loaded",
+      items: [item("char-c"), item("char-d")],
+    });
+    expect(buildGenerationHeading(loaded)).toBeNull();
 
-    expect(buildGenerationCandidates(state).map((c) => c.id)).toEqual(["char-c", "char-d"]);
-    expect(buildGenerationCandidates(state).map((c) => c.name)).not.toContain("書きかけ");
+    const started = applyMainScreenEvent(loaded, {
+      type: "generation-started",
+      characterId: "char-c",
+    });
+    const running = applyMainScreenEvent(started, {
+      type: "generation",
+      payload: { type: "progress", phase: "text", done: 1, total: 24 },
+    });
+    const done = applyMainScreenEvent(running, {
+      type: "generation",
+      payload: { type: "done", synthesized: 48, missing: 0 },
+    });
+
+    expect(buildGenerationHeading(running)).toBe("名前-char-c の生成");
+    expect(buildGenerationHeading(done)).toBe("名前-char-c の生成");
   });
 });
 
@@ -196,5 +210,20 @@ describe("mainScreen / プールのあるキャラクターが無ければ切り
     expect(buildSwitchList(items)).toEqual([]);
     expect(switchEmptyNotice(items)).toBe("生成が済んだキャラクターがありません");
     expect(switchEmptyNotice([item("char-c", { hasPool: true })])).toBeNull();
+  });
+});
+
+describe("mainScreen / 画像を出しても保存データを変えない [否定]", () => {
+  it("S0050_04 selecting a character on the switch screen changes only the selection", () => {
+    const items = [item("a", { hasPool: true, isActive: true }), item("b", { hasPool: true })];
+    const before = { ...stateOn("switch"), items };
+    const snapshot = structuredClone(before);
+
+    const after = applyMainScreenEvent(before, { type: "switch-selected", characterId: "b" });
+
+    expect(after.selectedSwitchId).toBe("b");
+    // 使用中は変わらない(使用中にする操作は今のまま)。元の状態も書き換えない
+    expect(after.items).toEqual(snapshot.items);
+    expect(before).toEqual(snapshot);
   });
 });

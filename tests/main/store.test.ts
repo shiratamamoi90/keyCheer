@@ -398,8 +398,7 @@ describe("store / 除外設定はスキーマだけ用意しカウントには�
   });
 });
 
-// 生成元の記録(論点 0022)。`generatedBy` は「実際に作った」プロバイダーで、
-// `providers` の選択値とは別物。選択値をここへ流し込まない。
+// 生成元の記録(論点 0022)。`generatedBy` は「実際に作った」プロバイダーだけを持つ。
 const SAVED_CHARACTER = {
   id: "char-1",
   name: "チア",
@@ -407,11 +406,10 @@ const SAVED_CHARACTER = {
   imagePaths: {},
   voicevoxSpeakerId: 3,
 };
-const SELECTED_PROVIDERS = { text: "openai", voice: "openai-tts", image: "stability-ai" };
 
 describe("store / 生成していない種別は未設定のまま [否定]", () => {
-  it("S0022_04 does not write the selected image provider into generatedBy", () => {
-    const backing = fakeStore({ characters: [SAVED_CHARACTER], providers: SELECTED_PROVIDERS });
+  it("S0022_04 does not write the image provider id into generatedBy when no image was made", () => {
+    const backing = fakeStore({ characters: [SAVED_CHARACTER] });
     const store = createAppStore(backing);
 
     store.recordGeneratedBy("char-1", { text: "local-ollama", voice: "local-voicevox" });
@@ -423,19 +421,14 @@ describe("store / 生成していない種別は未設定のまま [否定]", ()
 });
 
 describe("store / generatedBy は既定値で補完しない [境界]", () => {
-  it("S0022_09 leaves missing kinds unset instead of filling them from providers", () => {
+  it("S0022_09 leaves missing kinds unset instead of filling them with provider ids", () => {
     const partial = createAppStore(
-      fakeStore({
-        characters: [{ ...SAVED_CHARACTER, generatedBy: { text: "anthropic" } }],
-        providers: SELECTED_PROVIDERS,
-      }),
+      fakeStore({ characters: [{ ...SAVED_CHARACTER, generatedBy: { text: "local-ollama" } }] }),
     );
-    expect(partial.loadCharacters()[0]?.generatedBy).toEqual({ text: "anthropic" });
+    expect(partial.loadCharacters()[0]?.generatedBy).toEqual({ text: "local-ollama" });
 
-    // 旧バージョン JSON(generatedBy そのものが無い)でも選択値で埋めない
-    const legacy = createAppStore(
-      fakeStore({ characters: [SAVED_CHARACTER], providers: SELECTED_PROVIDERS }),
-    );
+    // 旧バージョン JSON(generatedBy そのものが無い)でもプロバイダーの識別子で埋めない
+    const legacy = createAppStore(fakeStore({ characters: [SAVED_CHARACTER] }));
     expect(legacy.loadCharacters()[0]?.generatedBy ?? {}).toEqual({});
   });
 });
@@ -662,26 +655,6 @@ describe("store / 保存済みのキャラクターが選べる話者以外を�
   });
 });
 
-describe("store / 画像の重みのライセンスへの同意の記録", () => {
-  it("saves the agreement under system without touching the other settings", () => {
-    const fake = fakeStore({
-      system: { ollamaEndpoint: "http://localhost:9999" },
-      providers: { consent: { openai: true } },
-    });
-    const store = createAppStore(fake);
-    expect(store.loadImageWeightsLicenseAgreement()).toBeNull();
-
-    store.saveImageWeightsLicenseAgreement({ agreedAt: "2026-11-13T09:00:00.000Z", version: "1" });
-
-    expect(store.loadImageWeightsLicenseAgreement()).toEqual({
-      agreedAt: "2026-11-13T09:00:00.000Z",
-      version: "1",
-    });
-    expect(store.loadSystem().ollamaEndpoint).toBe("http://localhost:9999");
-    expect(fake.get("providers")).toEqual({ consent: { openai: true } });
-  });
-});
-
 describe("store / 動かした位置を覚え、次の起動でその位置に出す", () => {
   it("S0052_06 saves the moved position without touching the other popup settings", () => {
     // GIVEN 窓をドラッグして (830, 380) で離した
@@ -703,5 +676,46 @@ describe("store / 動かした位置を覚え、次の起動でその位置に�
 
   it("returns null when no position was saved", () => {
     expect(createAppStore(fakeStore()).loadPopupPosition()).toBeNull();
+  });
+});
+
+// テーマ(論点 0057)。docs/data-model.md / docs/main-window.md
+describe("store / `ui.theme` の既定値 [境界]", () => {
+  it("S0057_08 treats a missing or out-of-domain theme as system without rewriting it", () => {
+    expect(createAppStore(fakeStore()).loadUiConfig()).toEqual({ theme: "system" });
+    expect(createAppStore(fakeStore({ ui: { theme: "dark" } })).loadUiConfig()).toEqual({
+      theme: "dark",
+    });
+
+    const fake = fakeStore({ ui: { theme: "sepia" } });
+    const writes = countWrites(fake, ["ui"]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(createAppStore(fake).loadUiConfig()).toEqual({ theme: "system" });
+    expect(fake.raw.ui).toEqual({ theme: "sepia" });
+    expect(writes.count()).toBe(0);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("store / テーマの変更は他の設定と保存データを変えない [否定]", () => {
+  it("S0057_07 saves only ui.theme", () => {
+    const initial = {
+      characters: [
+        { id: "c1", name: "チア", personality: "元気", imagePaths: {}, voicevoxSpeakerId: 3 },
+      ],
+      triggers: { regular: 70, milestones: [1000], activeThresholdSec: 60 },
+      popup: { shouldAlwaysShow: false, shouldShowMessage: true, customPosition: { x: 1, y: 2 } },
+      stats: { totalKeyCount: 12 },
+    };
+    const fake = fakeStore(structuredClone(initial));
+    createAppStore(fake).saveUiConfig({ theme: "dark" });
+
+    expect(fake.raw.ui).toEqual({ theme: "dark" });
+    expect(fake.raw.characters).toEqual(initial.characters);
+    expect(fake.raw.triggers).toEqual(initial.triggers);
+    expect(fake.raw.popup).toEqual(initial.popup);
+    expect(fake.raw.stats).toEqual(initial.stats);
   });
 });

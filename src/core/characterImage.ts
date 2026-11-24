@@ -127,17 +127,26 @@ const LOCAL_IMAGE_LORA_NAME = "lcm-lora-sdv1-5";
 const PERSON_TAG_PATTERN = /\b1(girl|boy)\b/;
 const FALLBACK_PERSON_TAG = "1girl";
 
+// 応援種別ごとのポーズの語(論点 0062 が計測で決めた。decisions/decided/0062-cheer-image-difference/config.yaml)。
+// 演出の語(sparkle・confetti)を足さないのは、7 色・半分の大きさでは見分けられず、崩れが増えたため
+const LOCAL_POSE_TAGS: Readonly<Record<CheerType, string>> = {
+  regular: "fist pump, pointing at viewer",
+  milestone: "arms up, jumping",
+};
+
 const LOCAL_POSE_KIND_LINE: Readonly<Record<CheerType, string>> = {
   regular: "次のような応援の言葉を話しているときの立ち絵です。",
   milestone: "節目を達成したときに、次のような言葉を話している立ち絵です。",
 };
 
 // S0049_01 待機画像の画像タグの要求は見た目を訊く
-// S0049_02 応援種別の画像の画像タグの要求は表情とポーズだけを訊く
+// S0062_05 応援種別の画像の画像タグの要求は表情だけを訊く
 //
 // 文面は論点 0045 の計測で使ったもの(src/eval/imageProcessComparison.ts と同じ文)。絵を確かめたのはこの文だけなので、
 // 言い回しを変えるときは計測し直す。待機画像で見た目を決めておくのは、その画像タグを応援種別の画像にも足して
-// 人物を保つため(S0046_03)。応援種別の画像で髪・目・服を訊かないのは、待機画像と食い違う語が出ると別の人物になるため。
+// 人物を保つため(S0062_01)。応援種別の画像で髪・目・服を訊かないのは、待機画像と食い違う語が出ると別の人物になるため。
+// ポーズを訊かないのは、テキストモデルの返すポーズの語が造語になりやすく、画像のモデルが読めないため(論点 0062。
+// 文面は 0062 の計測で使ったもの = src/eval/cheerImageDifference.ts と同じ文)。
 // 外部の画像プロバイダーには使わない(S0049_03。外部は 3 枚を別々に作るので buildImageTagPrompt のまま)。
 export function buildLocalImageTagPrompt(
   character: ImageTagCharacter,
@@ -162,9 +171,9 @@ export function buildLocalImageTagPrompt(
     ...head,
     LOCAL_POSE_KIND_LINE[kind],
     ...selectMessageTexts(pool, kind).map((text) => `- ${text}`),
-    "このときの表情とポーズだけを、アニメ絵の画像生成で使う英語のタグで 2〜4 個返してください。",
-    "それぞれ小文字の英語 1〜3 語で書きます。髪・目・服は書かないでください。",
-    "例: smile, open mouth, arms up",
+    "このときの表情だけを、アニメ絵の画像生成で使う英語のタグで 1〜2 個返してください。",
+    "それぞれ小文字の英語 1〜3 語で書きます。ポーズ・髪・目・服は書かないでください。",
+    "例: smile, open mouth",
   ].join("\n");
 }
 
@@ -177,13 +186,19 @@ export const LOCAL_DERIVED_STEPS = 8;
 
 // S0046_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
 // S0046_02 人物の語が画像タグに無ければ 1girl を足す
-// S0046_03 応援種別の画像のプロンプトは待機画像の画像タグにその画像の画像タグを足す
+// S0062_01 / S0062_02 応援種別の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・その応援種別のポーズの語の順
+// S0062_03 / S0062_04 待機画像にポーズの語を足さない。ほかの応援種別のポーズの語と演出の語を足さない
 //
 // なぜ応援種別の画像にも待機画像の画像タグを入れるか:表情とポーズの語だけだと、描き直しで髪や服が変わり
 // 別の人物になる(計測はこの形で 3 枚が同じ人物に見えることを確かめた)。
-export function buildLocalImagePrompt(idleTags: string, kindTags = ""): string {
+// 記録した画像タグ(images/generation.json。S0050_09)には表情だけを残し、ポーズの語はここで毎回足す。
+export function buildLocalImagePrompt(
+  idleTags: string,
+  derived?: { kind: CheerType; tags: string },
+): string {
   const person = PERSON_TAG_PATTERN.test(idleTags) ? "" : FALLBACK_PERSON_TAG;
-  return [LOCAL_IMAGE_FIXED_TAGS, person, idleTags, kindTags, `<lora:${LOCAL_IMAGE_LORA_NAME}:1>`]
+  const kindTags = derived === undefined ? [] : [derived.tags, LOCAL_POSE_TAGS[derived.kind]];
+  return [LOCAL_IMAGE_FIXED_TAGS, person, idleTags, ...kindTags, `<lora:${LOCAL_IMAGE_LORA_NAME}:1>`]
     .filter((part) => part.length > 0)
     .join(", ");
 }
@@ -257,14 +272,18 @@ function computeBackgroundColor(image: RgbaImage): ImageColor {
 // 縁からたどれる所だけにすれば、輪郭線で囲まれた内側は残る。それでも服や髪が背景に近い色で縁まで届くと
 // 一緒に抜ける。この抜けそこないは受け入れると決めている(論点 0045 の決定 6)。
 // 残した画素は完全に不透明にする(S0046_11 半透明の画素を持たない)。
-export function applyBackgroundRemoval(image: RgbaImage): RgbaImage {
+// maxColorDistance は計測(論点 0063)が許容を振るためだけに受ける。アプリは既定の値で呼ぶ
+export function applyBackgroundRemoval(
+  image: RgbaImage,
+  maxColorDistance = MAX_BACKGROUND_COLOR_DISTANCE,
+): RgbaImage {
   const { width, height } = image;
   const pixels = Uint8Array.from(image.pixels);
   for (let offset = 3; offset < pixels.length; offset += RGBA_BYTES) pixels[offset] = OPAQUE_ALPHA;
 
   const background = computeBackgroundColor(image);
   const isBackground = (index: number): boolean =>
-    computeColorDistance(colorAt(image, index), background) <= MAX_BACKGROUND_COLOR_DISTANCE;
+    computeColorDistance(colorAt(image, index), background) <= maxColorDistance;
 
   const isVisited = new Uint8Array(width * height);
   const queue: number[] = [];
@@ -354,12 +373,16 @@ function resolveNearestIndex(palette: readonly ImageColor[], color: ImageColor):
 //
 // 乱数を使わない(S0046_14 同じ絵からは同じ絵)。色の広がりがいちばん大きい箱を、画素の数が半々になる所で
 // 割っていき(メディアンカット)、そのあと各色を近い画素の平均へ寄せ直す。計測ドライバと同じ考え方。
-export function computeImagePalette(image: RgbaImage): ImageColor[] {
+// maxColorCount は計測(論点 0064)が色の数を振るためだけに受ける。アプリは既定の値で呼ぶ
+export function computeImagePalette(
+  image: RgbaImage,
+  maxColorCount = MAX_IMAGE_COLOR_COUNT,
+): ImageColor[] {
   const colors = listOpaqueColors(image);
-  if (colors.length <= MAX_IMAGE_COLOR_COUNT) return colors.map((entry) => entry.color);
+  if (colors.length <= maxColorCount) return colors.map((entry) => entry.color);
 
   const boxes: ColorCount[][] = [colors];
-  while (boxes.length < MAX_IMAGE_COLOR_COUNT) {
+  while (boxes.length < maxColorCount) {
     let target = -1;
     let targetChannel = 0;
     let targetRange = 0;

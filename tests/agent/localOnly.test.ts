@@ -1,5 +1,5 @@
 // ローカルプロバイダーの送信先が localhost に閉じていることを縛る。
-// 要件: docs/integrations.md「ローカル選択時は外部送信が発生しない [不変条件]」
+// 要件: docs/integrations.md「生成で外部送信が発生しない [不変条件]」
 // 決定的に検証できるのは「どこへ requests を出すか」。実際のネットワーク遮断は環境側の話なので、
 // ここでは注入した fetch が受け取った URL のホストだけを検査する。
 
@@ -9,8 +9,8 @@ import { createVoicevoxSynthesizer } from "../../src/agent/providers/localVoicev
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-describe("providers / ローカル選択時は外部送信が発生しない [不変条件]", () => {
-  it("S0016_01 keeps every request of the local text + voice providers on localhost", async () => {
+describe("providers / 生成で外部送信が発生しない [不変条件]", () => {
+  it("S0016_01 keeps every request of the text and voice providers on localhost", async () => {
     const urls: string[] = [];
     const fetchFn = (async (input: RequestInfo | URL) => {
       urls.push(String(input));

@@ -35,7 +35,7 @@ const CHEER_PATH_FILES = [
   "src/main/cheerRuntime.ts",
 ];
 
-const GENERATION_MODULES = /providers\/|providerRouter|poolGenerator|voiceSynth|secrets|auditLog/;
+const GENERATION_MODULES = /providers\/|poolGenerator|voiceSynth/;
 const NETWORK_OR_PROCESS = /^(node:)?(http|https|net|child_process)$/;
 
 describe("発動経路の分離 / 発動経路は生成系に依存しない", () => {
@@ -94,9 +94,9 @@ describe("発動経路の分離 / 応援の発動で画像を作らない [否�
   });
 });
 
-describe("発動経路の分離 / 応援の発動は取得に依存しない [否定]", () => {
-  it("S0042_13 発動経路のどのファイルも、重みの取得と状態を import しない", () => {
-    // GIVEN 重みが取得されていない、または取得中
+describe("発動経路の分離 / 応援の発動は重みの状態に依存しない [否定]", () => {
+  it("S0055_10 発動経路のどのファイルも、重みの定義と状態を import しない", () => {
+    // GIVEN 重みが揃っている、または欠けている
     // WHEN 打鍵して応援が発動する(= 発動経路のファイルが動く)
     const violations = CHEER_PATH_FILES.flatMap((file) =>
       readImportSources(file)
@@ -104,7 +104,7 @@ describe("発動経路の分離 / 応援の発動は取得に依存しない [�
         .map((source) => `${file} -> ${source}`),
     );
 
-    // THEN 発動は取得の状態を読まず、取得の通信も起こさない(その手段を import していない)
+    // THEN 発動は重みの状態を読まない(その手段を import していない)
     expect(violations).toEqual([]);
   });
 });

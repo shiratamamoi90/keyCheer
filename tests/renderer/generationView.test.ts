@@ -7,6 +7,7 @@ import {
   initialGenerationState,
   applyGenerationEvent,
   canStartGeneration,
+  resolveGenerateButton,
   progressLabel,
   shouldConfirmRebuild,
   REBUILD_CONFIRMATION_TEXT,
@@ -130,15 +131,9 @@ describe("generationView / 完了の文言に画像の結果を出す", () => {
     );
   });
 
-  it("says why the images were not made when the image provider was unavailable", () => {
+  it("S0055_09 says the image weights are missing and asks to reinstall with the installer", () => {
     expect(done({ saved: 0, total: 3, unavailableReason: "runtime-not-installed" })).toBe(
-      "完了しました(音声 48 本。画像は作っていません:画像生成のモデルの重みがありません)",
-    );
-    expect(done({ saved: 0, total: 3, unavailableReason: "missing-api-key" })).toBe(
-      "完了しました(音声 48 本。画像は作っていません:画像プロバイダーの API キーがありません)",
-    );
-    expect(done({ saved: 0, total: 3, unavailableReason: "consent-required" })).toBe(
-      "完了しました(音声 48 本。画像は作っていません:画像プロバイダーへの送信に同意していません)",
+      "完了しました(音声 48 本。画像は作っていません:画像生成のモデルの重みがありません。インストーラで入れ直してください)",
     );
   });
 
@@ -165,5 +160,60 @@ describe("generationView / 完了の文言に画像の結果を出す", () => {
 describe("generationView / 生成ボタンの文言", () => {
   it("names the message, the voice and the image", () => {
     expect(START_GENERATION_LABEL).toBe("応援メッセージ・音声・画像を生成");
+  });
+});
+
+// 論点 0061:キャラクター画面の生成ボタン(docs/main-window.md)
+describe("generationView / キャラクター画面の生成ボタン", () => {
+  const SAVED = {
+    id: "char-c",
+    name: "チア",
+    personality: "元気",
+    voicevoxSpeakerId: 2,
+    hasPool: false,
+    isGenerating: false,
+    isActive: false,
+    hasProfileChanged: false,
+    images: {},
+  };
+  const SAME_FORM = { name: "チア", personality: "元気", speakerId: 2 };
+
+  it("S0061_02 enables the button for a saved character whose form equals the saved profile", () => {
+    const form = { ...SAME_FORM };
+    const before = JSON.stringify({ form, SAVED });
+    expect(
+      resolveGenerateButton({ generation: initialGenerationState(), editing: SAVED, form }),
+    ).toEqual({ isEnabled: true, notice: null });
+    expect(JSON.stringify({ form, SAVED })).toBe(before);
+  });
+
+  it("S0061_03 disables the button for a new unsaved input and asks to save first", () => {
+    for (const form of [SAME_FORM, { name: "", personality: "", speakerId: null }]) {
+      expect(
+        resolveGenerateButton({ generation: initialGenerationState(), editing: null, form }),
+      ).toEqual({ isEnabled: false, notice: "保存すると生成できます" });
+    }
+  });
+
+  it("S0061_04 disables the button while the form differs from the saved profile", () => {
+    for (const form of [
+      { ...SAME_FORM, name: "チア2" },
+      { ...SAME_FORM, personality: "静か" },
+      { ...SAME_FORM, speakerId: 8 },
+      { ...SAME_FORM, speakerId: null },
+    ]) {
+      expect(
+        resolveGenerateButton({ generation: initialGenerationState(), editing: SAVED, form }),
+      ).toEqual({ isEnabled: false, notice: "変更を保存すると生成できます" });
+    }
+    const running = applyGenerationEvent(initialGenerationState(), {
+      type: "progress",
+      phase: "text",
+      done: 1,
+      total: 24,
+    });
+    expect(
+      resolveGenerateButton({ generation: running, editing: SAVED, form: SAME_FORM }).isEnabled,
+    ).toBe(false);
   });
 });

@@ -123,6 +123,52 @@ export function clearIdleSource(fs: CharacterFs, userDataDir: string, characterI
   fs.removeDirRecursive(imageWorkDir(userDataDir, characterId));
 }
 
+// --- 画像の生成記録(論点 0050。docs/data-model.md「画像ファイル」)---
+// 最後に 3 枚をそろえた画像タグとシード。画像だけ作り直すときに使う(S0050_09)。応援発動経路は読まない
+export interface ImageGenerationRecord {
+  seed: number;
+  imageTags: Record<CharacterImageKind, string>;
+}
+
+function imageGenerationRecordPath(userDataDir: string, characterId: string): string {
+  return `${imagesDir(userDataDir, characterId)}/generation.json`;
+}
+
+export function saveImageGenerationRecord(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+  record: ImageGenerationRecord,
+): void {
+  fs.mkdirRecursive(imagesDir(userDataDir, characterId));
+  fs.writeFile(imageGenerationRecordPath(userDataDir, characterId), JSON.stringify(record));
+}
+
+// 読めない・形が違うときは記録が無いものとして扱い、ファイルは書き換えない(S0050_12)
+export function loadImageGenerationRecord(
+  fs: CharacterFs,
+  userDataDir: string,
+  characterId: string,
+): ImageGenerationRecord | null {
+  const text = fs.readFile(imageGenerationRecordPath(userDataDir, characterId));
+  if (text === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const { seed, imageTags } = parsed as Record<string, unknown>;
+  if (!Number.isInteger(seed) || typeof imageTags !== "object" || imageTags === null) return null;
+  const tags = imageTags as Record<string, unknown>;
+  const { idle, regular, milestone } = tags;
+  if (typeof idle !== "string" || typeof regular !== "string" || typeof milestone !== "string") {
+    return null;
+  }
+  return { seed: seed as number, imageTags: { idle, regular, milestone } };
+}
+
 // S0036_13 再生成で画像も作り直し、前の画像を残さない
 export function clearImages(fs: CharacterFs, userDataDir: string, characterId: string): void {
   fs.removeDirRecursive(imagesDir(userDataDir, characterId));

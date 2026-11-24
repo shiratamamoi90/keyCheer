@@ -21,7 +21,6 @@ vi.mock("electron", () => ({
 
 const { registerIpcHandlers } = await import("../../src/main/ipc.js");
 const { createAppStore } = await import("../../src/main/store.js");
-const { createProviderStore } = await import("../../src/main/providerStore.js");
 const { IpcChannel } = await import("../../src/core/shared/ipc.js");
 const { applyCharacterDisplay, initialPopupState, showCheer } = await import(
   "../../src/renderer/popupView.js"
@@ -58,7 +57,7 @@ describe("総合: 設定画面でセリフを切ると、再起動しなくて�
     };
     registerIpcHandlers({
       store,
-      providers: createProviderStore(fakeStore(raw)),
+      isOsDark: () => false,
       onConfigUpdated: () => {},
       onPopupDisplayUpdated: sendCharacterDisplay,
       onPopupPointer: () => {},

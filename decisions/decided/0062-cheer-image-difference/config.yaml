@@ -1,0 +1,37 @@
+# 1論点 = 1変数のみ変更:応援種別の画像(regular / milestone)の画像タグの決め方
+# 平らな key: value だけで書く(src/eval/configFile.ts が読める形)。計測:npm run eval -- <このフォルダ>
+axis: cheer_image_tags # src/eval/cheerImageDifference.ts
+
+# --- 振る変数 ---
+baseline: model-pose # 案P0。今のアプリ(テキストモデルが表情とポーズを 2〜4 個返す)
+variants: fixed-pose, fixed-pose-effects # 案P1 / 案P2(テキストモデルは表情だけ。ポーズは下の語)
+regular_pose_tags: "fist pump, pointing at viewer" # 通常の応援のポーズ(人間が承認 2026-11-21)
+milestone_pose_tags: "arms up, jumping" # 節目の応援のポーズ(人間が承認 2026-11-21)
+milestone_effect_tags: "sparkle, confetti" # 案P2 だけ。節目の応援の演出(人間が承認 2026-11-21)
+
+# --- 論点 0045 の決めた作り方のまま(値の正本は 0045 の config.yaml と src/core/characterImage.ts)---
+fixed_tags: "solo, upper body, simple background, flat color, limited palette" # アプリの LOCAL_IMAGE_FIXED_TAGS と同じ
+models: counterfeit-v3
+lora: lcm-lora-sdv1-5
+sampling_method: lcm
+cfg_scale: 1
+steps: 4
+strength: 0.65
+derived_steps: 8
+idle_strength: 0.9
+idle_steps: 4
+idle_canvas_color: ffffff
+color_limit: 7
+background_tolerance: 48
+changed_tolerance: 48
+min_transparent_pct: 5
+max_transparent_pct: 95
+width: 512
+height: 768
+seed: 42 # 試行 i は seed + i
+characters: 3
+generations_per_case: 2
+timeout_ms_per_image: 600000
+tag_model: sarashina2.2-3b-instruct
+timeout_ms_per_bucket: 120000
+sdcpp_tag: master-1086-465adf3

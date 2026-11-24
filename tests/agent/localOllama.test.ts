@@ -121,8 +121,10 @@ describe("local-ollama / 未起動のフォールバック [異常系]", () => {
     ).rejects.toThrow();
     expect(fetchFn).toHaveBeenCalledTimes(1); // 自動リトライしない(C6)
   });
+});
 
-  it("rejects on non-ok HTTP status without retrying", async () => {
+describe("local-ollama / HTTP エラーは throw する [異常系]", () => {
+  it("S0016_12 throws with the status code and body without retrying", async () => {
     const fetchFn = vi.fn(async () => new Response("model not found", { status: 404 }));
     const gen = createOllamaTextGenerator({
       endpoint: "http://localhost:11434",
@@ -136,8 +138,60 @@ describe("local-ollama / 未起動のフォールバック [異常系]", () => {
         count: 20,
         timeoutMs: 5_000,
       }),
-    ).rejects.toThrow(/404/);
+    ).rejects.toThrow(/404.*model not found/);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("local-ollama / タイムアウト予算を超えたら中断する [境界]", () => {
+  it("S0016_11 aborts the request after timeoutMs and always clears the timer", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      // 応答を返さず、中断されたら reject する fetch
+      const fetchFn = vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            signal = init?.signal ?? undefined;
+            signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+      );
+      const gen = createOllamaTextGenerator({
+        endpoint: "http://localhost:11434",
+        model: "m",
+        fetchFn: fetchFn as unknown as typeof fetch,
+      });
+      const pending = gen.generateMessages({
+        systemPrompt: "p",
+        scenarioKey: "slow_regular_morning",
+        count: 1,
+        timeoutMs: 1_000,
+      });
+      const settled = expect(pending).rejects.toThrow(/aborted/);
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await settled;
+      expect(signal?.aborted).toBe(true);
+
+      // 予算内に応答が返ったときも、タイマーは finally で解除される(残ったタイマーが無い)
+      const quick = createOllamaTextGenerator({
+        endpoint: "http://localhost:11434",
+        model: "m",
+        fetchFn: (async () =>
+          okJson({ response: JSON.stringify({ messages: ["a"] }) })) as unknown as typeof fetch,
+      });
+      await quick.generateMessages({
+        systemPrompt: "p",
+        scenarioKey: "slow_regular_morning",
+        count: 1,
+        timeoutMs: 1_000,
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

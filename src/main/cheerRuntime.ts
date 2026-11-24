@@ -3,7 +3,7 @@
 // キー数・アクティブ時間はメモリ上に貯め、flushStats() でまとめて永続化する。
 //
 // ★ 発動経路の不変条件(cheer-trigger.md / CLAUDE.md):
-//   ここは providers 設定・プロバイダー実装・生成系(poolGenerator/voiceSynth/providerRouter)を import しない。
+//   ここはプロバイダー実装・生成系(poolGenerator/voiceSynth)を import しない。
 //   外部送信は一切発生しない(localhost 含む)。成立要件はプール + 保存済み wav のみ。
 //   core(決定的)と agent の cheerPlayer(wav パス解決のみ、providers 非依存)だけに依存する。
 //

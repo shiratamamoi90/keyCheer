@@ -166,11 +166,12 @@ describe("characterSelection / renderer からの切り替え要求は main 側�
 // renderer に渡すキャラクターの一覧(論点 0033 の画面が使う)。画面ごとの選別は renderer 側
 // (renderer/mainScreen.ts)。ここでは main が持つ事実(プール・生成中・使用中・生成後の変更)を載せることだけを縛る。
 describe("characterSelection / 画面に渡すキャラクターの一覧", () => {
-  it("carries the pool, generating, active and profile-changed facts for every character", () => {
+  it("carries the pool, generating, active, profile-changed and image facts for every character", () => {
     const { deps } = setup({ activeCharacterId: "char-d", generatingId: "char-c" });
 
     const list = loadCharacterList({
       ...deps,
+      loadImagePaths: (id: string) => (id === "char-c" ? { idle: "/u/c/idle.png" } : {}),
       loadGeneratedProfile: (id: string) =>
         id === "char-d"
           ? { name: "生成時の名前", personality: "元気", voicevoxSpeakerId: 3 }
@@ -187,6 +188,7 @@ describe("characterSelection / 画面に渡すキャラクターの一覧", () =
         isGenerating: true,
         isActive: false,
         hasProfileChanged: false,
+        images: { idle: "/u/c/idle.png" },
       },
       {
         id: "char-d",
@@ -197,6 +199,7 @@ describe("characterSelection / 画面に渡すキャラクターの一覧", () =
         isGenerating: false,
         isActive: true,
         hasProfileChanged: true,
+        images: {},
       },
       {
         id: "char-e",
@@ -207,6 +210,7 @@ describe("characterSelection / 画面に渡すキャラクターの一覧", () =
         isGenerating: false,
         isActive: false,
         hasProfileChanged: false,
+        images: {},
       },
     ]);
   });

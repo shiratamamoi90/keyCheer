@@ -13,7 +13,6 @@ import { describe, it, expect, vi } from "vitest";
 import { createGenerationRunner } from "../../src/main/characterCreation.js";
 import { loadPool, type CharacterFs } from "../../src/main/characterStore.js";
 import { createAppStore, type StoreLike } from "../../src/main/store.js";
-import { createProviderStore } from "../../src/main/providerStore.js";
 import { createCheerRuntime } from "../../src/main/cheerRuntime.js";
 import { resolveWavPath } from "../../src/agent/cheerPlayer.js";
 import { bucketKey } from "../../src/core/messagePool.js";
@@ -243,56 +242,12 @@ describe("総合: 発動経路は外部と通信しない", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(store.loadStats().cheerHistory.length).toBeGreaterThan(1);
   });
-
-  it("外部プロバイダーが選択・保存されていても、発動経路はその設定を読まない", async () => {
-    // 応援はプール + wav だけで成立する(CLAUDE.md 不変条件)。
-    // 同じ永続化ストアに providers が入っている状態で発動経路を回し、
-    // `providers` キーが一度も読まれないことを見る。
-    const fs = fakeFs();
-    await generateAndPersist(fs);
-    const pool = loadPool(fs, USER_DATA, CHAR_ID);
-
-    const raw = fakeStore();
-    const store = createAppStore(raw);
-    const { config } = store.loadTriggerConfig();
-    // キャラ作成側の関心:外部プロバイダーを選び、同意も済ませておく。
-    const providers = createProviderStore(raw);
-    expect(
-      providers.saveProviders({ text: "openai", voice: "openai-tts", image: "openai-dalle" }),
-    ).toEqual({ ok: true });
-    providers.grantConsent("openai");
-
-    const emitted: CheerFiredPayload[] = [];
-    const runtime = createCheerRuntime(
-      {
-        userDataDir: USER_DATA,
-        popupDurationMs: POPUP_DURATION_MS,
-        emitCheer: (payload) => emitted.push(payload),
-        recordHistory: (entry) => store.appendCheerHistory(entry),
-        wavExists: (path) => fs.exists(path),
-        recordStats: ({ day, keys }) => store.recordKeyCount(day, keys),
-        random: seeded(42),
-      },
-      config,
-    );
-    runtime.setActiveCharacter(CHAR_ID, pool);
-
-    raw.reads.length = 0; // ここから先が発動経路の読み取り
-    for (let i = 1; i <= config.regular; i++) runtime.handleKeyPress(T0 + i);
-    runtime.flushStats();
-
-    expect(emitted).toHaveLength(1); // 外部プロバイダー選択下でも応援は同じように出る
-    expect(raw.reads).not.toContain("providers");
-    expect(raw.reads).toContain("stats"); // 記録は行われている = 計測が生きている
-  });
 });
 
 describe("総合: 生成 → 生成元の記録 → 次回起動で読める", () => {
-  it("生成で実際に使ったプロバイダーが記録され、選択値とは混ざらない", async () => {
-    // 選択値はすべて外部。生成は(偽物の)ローカルで行う — 記録が選択値から来ていれば落ちる。
+  it("生成で実際に使ったプロバイダーが記録される", async () => {
     const raw = fakeStore({
       characters: [{ id: CHAR_ID, ...CHARACTER, imagePaths: {}, voicevoxSpeakerId: 3 }],
-      providers: { text: "openai", voice: "openai-tts", image: "stability-ai" },
     });
     const store = createAppStore(raw);
 

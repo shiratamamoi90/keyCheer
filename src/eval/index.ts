@@ -5,6 +5,9 @@
 // 論点フォルダの config.yaml を読み、baseline と variant を同じ条件で測る。
 // 振る変数は `axis` で選ぶ:model(既定。論点 0027)はモデル名、prompt(論点 0026)はプロンプト案、
 // image_model(論点 0041)は画像のベースモデル(runImageModelEval。画像と見比べる頁を出力フォルダに置く)、
+// cheer_image_tags(論点 0062)は応援種別の画像の画像タグの決め方(runCheerImageEval)、
+// background_removal(論点 0063)・palette_size(論点 0064)は 0062 で描いた絵の後処理だけ(runPostProcessEval)、
+// negative_prompt(論点 0065)は避ける語と CFG(runNegativePromptEval)、
 // image_process(論点 0045)は画像の作り方(runImageProcessEval。末尾に probe を付けると、下絵から描き直す
 // 強さを決めるための試し、background を付けると抜く背景の色を決めるための試しだけを回す:
 // npm run eval -- <論点フォルダ> probe)。
@@ -40,7 +43,29 @@ import {
   runProcessTrials,
   type PaletteColor,
   type ProcessRecord,
+  type ProcessTrialSettings,
 } from "./imageProcessComparison.js";
+import {
+  buildCheerTagCases,
+  computeCheerDifferenceSummary,
+  type CheerTagCase,
+  isCheerImageVariant,
+  runCheerDifferenceTrials,
+} from "./cheerImageDifference.js";
+import {
+  applyTwoPassBackgroundRemoval,
+  computeOpaqueBlobCount,
+  isBackgroundVariant,
+  runPostProcessComparison,
+  type PostProcessRunInput,
+} from "./postProcessComparison.js";
+import { decodePng } from "./png.js";
+import { applyProbabilityMask, createU2netSegmenter } from "./segmentationMask.js";
+import {
+  applyBackgroundRemoval,
+  MAX_IMAGE_HEIGHT,
+  MAX_IMAGE_WIDTH,
+} from "../core/characterImage.js";
 import { resolvePromptBuilder } from "./promptVariant.js";
 import { computeSummary, runTrials, type ComparisonSettings } from "./textModelComparison.js";
 
@@ -345,6 +370,424 @@ async function runImageProcessEval(
   );
 }
 
+// 論点 0062:通常の応援と節目の応援の絵の違い。画像タグは 1 回だけ作り、案ごとに 3 枚を作って差を測る
+// 応援種別の画像の計測(論点 0062 / 0065)で共通の、sd.cpp の起動と後処理の条件
+function buildCheerTrialSettings(
+  config: FlatConfig,
+  outDir: string,
+): Omit<ProcessTrialSettings, "variant"> {
+  const cacheRoot =
+    process.env.KEYCHEER_MODEL_CACHE ?? join(homedir(), ".cache", "keycheer-models");
+  const imageEvalDir = join(cacheRoot, "image-eval");
+  const sdcppTag = requireString(config, "sdcpp_tag");
+  return {
+    outDir,
+    sdcppDir: join(imageEvalDir, `sdcpp-${sdcppTag}`),
+    modelDir: join(imageEvalDir, "models"),
+    containerImage: `keycheer-image-eval:${sdcppTag}`,
+    loraName: requireString(config, "lora"),
+    samplingMethod: requireString(config, "sampling_method"),
+    cfgScale: requireNumber(config, "cfg_scale"),
+    steps: requireNumber(config, "steps"),
+    width: requireNumber(config, "width"),
+    height: requireNumber(config, "height"),
+    timeoutMsPerImage: requireNumber(config, "timeout_ms_per_image"),
+    strengths: [requireNumber(config, "strength")],
+    derivedSteps: requireNumber(config, "derived_steps"),
+    idleSteps: requireNumber(config, "idle_steps"),
+    idleStrength: requireNumber(config, "idle_strength"),
+    idleCanvasColor: parseHexColor(requireString(config, "idle_canvas_color")),
+    backgroundColor: null,
+    backgroundTolerance: requireNumber(config, "background_tolerance"),
+    colorLimit: requireNumber(config, "color_limit"),
+    changedTolerance: requireNumber(config, "changed_tolerance"),
+  };
+}
+
+async function runCheerImageEval(
+  config: FlatConfig,
+  topicName: string,
+  outRoot: string,
+  stamp: string,
+): Promise<void> {
+  const outDir = join(outRoot, `${topicName}-${stamp}`);
+  mkdirSync(outDir, { recursive: true });
+  const variants = [requireString(config, "baseline"), ...requireList(config, "variants")];
+  const unknown = variants.filter((v) => !isCheerImageVariant(v));
+  if (unknown.length > 0) throw new Error(`知らない案: ${unknown.join(", ")}`);
+  const model = requireString(config, "models");
+
+  const built = await buildCheerTagCases(
+    {
+      endpoint: process.env.KEYCHEER_OLLAMA_ENDPOINT ?? DEFAULT_SYSTEM_CONFIG.ollamaEndpoint,
+      tagModel: requireString(config, "tag_model"),
+      baseSeed: requireNumber(config, "seed"),
+      generationsPerCase: requireNumber(config, "generations_per_case"),
+      characterCount: requireNumber(config, "characters"),
+      timeoutMsPerBucket: requireNumber(config, "timeout_ms_per_bucket"),
+    },
+    (message) => console.error(`[eval] ${message}`),
+  );
+  writeFileSync(join(outDir, "cases.json"), JSON.stringify(built.cases, null, 2));
+  console.error(`[eval] 画像タグ: ${built.cases.length} 組(タグの失敗 ${built.tagFailureCount})`);
+
+  const colorLimit = requireNumber(config, "color_limit");
+  const changedTolerance = requireNumber(config, "changed_tolerance");
+  const { records, differences } = await runCheerDifferenceTrials({
+    variants: variants.filter(isCheerImageVariant),
+    tagCases: built.cases,
+    fixedTags: requireString(config, "fixed_tags"),
+    poseSettings: {
+      regularPoseTags: requireString(config, "regular_pose_tags"),
+      milestonePoseTags: requireString(config, "milestone_pose_tags"),
+      milestoneEffectTags: requireString(config, "milestone_effect_tags"),
+    },
+    model,
+    trial: buildCheerTrialSettings(config, outDir),
+    changedTolerance,
+    onLog: (message) => console.error(`[eval] ${message}`),
+  });
+
+  console.log(
+    JSON.stringify(
+      {
+        topic: topicName,
+        outDir,
+        model,
+        cases: built.cases.length,
+        tagFailureCount: built.tagFailureCount,
+        differences: variants
+          .filter(isCheerImageVariant)
+          .map((variant) => computeCheerDifferenceSummary(variant, differences)),
+        images: variants.map((variant) =>
+          computeProcessSummary(
+            variant,
+            records.filter((r) => r.variant === variant),
+            {
+              colorLimit,
+              minTransparentPct: requireNumber(config, "min_transparent_pct"),
+              maxTransparentPct: requireNumber(config, "max_transparent_pct"),
+              minBackgroundMatchPct: 0,
+            },
+          ),
+        ),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+// 論点 0063 / 0064:論点 0062 の計測で描いた絵を読み直し、後処理だけを変えて並べる(画像は描き直さない)
+async function runPostProcessEval(
+  config: FlatConfig,
+  topicName: string,
+  outRoot: string,
+  stamp: string,
+): Promise<void> {
+  const sourceRoot = requireString(config, "source_dir");
+  const sourceDir = join(
+    sourceRoot,
+    requireString(config, "source_variant"),
+    requireString(config, "source_model"),
+  );
+  // 組(キャラ・試行)は 0062 の画像タグの記録から引く。0062 と同じ組だけを並べる
+  const cases = JSON.parse(readFileSync(join(sourceRoot, "cases.json"), "utf8")) as {
+    character: string;
+    trial: number;
+  }[];
+  const characters = [...new Set(cases.map((c) => c.character))];
+  const trials = [...new Set(cases.map((c) => c.trial))];
+  const variants = [requireString(config, "baseline"), ...requireList(config, "variants")];
+  const tolerance = requireNumber(config, "background_tolerance");
+  const colorLimit = requireNumber(config, "color_limit");
+
+  let settingsOf: PostProcessRunInput["settingsOf"];
+  if (config.axis === "background_removal") {
+    const unknown = variants.filter((v) => !isBackgroundVariant(v));
+    if (unknown.length > 0) throw new Error(`知らない案: ${unknown.join(", ")}`);
+    const wide = requireNumber(config, "wide_background_tolerance");
+    // 切り抜くモデルは、その案があるときだけ読み込む(置き場は scripts/fetch-seg-eval.sh)
+    const segment = variants.includes("segment-u2netp")
+      ? await createU2netSegmenter(
+          process.env.KEYCHEER_SEG_EVAL_DIR ??
+            join(homedir(), ".cache", "keycheer-models", "seg-eval"),
+          requireString(config, "segment_model_file"),
+        )
+      : null;
+    const threshold = variants.includes("segment-u2netp")
+      ? requireNumber(config, "segment_threshold")
+      : 0;
+    settingsOf = (variant) => ({
+      colorCount: colorLimit,
+      cut:
+        variant === "two-pass"
+          ? (small) => applyTwoPassBackgroundRemoval(small, tolerance)
+          : variant === "segment-u2netp"
+            ? async (small, raw) =>
+                applyProbabilityMask(
+                  small,
+                  await segment!(raw, small.width, small.height),
+                  threshold,
+                )
+            : (small) =>
+                applyBackgroundRemoval(small, variant === "wide-tolerance" ? wide : tolerance),
+    });
+  } else {
+    const counts = variants.map(Number);
+    if (counts.some((n) => !Number.isInteger(n) || n < 1)) {
+      throw new Error(`色の数は 1 以上の整数: ${variants.join(", ")}`);
+    }
+    settingsOf = (variant) => ({
+      colorCount: Number(variant),
+      cut: (image) => applyBackgroundRemoval(image, tolerance),
+    });
+  }
+
+  const outDir = join(outRoot, `${topicName}-${stamp}`);
+  const summaries = await runPostProcessComparison({
+    title: topicName,
+    sourceDir,
+    outDir,
+    characters,
+    trials,
+    width: MAX_IMAGE_WIDTH,
+    height: MAX_IMAGE_HEIGHT,
+    variants,
+    settingsOf,
+    minTransparentPct: requireNumber(config, "min_transparent_pct"),
+    maxTransparentPct: requireNumber(config, "max_transparent_pct"),
+  });
+  console.log(JSON.stringify({ topic: topicName, outDir, sourceDir, summaries }, null, 2));
+}
+
+// 論点 0065:案P1(論点 0062)のまま、避ける語と CFG を案ごとに変えて描き直す。画像タグは 1 回だけ作り、両案で同じものを使う
+const BREAKAGE_VARIANTS = ["none", "negative"] as const;
+// 塊として数える最小の画素数(256x384 の絵で、線のかけら・点を数えないため)
+const MIN_BLOB_PIXELS = 200;
+
+async function runNegativePromptEval(
+  config: FlatConfig,
+  topicName: string,
+  outRoot: string,
+  stamp: string,
+): Promise<void> {
+  const outDir = join(outRoot, `${topicName}-${stamp}`);
+  mkdirSync(outDir, { recursive: true });
+  const variants = [requireString(config, "baseline"), ...requireList(config, "variants")];
+  const unknown = variants.filter((v) => !(BREAKAGE_VARIANTS as readonly string[]).includes(v));
+  if (unknown.length > 0) throw new Error(`知らない案: ${unknown.join(", ")}`);
+  const model = requireString(config, "models");
+
+  const built = await buildCheerTagCases(
+    {
+      endpoint: process.env.KEYCHEER_OLLAMA_ENDPOINT ?? DEFAULT_SYSTEM_CONFIG.ollamaEndpoint,
+      tagModel: requireString(config, "tag_model"),
+      baseSeed: requireNumber(config, "seed"),
+      generationsPerCase: requireNumber(config, "generations_per_case"),
+      characterCount: requireNumber(config, "characters"),
+      timeoutMsPerBucket: requireNumber(config, "timeout_ms_per_bucket"),
+    },
+    (message) => console.error(`[eval] ${message}`),
+  );
+  writeFileSync(join(outDir, "cases.json"), JSON.stringify(built.cases, null, 2));
+  console.error(`[eval] 画像タグ: ${built.cases.length} 組(タグの失敗 ${built.tagFailureCount})`);
+
+  const changedTolerance = requireNumber(config, "changed_tolerance");
+  const results = [];
+  for (const variant of variants) {
+    const variantDir = join(outDir, variant);
+    const base = buildCheerTrialSettings(config, variantDir);
+    const trial =
+      variant === "negative"
+        ? {
+            ...base,
+            cfgScale: requireNumber(config, "negative_cfg_scale"),
+            negativePrompt: requireString(config, "negative_prompt"),
+          }
+        : base;
+    const { records } = await runCheerDifferenceTrials({
+      variants: ["fixed-pose"],
+      tagCases: built.cases,
+      fixedTags: requireString(config, "fixed_tags"),
+      poseSettings: {
+        regularPoseTags: requireString(config, "regular_pose_tags"),
+        milestonePoseTags: requireString(config, "milestone_pose_tags"),
+        milestoneEffectTags: "",
+      },
+      model,
+      trial,
+      changedTolerance,
+      onLog: (message) => console.error(`[eval] ${variant}: ${message}`),
+    });
+    const blobCounts = records
+      .filter((r) => r.file !== null)
+      .map((r) => ({
+        file: `${variant}/${r.file}`,
+        blobs: computeOpaqueBlobCount(
+          decodePng(readFileSync(join(variantDir, r.file!))),
+          MIN_BLOB_PIXELS,
+        ),
+      }));
+    results.push({
+      variant,
+      images: computeProcessSummary(variant, records, {
+        colorLimit: requireNumber(config, "color_limit"),
+        minTransparentPct: requireNumber(config, "min_transparent_pct"),
+        maxTransparentPct: requireNumber(config, "max_transparent_pct"),
+        minBackgroundMatchPct: 0,
+      }),
+      meanBlobCount:
+        Math.round((blobCounts.reduce((a, b) => a + b.blobs, 0) / blobCounts.length) * 10) / 10,
+      multiBlobFiles: blobCounts.filter((b) => b.blobs > 1).map((b) => b.file),
+    });
+  }
+  console.log(JSON.stringify({ topic: topicName, outDir, model, results }, null, 2));
+}
+
+// 論点 0067:CFG 1.5 + 避ける語(論点 0065)のまま、固定の語(fixed_tags_<案>)だけを案ごとに変えて描き直し、
+// 0064 と同じ後処理(色で抜き 7 色に減らす)を当てて色相の偏りと肌の色の残りを測る。画像タグは 1 回だけ作り全案で同じものを使う
+async function runColorTagsEval(
+  config: FlatConfig,
+  topicName: string,
+  outRoot: string,
+  stamp: string,
+): Promise<void> {
+  const outDir = join(outRoot, `${topicName}-${stamp}`);
+  mkdirSync(outDir, { recursive: true });
+  const variants = [requireString(config, "baseline"), ...requireList(config, "variants")];
+  const fixedTagsOf = new Map(variants.map((v) => [v, requireString(config, `fixed_tags_${v}`)]));
+  const model = requireString(config, "models");
+
+  const built = await buildCheerTagCases(
+    {
+      endpoint: process.env.KEYCHEER_OLLAMA_ENDPOINT ?? DEFAULT_SYSTEM_CONFIG.ollamaEndpoint,
+      tagModel: requireString(config, "tag_model"),
+      baseSeed: requireNumber(config, "seed"),
+      generationsPerCase: requireNumber(config, "generations_per_case"),
+      characterCount: requireNumber(config, "characters"),
+      timeoutMsPerBucket: requireNumber(config, "timeout_ms_per_bucket"),
+    },
+    (message) => console.error(`[eval] ${message}`),
+  );
+  writeFileSync(join(outDir, "cases.json"), JSON.stringify(built.cases, null, 2));
+  console.error(`[eval] 画像タグ: ${built.cases.length} 組(タグの失敗 ${built.tagFailureCount})`);
+
+  const tolerance = requireNumber(config, "background_tolerance");
+  const colorLimit = requireNumber(config, "color_limit");
+  const results = [];
+  for (const variant of variants) {
+    const variantDir = join(outDir, variant);
+    const { records } = await runCheerDifferenceTrials({
+      variants: ["fixed-pose"],
+      tagCases: built.cases,
+      fixedTags: fixedTagsOf.get(variant)!,
+      poseSettings: {
+        regularPoseTags: requireString(config, "regular_pose_tags"),
+        milestonePoseTags: requireString(config, "milestone_pose_tags"),
+        milestoneEffectTags: "",
+      },
+      model,
+      trial: {
+        ...buildCheerTrialSettings(config, variantDir),
+        negativePrompt: requireString(config, "negative_prompt"),
+      },
+      changedTolerance: requireNumber(config, "changed_tolerance"),
+      onLog: (message) => console.error(`[eval] ${variant}: ${message}`),
+    });
+    const [post] = await runPostProcessComparison({
+      title: `${topicName} ${variant}`,
+      sourceDir: join(variantDir, "fixed-pose", model),
+      outDir: join(outDir, "post", variant),
+      characters: [...new Set(built.cases.map((c) => c.character))],
+      trials: [...new Set(built.cases.map((c) => c.trial))],
+      width: MAX_IMAGE_WIDTH,
+      height: MAX_IMAGE_HEIGHT,
+      variants: [variant],
+      settingsOf: () => ({
+        colorCount: colorLimit,
+        cut: (small) => applyBackgroundRemoval(small, tolerance),
+      }),
+      minTransparentPct: requireNumber(config, "min_transparent_pct"),
+      maxTransparentPct: requireNumber(config, "max_transparent_pct"),
+    });
+    const latencies = records.filter((r) => !r.failed).map((r) => r.latencyMs);
+    results.push({
+      variant,
+      fixedTags: fixedTagsOf.get(variant),
+      failed: records.filter((r) => r.failed).length,
+      meanLatencyMs: Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length),
+      post,
+    });
+  }
+  console.log(JSON.stringify({ topic: topicName, outDir, model, results }, null, 2));
+}
+
+// 論点 0063 の案M1:0062 と同じ画像タグ・シードで、外側の帯だけを描かせずに描き直し、アプリと同じ後処理(今の抜き方)を当てる
+async function runBandMaskEval(
+  config: FlatConfig,
+  topicName: string,
+  outRoot: string,
+  stamp: string,
+): Promise<void> {
+  const sourceRoot = requireString(config, "source_dir");
+  const tagCases = JSON.parse(
+    readFileSync(join(sourceRoot, "cases.json"), "utf8"),
+  ) as CheerTagCase[];
+  const outDir = join(outRoot, `${topicName}-mask-${stamp}`);
+  mkdirSync(outDir, { recursive: true });
+  const model = requireString(config, "source_model");
+  const changedTolerance = requireNumber(config, "changed_tolerance");
+  const { records } = await runCheerDifferenceTrials({
+    variants: ["fixed-pose"],
+    tagCases,
+    fixedTags: requireString(config, "fixed_tags"),
+    poseSettings: {
+      regularPoseTags: requireString(config, "regular_pose_tags"),
+      milestonePoseTags: requireString(config, "milestone_pose_tags"),
+      milestoneEffectTags: "",
+    },
+    model,
+    trial: {
+      ...buildCheerTrialSettings(config, outDir),
+      maskBandPx: requireNumber(config, "mask_band_px"),
+    },
+    changedTolerance,
+    onLog: (message) => console.error(`[eval] mask: ${message}`),
+  });
+  const tolerance = requireNumber(config, "background_tolerance");
+  const summaries = await runPostProcessComparison({
+    title: `${topicName} M1`,
+    sourceDir: join(outDir, "fixed-pose", model),
+    outDir: join(outDir, "post"),
+    characters: [...new Set(tagCases.map((c) => c.character))],
+    trials: [...new Set(tagCases.map((c) => c.trial))],
+    width: MAX_IMAGE_WIDTH,
+    height: MAX_IMAGE_HEIGHT,
+    variants: ["band-mask"],
+    settingsOf: () => ({
+      colorCount: requireNumber(config, "color_limit"),
+      cut: (small) => applyBackgroundRemoval(small, tolerance),
+    }),
+    minTransparentPct: requireNumber(config, "min_transparent_pct"),
+    maxTransparentPct: requireNumber(config, "max_transparent_pct"),
+  });
+  const latencies = records.filter((r) => !r.failed).map((r) => r.latencyMs);
+  console.log(
+    JSON.stringify(
+      {
+        topic: topicName,
+        outDir,
+        failed: records.filter((r) => r.failed).length,
+        meanLatencyMs: Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length),
+        summaries,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function main(): Promise<void> {
   const topicDir = process.argv[2];
   if (topicDir === undefined) throw new Error("論点フォルダを指定する: npm run eval -- <dir>");
@@ -355,6 +798,26 @@ async function main(): Promise<void> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   if (config.axis === "image_model") {
     await runImageModelEval(config, basename(topicDir), outDir, stamp);
+    return;
+  }
+  if (config.axis === "cheer_image_tags") {
+    await runCheerImageEval(config, basename(topicDir), outDir, stamp);
+    return;
+  }
+  if (config.axis === "background_removal" && process.argv[3] === "mask") {
+    await runBandMaskEval(config, basename(topicDir), outDir, stamp);
+    return;
+  }
+  if (config.axis === "background_removal" || config.axis === "palette_size") {
+    await runPostProcessEval(config, basename(topicDir), outDir, stamp);
+    return;
+  }
+  if (config.axis === "color_tags") {
+    await runColorTagsEval(config, basename(topicDir), outDir, stamp);
+    return;
+  }
+  if (config.axis === "negative_prompt") {
+    await runNegativePromptEval(config, basename(topicDir), outDir, stamp);
     return;
   }
   if (config.axis === "image_process") {

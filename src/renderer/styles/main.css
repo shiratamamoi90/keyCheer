@@ -1,0 +1,56 @@
+/* メインウィンドウの見た目(論点 0058)。npm run build で Tailwind の CLI が dist/renderer/main.css を作る。
+   色はここの変数だけで決める。ダーク(論点 0057)は <html class="dark"> のときに変数を差し替える。 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: 238 241 246;
+  --surface: 255 255 255;
+  --sunken: 246 248 251;
+  --line: 221 226 234;
+  --fg: 27 31 39;
+  --muted: 92 102 117;
+  --accent: 214 51 108;
+  --accent-soft: 251 228 236;
+  --on-accent: 255 255 255;
+  --warn: 166 94 0;
+  --warn-soft: 255 243 220;
+  --danger: 196 43 43;
+  --danger-soft: 253 232 232;
+  --ok: 43 138 62;
+  --ok-soft: 228 245 232;
+  --check-a: #e3e7ee;
+  --check-b: #ffffff;
+  --shadow-card: 0 1px 2px rgb(20 30 50 / 6%), 0 4px 12px rgb(20 30 50 / 6%);
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: 26 29 35;
+  --surface: 36 40 48;
+  --sunken: 44 49 58;
+  --line: 56 62 73;
+  --fg: 232 235 240;
+  --muted: 160 168 182;
+  --accent: 240 101 149;
+  --accent-soft: 61 37 49;
+  --on-accent: 26 29 35;
+  --warn: 255 192 102;
+  --warn-soft: 60 46 24;
+  --danger: 255 135 135;
+  --danger-soft: 66 32 34;
+  --ok: 105 219 124;
+  --ok-soft: 30 56 38;
+  --check-a: #30353e;
+  --check-b: #262a31;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 12px rgb(0 0 0 / 25%);
+  color-scheme: dark;
+}
+
+@layer components {
+  /* 透明な所が分かる市松の下地(論点 0050 S0050_01) */
+  .checkerboard {
+    background: repeating-conic-gradient(var(--check-a) 0% 25%, var(--check-b) 0% 50%) 0 / 16px 16px;
+  }
+}

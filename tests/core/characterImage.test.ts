@@ -159,16 +159,61 @@ describe("characterImage / 人物の語が画像タグに無ければ 1girl を�
   });
 });
 
-describe("characterImage / 応援種別の画像のプロンプトは待機画像の画像タグにその画像の画像タグを足す", () => {
-  it("S0046_03 appends the tags of the cheer image to the idle tags", () => {
-    // GIVEN 待機画像の画像タグが `1girl, long hair`、regular の画像の画像タグが `smile, waving`
+describe("characterImage / 通常の応援の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・通常のポーズの語の順に組み立てる", () => {
+  it("S0062_01 appends the expression and the regular pose to the idle tags", () => {
+    // GIVEN 待機画像の画像タグが `1girl, long hair`、regular の画像の画像タグ(表情)が `smile`
     // WHEN regular の画像のプロンプトを組み立てる
-    const prompt = buildLocalImagePrompt("1girl, long hair", "smile, waving");
+    const prompt = buildLocalImagePrompt("1girl, long hair", { kind: "regular", tags: "smile" });
 
-    // THEN 待機画像の画像タグの後ろに、その画像の画像タグが続く
+    // THEN 待機画像の画像タグ・表情・通常のポーズの語の順に続く
     expect(prompt).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, smile, waving, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, smile, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
     );
+  });
+});
+
+describe("characterImage / 節目の応援の画像のプロンプトには節目のポーズの語を足す", () => {
+  it("S0062_02 appends the expression and the milestone pose to the idle tags", () => {
+    // GIVEN 待機画像の画像タグが `1girl, long hair`、milestone の画像の画像タグ(表情)が `grin`
+    // WHEN milestone の画像のプロンプトを組み立てる
+    const prompt = buildLocalImagePrompt("1girl, long hair", { kind: "milestone", tags: "grin" });
+
+    // THEN 節目のポーズの語が続く
+    expect(prompt).toBe(
+      "solo, upper body, simple background, flat color, limited palette, 1girl, long hair, grin, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
+    );
+  });
+});
+
+describe("characterImage / 待機画像のプロンプトにポーズの語を足さない [否定]", () => {
+  it("S0062_03 adds no pose word to the idle prompt", () => {
+    // GIVEN 待機画像の画像タグが `1girl, long hair`
+    // WHEN 待機画像のプロンプトを組み立てる
+    const prompt = buildLocalImagePrompt("1girl, long hair");
+
+    // THEN ポーズの語を含まない
+    for (const word of ["fist pump", "pointing at viewer", "arms up", "jumping"]) {
+      expect(prompt, word).not.toContain(word);
+    }
+  });
+});
+
+describe("characterImage / 応援種別の画像にほかの応援種別のポーズの語と演出の語を足さない [否定]", () => {
+  it("S0062_04 keeps the pose of the other cheer type and the effects out of the prompt", () => {
+    // GIVEN 待機画像の画像タグと、regular / milestone の画像の画像タグ(表情)
+    // WHEN regular と milestone の画像のプロンプトを組み立てる
+    const regular = buildLocalImagePrompt("1girl, long hair", { kind: "regular", tags: "smile" });
+    const milestone = buildLocalImagePrompt("1girl, long hair", { kind: "milestone", tags: "grin" });
+
+    // THEN ほかの応援種別のポーズの語と、演出の語を含まない
+    expect(regular).not.toContain("arms up");
+    expect(regular).not.toContain("jumping");
+    expect(milestone).not.toContain("fist pump");
+    expect(milestone).not.toContain("pointing at viewer");
+    for (const prompt of [regular, milestone]) {
+      expect(prompt).not.toContain("sparkle");
+      expect(prompt).not.toContain("confetti");
+    }
   });
 });
 
@@ -296,21 +341,22 @@ describe("characterImage / 待機画像の画像タグの要求は見た目を�
   });
 });
 
-describe("characterImage / 応援種別の画像の画像タグの要求は表情とポーズだけを訊く", () => {
-  it("S0049_02 shows the messages of that cheer type and asks only for the expression and the pose", () => {
+describe("characterImage / 応援種別の画像の画像タグの要求は表情だけを訊く", () => {
+  it("S0062_05 shows the messages of that cheer type and asks only for the expression", () => {
     // GIVEN local-sdcpp、regular と milestone のセリフを持つプール
     const pool = makePool();
 
     // WHEN regular の画像の画像タグの要求を組み立てる
     const prompt = buildLocalImageTagPrompt(character, "regular", pool);
 
-    // THEN regular のセリフを示して表情とポーズを訊き、髪・目・服は書かないよう指示する。milestone のセリフは含まない
+    // THEN regular のセリフを示して表情だけを 1〜2 個訊き、ポーズ・髪・目・服は書かないよう指示する。milestone のセリフは含まない
     for (const key of ALL_BUCKET_KEYS.filter((k) => k.includes("_regular_"))) {
       expect(prompt).toContain(`R:${key}`);
     }
     expect(prompt).not.toContain("M:");
-    expect(prompt).toContain("表情とポーズだけ");
-    expect(prompt).toContain("髪・目・服は書かないでください");
-    expect(prompt).not.toContain("髪型");
+    expect(prompt).toContain("表情だけ");
+    expect(prompt).toContain("1〜2 個");
+    expect(prompt).toContain("ポーズ・髪・目・服は書かないでください");
+    expect(prompt).not.toContain("表情とポーズ");
   });
 });

@@ -2,7 +2,14 @@
 // core の共有型のみ参照し、providers・agent 実装には触れない(発動経路の境界を型レベルでも保つ)。
 // チャンネル名は文字列定数で一元管理し、main/preload/renderer が同じ値を参照する。
 
-import type { SpeedZone, CheerType, TimeOfDay, TriggerConfig, Stats, ProviderId } from "./types.js";
+import type {
+  SpeedZone,
+  CheerType,
+  TimeOfDay,
+  TriggerConfig,
+  Stats,
+  ThemeSetting,
+} from "./types.js";
 
 export const IpcChannel = {
   // renderer → main(invoke:双方向)
@@ -27,16 +34,7 @@ export const IpcChannel = {
   CancelGeneration: "keycheer:cancel-generation",
   GenerationProgress: "keycheer:generation-progress",
   // 外部プロバイダーの同意(論点 0016)。キャラ作成側の関心で、発動経路とは無関係。
-  GetProviders: "keycheer:get-providers",
-  SetProviders: "keycheer:set-providers",
-  GetConsent: "keycheer:get-consent",
-  GrantConsent: "keycheer:grant-consent",
   // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)
-  GetImageWeightsStatus: "keycheer:get-image-weights-status",
-  StartImageWeightsFetch: "keycheer:start-image-weights-fetch",
-  CancelImageWeightsFetch: "keycheer:cancel-image-weights-fetch",
-  ImageWeightsProgress: "keycheer:image-weights-progress",
-  GetImageWeightsLicenseTexts: "keycheer:get-image-weights-license-texts",
   // キャラの窓のポインタ(論点 0052)。絵の上に入った・出た・ドラッグの開始・移動・終了を main に伝える
   PopupPointer: "keycheer:popup-pointer",
   // main → renderer(send:片方向)
@@ -46,6 +44,15 @@ export const IpcChannel = {
   ConfigMigrated: "keycheer:config-migrated",
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す合図。論点 0033 S0033_05)
   MainWindowShown: "keycheer:main-window-shown",
+  // 画像だけ作り直す(論点 0050)。進捗と結果は ImageRegenerationProgress で流れる
+  RegenerateImages: "keycheer:regenerate-images",
+  ImageRegenerationProgress: "keycheer:image-regeneration-progress",
+  // 画像の重み・sd.cpp が置き場にあって画像を作れるか(S0050_07)
+  CanMakeImages: "keycheer:can-make-images",
+  // テーマ(論点 0057)。Get は設定と OS の設定を返す。OsThemeChanged は OS の設定が変わったときに main から送る
+  GetTheme: "keycheer:get-theme",
+  SetTheme: "keycheer:set-theme",
+  OsThemeChanged: "keycheer:os-theme-changed",
 } as const;
 
 export type IpcChannel = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -57,6 +64,11 @@ export type IpcChannel = (typeof IpcChannel)[keyof typeof IpcChannel];
 // 同じ文字列が両側に重複し、片方だけ変えても誰も気づけない。
 // popup.html の CSP `media-src keycheer-audio:` もこの値と対になっている。
 export const AUDIO_SCHEME = "keycheer-audio";
+
+// キャラ画像も同じ専用スキームで読む(論点 0036。main は .png だけを許す)。キャラの窓とメインウィンドウが同じ規約で組み立てる
+export function buildImageUrl(imagePath: string): string {
+  return `${AUDIO_SCHEME}://image/${encodeURIComponent(imagePath)}`;
+}
 
 // main → renderer: 応援発動時にポップアップへ渡すペイロード。
 // 発動経路の産物 — providers に一切依存しない(プール + wav のみで成立)。
@@ -83,6 +95,14 @@ export interface CharacterDisplayPayload {
 }
 
 export type SavePopupDisplayResult = { ok: true } | { ok: false; errors: string[] };
+
+// テーマ(論点 0057)。isOsDark は OS の設定(Electron の nativeTheme)。見た目は renderer が core/shared/theme で決める
+export interface ThemeSnapshot {
+  theme: ThemeSetting;
+  isOsDark: boolean;
+}
+
+export type SaveThemeResult = { ok: true } | { ok: false; errors: string[] };
 
 // main → renderer: 旧既定値(regular=100)からの移行通知(docs/data-model.md のマイグレーション)
 export interface ConfigMigratedPayload {
@@ -123,10 +143,7 @@ export type GetSpeakersResult =
 // main → renderer: 生成の進捗・完了・失敗(論点 0020)。
 // 応援発動経路とは無関係のチャンネル。プロバイダー実装の型は載せない。
 // 画像の工程に進めなかった理由。runtime-not-installed = sd.cpp の実行ファイルか重みが置き場に無い
-export type ImageUnavailableReason =
-  | "runtime-not-installed"
-  | "missing-api-key"
-  | "consent-required";
+export type ImageUnavailableReason = "runtime-not-installed";
 
 // 生成が完了したときの画像の結果(S0036_09 / S0036_10 の「エラーを表示する」を画面へ届ける)。
 // 画像が欠けても生成は完了なので、失敗の通知ではなく完了の通知に載せる
@@ -141,8 +158,18 @@ export type GenerationProgressPayload =
   | { type: "done"; synthesized: number; missing: number; images?: GenerationImagesSummary }
   | { type: "failed"; reason: string };
 
+// renderer → main: 画像だけ作り直すの応答(論点 0050)。実際の進捗は ImageRegenerationProgress で流れる
+export type RegenerateImagesResult =
+  | { ok: true }
+  | { ok: false; reason: "already-running" | "no-character" | "no-pool" | "runtime-not-installed" };
+
+export type ImageRegenerationProgressPayload =
+  | { type: "progress"; characterId: string; done: number; total: number }
+  | { type: "done"; characterId: string }
+  | { type: "failed"; characterId: string; reason: "images-failed" | "cancelled" };
+
 // renderer ← main: 保存済みのキャラクターの一覧(論点 0032 / 0033)。画面ごとの選別は renderer が行う
-// (renderer/mainScreen.ts)。main が持つ事実だけを載せる。imagePaths / generatedBy は渡さない。
+// (renderer/mainScreen.ts)。main が持つ事実だけを載せる。旧形式の imagePaths と generatedBy は渡さない。
 export interface CharacterListItem {
   id: string;
   name: string;
@@ -153,6 +180,8 @@ export interface CharacterListItem {
   isActive: boolean;
   // 生成後に名前・性格・話者を変えた(core/generatedProfile.ts)
   hasProfileChanged: boolean;
+  // 保存されているキャラ画像のパス(論点 0050。画面で 3 枚を見せる)。無い種類は持たない
+  images: Partial<Record<"idle" | "regular" | "milestone", string>>;
 }
 
 export type DeleteCharacterResult =
@@ -171,50 +200,11 @@ export interface StartGenerationOptions {
 }
 
 // renderer → main: 生成開始の応答(実際の進捗は GenerationProgress で流れる)
-// 外部プロバイダーで止まった場合は、どのプロバイダーが何で止まったかを返す。
-// renderer はそれを見て同意ダイアログ / キー入力のどちらを出すか決める。
 export type StartGenerationResult =
   | { ok: true }
   | { ok: false; reason: "already-running" | "no-character" }
   // 作り直しになるので確認が要る(論点 0038)。確認後に isRebuildConfirmed で呼び直す
-  | { ok: false; reason: "rebuild-confirmation-required" }
-  | {
-      ok: false;
-      reason: "consent-required" | "missing-api-key" | "voice-id-required";
-      provider: ProviderId;
-    };
-
-// renderer ⇄ main: 外部プロバイダーの同意状態(論点 0016)。
-// true のものだけが載る。未同意は「キーが無い」で表す(false を持ち回らない)。
-export type ConsentSnapshot = Readonly<Partial<Record<ProviderId, true>>>;
-
-// 画像の重みの状態(論点 0042 / 0047)。設定画面が取得の操作・同意の画面・進捗を出すのに使う
-export interface ImageWeightsStatus {
-  hasWeights: boolean; // 重みが照合に通って置かれている
-  canFetch: boolean; // 取得の操作を出すか(local-sdcpp を選んでいて、重みが無く、取得中でない)
-  needsLicenseAgreement: boolean; // 取得の前にライセンスへの同意が要る
-  progress: { doneBytes: number; totalBytes: number } | null; // 取得中だけ
-}
-
-export type StartImageWeightsFetchResult =
-  | { ok: true }
-  | {
-      ok: false;
-      reason:
-        | "license-agreement-required"
-        | "already-running"
-        | "cancelled"
-        | "network"
-        | "hash-mismatch"
-        | "insufficient-space";
-    };
-
-// 画像の重みのライセンスの全文(論点 0047)。同梱した文面を main が読んで渡す(通信しない。S0047_10)。
-// キーは core/shared/imageWeights の ImageWeightFile.id
-export interface ImageWeightsLicenseTexts {
-  "base-model": string;
-  "lcm-lora": string;
-}
+  | { ok: false; reason: "rebuild-confirmation-required" };
 
 // renderer(キャラの窓)→ main: ポインタの状態(論点 0052)。座標は画面上の位置。
 // 窓がマウスを受け取るか・どこへ動かすかは main が決める(renderer は窓を動かせない)

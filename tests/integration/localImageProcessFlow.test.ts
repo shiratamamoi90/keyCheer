@@ -168,7 +168,7 @@ describe("総合: local-sdcpp の作り方でキャラ画像 3 枚を作る", ()
     expect(Array.from(initImages[1]!)).toEqual(Array.from(PICTURES[0]!));
     expect(Array.from(initImages[2]!)).toEqual(Array.from(PICTURES[0]!));
     expect(valueAfter(spawned[1]!, "-p")).toBe(
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle, regular, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, flat color, limited palette, 1girl, idle, regular, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
     );
 
     // 保存された 3 枚:縁の背景は透明、囲まれた背景の色の画素は残り、色は待機画像の色だけ

@@ -5,41 +5,16 @@ export type SpeedZone = "slow" | "normal" | "fast";
 export type CheerType = "regular" | "milestone";
 export type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
 
-export type TextProviderId = "local-ollama" | "openai" | "anthropic";
-export type VoiceProviderId = "local-voicevox" | "openai-tts" | "elevenlabs";
-export type ImageProviderId = "local-sdcpp" | "openai-dalle" | "stability-ai";
+// プロバイダー識別子(閉じた union。docs/integrations.md)。生成はローカルだけで、種別ごとに 1 つ(論点 0054)。
+// 利用者は選ばない。値は生成元の記録(generatedBy)と、生成器の id に使う
+export type TextProviderId = "local-ollama";
+export type VoiceProviderId = "local-voicevox";
+export type ImageProviderId = "local-sdcpp";
 export type ProviderId = TextProviderId | VoiceProviderId | ImageProviderId;
 
-// 各プロバイダー union のランタイム配列(閉じた union の単一参照点。docs/integrations.md)
-export const TEXT_PROVIDER_IDS = [
-  "local-ollama",
-  "openai",
-  "anthropic",
-] as const satisfies readonly TextProviderId[];
-export const VOICE_PROVIDER_IDS = [
-  "local-voicevox",
-  "openai-tts",
-  "elevenlabs",
-] as const satisfies readonly VoiceProviderId[];
-export const IMAGE_PROVIDER_IDS = [
-  "local-sdcpp",
-  "openai-dalle",
-  "stability-ai",
-] as const satisfies readonly ImageProviderId[];
-
-export interface ProviderSelection {
-  text: TextProviderId;
-  voice: VoiceProviderId;
-  image: ImageProviderId;
-}
-
-// 既定はローカル一式(CLAUDE.md)。外部を既定にすると、ユーザーが何も選ばないまま
-// 外部送信が起こりうる状態になる — 同意ゲートの前提を崩さないため既定は必ずローカル。
-export const DEFAULT_PROVIDER_SELECTION: ProviderSelection = {
-  text: "local-ollama",
-  voice: "local-voicevox",
-  image: "local-sdcpp",
-};
+export const TEXT_PROVIDER_IDS = ["local-ollama"] as const satisfies readonly TextProviderId[];
+export const VOICE_PROVIDER_IDS = ["local-voicevox"] as const satisfies readonly VoiceProviderId[];
+export const IMAGE_PROVIDER_IDS = ["local-sdcpp"] as const satisfies readonly ImageProviderId[];
 
 // 各 union のランタイム配列。順序は決定的(docs/data-model.md の 24 シナリオ列挙順と一致)。
 export const SPEED_ZONES = ["slow", "normal", "fast"] as const satisfies readonly SpeedZone[];
@@ -108,7 +83,6 @@ export interface Character {
 }
 
 // 生成元プロバイダー(論点 0022)。欠損なく完了した種別だけが現れる。
-// `ProviderSelection` と形が似ているが別物 — こちらは「作った」、あちらは「選んだ」。
 // 全フィールド任意なのは、画像生成が未実装でも text / voice を記録できるようにするため。
 export interface GeneratedBy {
   text?: TextProviderId;
@@ -145,6 +119,21 @@ export const DEFAULT_POPUP_DISPLAY_CONFIG: PopupDisplayConfig = {
   shouldShowMessage: true,
 };
 
+// テーマ(設定 JSON では ui.theme。論点 0057)。メインウィンドウだけに効く。
+// system = OS の設定に合わせる。light / dark = OS に従わない
+export type ThemeSetting = "system" | "light" | "dark";
+export const THEME_SETTINGS = [
+  "system",
+  "light",
+  "dark",
+] as const satisfies readonly ThemeSetting[];
+
+export interface UiConfig {
+  theme: ThemeSetting;
+}
+
+export const DEFAULT_UI_CONFIG: UiConfig = { theme: "system" };
+
 // オンボーディング状態(論点 0018)。
 // メインウィンドウの自動表示可否のみを持つ(キャラ作成の進捗そのものは character 側で判定)。
 export interface Onboarding {
@@ -155,9 +144,8 @@ export const DEFAULT_ONBOARDING: Onboarding = {
   skipMainWindowAutoShow: false,
 };
 
-// システム設定(docs/data-model.md「system」)。キャラ作成時の生成先を決める。
-// 既定はすべて localhost — 応援発動経路はここを参照しないが、生成経路も既定では
-// 外部に出ない(プライバシー方針)。
+// システム設定(docs/data-model.md「system」)。キャラ作成時の生成先(localhost のランタイム)を決める。
+// 応援発動経路はここを参照しない。
 export interface SystemConfig {
   ollamaModel: string;
   ollamaEndpoint: string;

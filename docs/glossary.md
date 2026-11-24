@@ -37,15 +37,16 @@
 | 選べる話者 | `selectableSpeaker` | — | `allowedVoice`, `voiceWhitelist` | `local-voicevox` で選択肢に出す、決まった話者とスタイルの組(論点 0044) |
 | クレジット表記 | `creditNotice` | — | `attribution`, `creditText` | 音声ライブラリの規約が求める、利用したことを示す表記(例 `VOICEVOX:四国めたん`。論点 0043) |
 | プロバイダー | `provider` | — | `prov` | 生成手段の差し替え単位(テキスト / 音声 / 画像) |
-| 同意 | `consent` | — | `consentFlag` | 外部プロバイダーへの送信を利用者が明示的に承認した状態 |
-| ライセンスへの同意 | `licenseAgreement` | — | `licenseConsent`, `eula` | 画像の重みのライセンスと利用の制限を、取得の前に利用者が承認した状態。外部プロバイダーへの送信の「同意」とは別(論点 0047) |
+| ライセンスへの同意 | `licenseAgreement` | — | `licenseConsent`, `eula` | 画像の重みのライセンスと利用の制限を、インストーラが重みを置く前に利用者が承認した状態(論点 0047 / 0055) |
 | 利用の制限 | `useRestriction` | — | `usagePolicy` | 画像の重みのライセンスが禁じている使い方の一覧(ライセンスの別紙 A。論点 0047) |
-| 監査ログ | `auditLog` | — | `sendLog`, `auditlog` | 外部送信の記録。統計とは別ファイルに置く |
+| 監査ログ | `auditLog` | — | `sendLog`, `auditlog` | 前の版が外部送信を記録したファイル。論点 0054 で廃止し、起動時に消す |
+| テーマ | `theme` | — | `colorScheme` | メインウィンドウの配色の選び方。`system`(OS に合わせる)/ `light` / `dark`(論点 0057) |
 | ポップアップ | `popup` | — | `toast` | 応援を表示する小さなウィンドウ |
 | 音声ファイル | `wav` | — | `wavFile`, `voicePath` | 事前合成した応援音声。プールの各文に対応する |
 | プール生成 | `poolGeneration` | — | `genPool` | キャラ作成時にプールと `wav` をまとめて作る処理 |
 | キャラ画像 | `characterImage` | — | `charImage`, `standingImage` | キャラ作成時に生成するキャラの絵。1 キャラ 3 枚(待機画像・`regular`・`milestone`。論点 0036) |
 | 待機画像 | `idleImage` | — | `normalImage`, `defaultImage` | 応援が出ていないときに表示するキャラ画像(画像の種類 `idle`) |
+| 画像の生成記録 | `imageGenerationRecord` | — | `imageRecipe` | キャラクターの画像を作った画像タグ 3 つとシード。画像だけ作り直すときに使う(論点 0050) |
 | 画像タグ | `imageTag` | — | `imageKeyword` | 画像のプロンプトに入れる英語の短い語句。テキストプロバイダーに出させる |
 | 常時表示 | `alwaysShow` | — | `residentMode` | キャラの窓を常に画面に出しておく表示方法。設定 `popup.shouldAlwaysShow`(既定 true) |
 | 同梱ランタイム | `bundledRuntime` | — | `sidecar`, `embeddedRuntime` | アプリに同梱し、メインウィンドウの表示中だけアプリが起動する Ollama / VOICEVOX ENGINE の実行ファイル(論点 0034) |

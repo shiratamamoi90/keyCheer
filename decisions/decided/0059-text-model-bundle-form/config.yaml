@@ -1,0 +1,8 @@
+# 論点 0059:配布物に入れるテキストモデル(GGUF)。sha256 はビルドの時に GGUF を作る手順(論点 0031 / 0034 の作業)で固定して記す。
+text_model:
+  file: sarashina2.2-3b-instruct-q4_K_M.gguf
+  dir: "{userData}/weights/text"
+  source: sbintuitions/sarashina2.2-3b-instruct-v0.1 # 論点 0029 の取り込みと同じ取得元・コミット
+  revision: 4f3626fb1b64b3e97c908e67f27b2d627ba2a999
+  quantization: q4_K_M
+  sha256: null # 未固定。GGUF を作った時に記す

@@ -82,8 +82,10 @@ describe("localSdcpp / 枚数ぶん起動 + 同一シード(画像タグは呼�
     expect(spawned[0]!.args).toContain("/opt/sd/anime.safetensors");
     expect(spawned[0]!.args).toContain("/opt/sd/lcm.safetensors");
   });
+});
 
-  it("is reproducible: same seed yields the same seed arg across runs", async () => {
+describe("localSdcpp / 同一シードで再現", () => {
+  it("S0016_29 passes the same seed to sd.cpp on every run with the same seed and prompt", async () => {
     const seeds: string[] = [];
     const spawn: SpawnLike = (_cmd, args) => {
       const child = makeChild();

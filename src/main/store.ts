@@ -1,9 +1,7 @@
 // store: electron-store(JSON 永続化)の薄い I/O アダプタ。
 // 設定の検証・既定値補完・マイグレーションは core の純粋関数に委譲する(main は判定ロジックを持たない)。
 // 要件: docs/data-model.md「既存設定の読み込みと既定値補完」/「triggers.regular=100 のマイグレーション」
-// 注:API キー本体はここ(平文 JSON)に書かない(safeStorage 管轄。src/agent/secrets.ts)。
 
-import type { ImageWeightsLicenseAgreement } from "../core/shared/imageWeights.js";
 import Store from "electron-store";
 import {
   mergeWithDefaults,
@@ -12,12 +10,14 @@ import {
   DEFAULT_TRIGGER_CONFIG,
 } from "../core/index.js";
 import { applyGeneratedBy, validateGeneratedBy } from "../core/generatedBy.js";
+import { isThemeSetting } from "../core/shared/theme.js";
 import {
   EMPTY_STATS,
   DEFAULT_ONBOARDING,
   DEFAULT_SYSTEM_CONFIG,
   DEFAULT_GENERATION_CONFIG,
   DEFAULT_POPUP_DISPLAY_CONFIG,
+  DEFAULT_UI_CONFIG,
   MAX_CHARACTER_COUNT,
   type TriggerConfig,
   type Stats,
@@ -28,6 +28,7 @@ import {
   type SystemConfig,
   type GenerationConfig,
   type PopupDisplayConfig,
+  type UiConfig,
 } from "../core/shared/types.js";
 
 // electron-store に持たせる最小スキーマ。
@@ -40,6 +41,7 @@ interface PersistedSchema {
   // 旧形式(論点 0032 より前)。読み込み時に characters へ移して消す(S0032_24)
   character?: Partial<Character>;
   generation?: Partial<GenerationConfig>;
+  ui?: Partial<UiConfig>;
   // popup はほかの項目(position / duration / opacity)も持つ。常時表示だけをここで読み書きする
   popup?: Record<string, unknown>;
   onboarding?: Onboarding;
@@ -90,9 +92,9 @@ export interface AppStore {
   loadPopupPosition(): unknown;
   savePopupPosition(position: { x: number; y: number }): void;
   loadSystem(): SystemConfig;
-  // 画像の重みのライセンスへの同意(論点 0047)。形の検証は core/shared/imageWeights の hasLicenseAgreement が行う
-  loadImageWeightsLicenseAgreement(): unknown;
-  saveImageWeightsLicenseAgreement(agreement: ImageWeightsLicenseAgreement): void;
+  // テーマ(論点 0057)。保存する値の検証は呼び出し側(core/themeConfig の validateThemeSetting)
+  loadUiConfig(): UiConfig;
+  saveUiConfig(config: UiConfig): void;
   loadOnboarding(): Onboarding;
   saveOnboarding(onboarding: Onboarding): void;
 }
@@ -335,17 +337,6 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
       return { shouldActivateOnComplete: stored };
     },
 
-    // S0047_08 同意したことと日時と、同意した対象の版を記録する — system の中の 1 項目として持つ。
-    // ほかの system の項目と、送信の同意(providers.consent)は書き換えない(S0047_11)
-    loadImageWeightsLicenseAgreement() {
-      const raw = (store.get("system") as Record<string, unknown> | undefined) ?? {};
-      return raw.imageWeightsLicenseAgreement ?? null;
-    },
-    saveImageWeightsLicenseAgreement(agreement) {
-      const raw = (store.get("system") as Record<string, unknown> | undefined) ?? {};
-      store.set("system", { ...raw, imageWeightsLicenseAgreement: agreement });
-    },
-
     // シナリオ: system 設定の読み込みと既定値補完
     loadSystem() {
       const raw = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
@@ -392,6 +383,24 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     },
 
     // S0036_29 / S0053_08 設定画面で切り替える — popup のほかの項目は残す
+    // S0057_08 無い・定義域外なら system として読む。保存値は書き換えない(エラーを記録するだけ。S0053_07 と同じ扱い)
+    loadUiConfig() {
+      const stored = (store.get("ui") as Record<string, unknown> | undefined)?.theme;
+      if (stored === undefined) return DEFAULT_UI_CONFIG;
+      if (!isThemeSetting(stored)) {
+        console.error("[keycheer] ui.theme が system / light / dark ではありません", stored);
+        return DEFAULT_UI_CONFIG;
+      }
+      return { theme: stored };
+    },
+    // S0057_07 ui.theme だけを書く(ほかのキーには触れない)
+    saveUiConfig(config) {
+      store.set("ui", {
+        ...(store.get("ui") as Record<string, unknown> | undefined),
+        theme: config.theme,
+      });
+    },
+
     savePopupDisplay(config) {
       store.set("popup", {
         ...store.get("popup"),

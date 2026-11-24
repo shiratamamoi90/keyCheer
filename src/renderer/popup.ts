@@ -10,7 +10,7 @@ import {
   tick,
   type PopupState,
 } from "./popupView.js";
-import { AUDIO_SCHEME } from "../core/shared/ipc.js";
+import { AUDIO_SCHEME, buildImageUrl } from "../core/shared/ipc.js";
 import {
   computeMessageFontSizePx,
   computePopupContentLayout,
@@ -29,11 +29,6 @@ declare global {
 
 function audioUrl(wavPath: string): string {
   return `${AUDIO_SCHEME}://play/${encodeURIComponent(wavPath)}`;
-}
-
-// キャラ画像も同じ専用スキームで読む(論点 0036。main は .png だけを許す)
-function imageUrl(imagePath: string): string {
-  return `${AUDIO_SCHEME}://image/${encodeURIComponent(imagePath)}`;
 }
 
 function placeAt(element: HTMLElement, rect: Rect): void {
@@ -121,7 +116,7 @@ function main(): void {
     if (state.imagePath !== renderedImagePath) {
       renderedImagePath = state.imagePath;
       if (state.imagePath === null) image.removeAttribute("src");
-      else image.src = imageUrl(state.imagePath);
+      else image.src = buildImageUrl(state.imagePath);
     }
     image.hidden = state.imagePath === null;
     if (image.hidden) imagePointer.onImageHidden();

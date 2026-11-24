@@ -63,6 +63,8 @@ export function activateCharacter(
 export interface CharacterListDeps extends ActiveCharacterPoolDeps {
   generation: { isGenerating: (characterId: string) => boolean };
   loadGeneratedProfile: (characterId: string) => GeneratedProfile | undefined;
+  // 保存されているキャラ画像のパス(論点 0050)。無い種類は持たない
+  loadImagePaths: (characterId: string) => CharacterListItem["images"];
 }
 
 // 画面に渡すキャラクターの一覧(論点 0033)。どの画面に何を並べるかは renderer が決める
@@ -85,6 +87,7 @@ export function loadCharacterList(deps: CharacterListDeps): CharacterListItem[] 
         profile,
         deps.loadGeneratedProfile(character.id),
       ),
+      images: deps.loadImagePaths(character.id),
     };
   });
 }

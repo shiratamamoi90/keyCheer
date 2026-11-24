@@ -62,11 +62,8 @@ const mainCheerPathRestrictedPatterns = [
   {
     group: [
       "**/providers/*",
-      "../agent/providerRouter*",
       "../agent/poolGenerator*",
       "../agent/voiceSynth*",
-      "../agent/secrets*",
-      "../agent/auditLog*",
       // キャラ画像の画像タグ要求・生成(論点 0036 S0036_26)
       "../agent/characterImage*",
       "../core/characterImage*",

@@ -1,14 +1,14 @@
 // index: Electron メインプロセスのエントリ。各 I/O アダプタを配線するライフサイクル層。
-// ここは「発動経路の配線」に徹する。キャラ作成フロー(providers を使う)は
-// characterCreationIpc.ts に分離してあり、この経路に providers を混ぜない
+// ここは「発動経路の配線」に徹する。キャラ作成フロー(プロバイダー実装を使う)は
+// characterCreationIpc.ts に分離してあり、この経路にプロバイダー実装を混ぜない
 // (privacy 不変条件:発動経路は外部依存ゼロ。eslint.config.js で import レベルで強制)。
 //
 // テスト対象外(electron/uiohook を import する I/O グルー)。検証は typecheck / lint。
 
-import { app } from "electron";
-import { existsSync as fsExistsSync } from "node:fs";
+import { app, nativeTheme } from "electron";
+import { existsSync as fsExistsSync, rmSync } from "node:fs";
 import { createStore, createAppStore } from "./store.js";
-import { createProviderStore } from "./providerStore.js";
+import { removeRetiredFiles } from "./retiredFiles.js";
 import { createKeyHook } from "./keyHook.js";
 import { createCheerRuntime } from "./cheerRuntime.js";
 import {
@@ -44,6 +44,12 @@ const STATS_FLUSH_INTERVAL_MS = 10_000;
 
 function bootstrap(): void {
   const characterFs = createNodeCharacterFs();
+  // S0054_01〜04 前の版が残した API キーの保存先と監査ログを消す(論点 0054)
+  removeRetiredFiles({
+    userDataDir: app.getPath("userData"),
+    removeFile: (path) => rmSync(path, { force: true }),
+  });
+
   const rawStore = createStore();
   // 旧形式の 1 キャラを移すときに、プールがあれば使用中にする(論点 0032)
   const store = createAppStore(rawStore, {
@@ -163,9 +169,7 @@ function bootstrap(): void {
 
   registerIpcHandlers({
     store,
-    // プロバイダー選択・同意はキャラ作成側の関心。発動経路(cheerRuntime / keyHook)は
-    // これに一切触れない — 応援はプール + wav だけで成立する(CLAUDE.md 不変条件)。
-    providers: createProviderStore(rawStore),
+    isOsDark: () => nativeTheme.shouldUseDarkColors,
     onConfigUpdated: (next) => cheerRuntime.setConfig(next),
     // S0036_29 再起動しなくても窓を出す・隠す
     onPopupDisplayUpdated: (next) => {
@@ -175,11 +179,10 @@ function bootstrap(): void {
     onPopupPointer: (raw) => popupPointer.handle(raw),
   });
 
-  // キャラ作成(プール・wav 生成)の配線。providers を使うのはこのモジュールの中だけで、
+  // キャラ作成(プール・wav 生成)の配線。プロバイダー実装を使うのはこのモジュールの中だけで、
   // 発動経路(上の cheerRuntime 配線)には混ざらない。
   const characterCreation = registerCharacterCreation({
     store,
-    providers: createProviderStore(rawStore),
     fs: characterFs,
     userDataDir: app.getPath("userData"),
     // シナリオ: 生成直後は再起動なしで応援に反映される
@@ -192,6 +195,15 @@ function bootstrap(): void {
       resourcesDir: app.isPackaged ? process.resourcesPath : `${app.getAppPath()}/vendor`,
       tempDir: `${app.getPath("temp")}/keycheer-sdcpp`,
     },
+  });
+
+  // S0057_02 OS の設定が変わったら、開いているメインウィンドウへ知らせる(見た目は renderer が決める)。
+  // nativeTheme のテーマの出どころ(source)は書き換えない — 書き換えると OS の確認ダイアログまでアプリのテーマに引きずられる(S0057_05)
+  nativeTheme.on("updated", () => {
+    const win = mainWindow.win;
+    if (win !== null && !win.isDestroyed()) {
+      win.webContents.send(IpcChannel.OsThemeChanged, nativeTheme.shouldUseDarkColors);
+    }
   });
 
   createTray({ onQuit: () => app.quit(), onShowMain: () => mainWindow.toggle() });

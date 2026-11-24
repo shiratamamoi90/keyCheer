@@ -1,14 +1,16 @@
-// imageWeights: 画像の重み(local-sdcpp が使うベースモデルと LCM LoRA)の定義と、ライセンスへの同意の判定。
-// 要件: docs/model-weights.md(取得元の表・S0042)/ docs/licenses.md(S0047)。論点 0041 / 0042 / 0047
+// imageWeights: 画像の重み(local-sdcpp が使うベースモデルと LCM LoRA)の定義。
+// 要件: docs/model-weights.md(出所の表)。論点 0041 / 0055
 //
-// 取得元・版・sha256 は論点 0041 の決定の値(decisions/decided/0041-image-base-model/config.yaml)。
+// 出所・版・sha256 は論点 0041 の決定の値(decisions/decided/0041-image-base-model/config.yaml)。
+// 重みは配布物に入れ、インストーラが置く(論点 0055)。アプリは取得しない(S0055_07)。
 // 置き場の名前は、同梱した sd.cpp が読む名前と同じものを 1 箇所で持つ(main/bundledSdcpp.ts が参照する)。
-// main(取得)と renderer(表示)の両方が使うので shared に置く。発動経路からは使わない。
+// 置き場の名前はインストーラ(論点 0055)とも揃える定義なので shared に置く。発動経路からは使わない。
+// ライセンスはアプリの中に出さない(論点 0060)。名前・配布元・ライセンス名はインストーラが示すための記録。
 
 export interface ImageWeightFile {
   id: "base-model" | "lcm-lora";
   displayName: string;
-  repository: string; // Hugging Face のリポジトリ
+  repository: string; // 配布元(Hugging Face のリポジトリ)
   revision: string; // コミット(版を固定する)
   file: string; // リポジトリの中のファイル名
   relativePath: string; // 重みの置き場の中の置き先
@@ -45,31 +47,3 @@ export const IMAGE_WEIGHT_FILES: readonly ImageWeightFile[] = [
     licenseName: "CreativeML Open RAIL++-M",
   },
 ];
-
-const WEIGHT_HOST = "https://huggingface.co";
-
-// 取得元の URL。公式のリポジトリから直接取得し、自分たちではホストしない(論点 0041)
-export function buildImageWeightUrl(file: ImageWeightFile): string {
-  return `${WEIGHT_HOST}/${file.repository}/resolve/${file.revision}/${encodeURIComponent(file.file)}`;
-}
-
-// 表示用の取得元(S0042_02 / S0048_02 取得の前に取得元を示す)
-export function buildImageWeightSource(file: ImageWeightFile): string {
-  return `${WEIGHT_HOST}/${file.repository}`;
-}
-
-// S0047_08 同意した対象の版。取得する重みかライセンスを変えたら上げる(S0047_09 同意を取り直す)
-export const IMAGE_WEIGHTS_LICENSE_VERSION = "1";
-
-export interface ImageWeightsLicenseAgreement {
-  agreedAt: string; // ISO 8601
-  version: string;
-}
-
-// S0047_07 同意済みの人にはもう一度求めない / S0047_09 取得する重みかライセンスが変わったら同意を取り直す
-// 保存データは手で書き換えられうるので、形が違うものは同意していないものとして扱う。
-export function hasLicenseAgreement(record: unknown): record is ImageWeightsLicenseAgreement {
-  if (typeof record !== "object" || record === null) return false;
-  const { agreedAt, version } = record as Record<string, unknown>;
-  return typeof agreedAt === "string" && version === IMAGE_WEIGHTS_LICENSE_VERSION;
-}

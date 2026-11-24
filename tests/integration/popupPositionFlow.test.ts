@@ -24,7 +24,6 @@ vi.mock("electron", () => ({
 
 const { registerIpcHandlers } = await import("../../src/main/ipc.js");
 const { createAppStore } = await import("../../src/main/store.js");
-const { createProviderStore } = await import("../../src/main/providerStore.js");
 const { createPopupPointerHandler } = await import("../../src/main/popupPointer.js");
 const { resolvePopupPosition } = await import("../../src/core/shared/popupLayout.js");
 const { IpcChannel } = await import("../../src/core/shared/ipc.js");
@@ -66,7 +65,7 @@ function bootstrap(raw: Record<string, unknown>) {
   });
   registerIpcHandlers({
     store,
-    providers: createProviderStore(fakeStore(raw)),
+    isOsDark: () => false,
     onConfigUpdated: () => {},
     onPopupDisplayUpdated: () => {},
     onPopupPointer: (event) => popupPointer.handle(event),

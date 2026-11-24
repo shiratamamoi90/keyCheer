@@ -1,0 +1,11 @@
+# 1論点 = 1変数のみ変更:減らす色の数。描く工程は変えない(論点 0062 の出力を読み直す)
+axis: palette_size
+source_dir: "/home/kadok/.cache/keycheer-eval/0062-cheer-image-difference-2026-11-21T09-19-46-405Z" # 論点 0062 の計測の出力(開発機。git 追跡外)
+source_variant: fixed-pose # 案P1
+source_model: counterfeit-v3
+baseline: 7
+variants: 10, 12
+background_tolerance: 48
+color_limit: 7 # この軸では使わない(色の数は案の値)
+min_transparent_pct: 5
+max_transparent_pct: 95

@@ -1,78 +1,29 @@
-// main/providerFactory: 選択された ProviderId から実際の生成器を組み立てる。
-// 要件: docs/integrations.md「MVP 実装セット(確定)」/「生成元プロバイダーの保存」
-//
-// 「どのモデルを使うか」は確定事項(2026-07-26)により**プロバイダーごとに固定**し
-// UI から選ばせない。ここがその固定値の置き場。
-// 実 API は叩かない — 組み立てだけを縛る(生成の中身は各 provider のテストが持つ)。
+// main/providerFactory: ローカルの生成器を組み立てる(論点 0054)。
+// 実際には通信しない — 組み立てだけを縛る(生成の中身は各 provider のテストが持つ)。
 
 import { describe, it, expect } from "vitest";
 import {
-  createImageGeneratorFor,
-  createTextGeneratorFor,
-  createVoiceSynthesizerFor,
+  createImageGenerator,
+  createTextGenerator,
+  createVoiceSynthesizer,
   type SdcppRuntimeDeps,
 } from "../../src/main/providerFactory.js";
 import { resolveSdcppPaths } from "../../src/main/bundledSdcpp.js";
 import type { ChildHandleLike } from "../../src/agent/providers/localSdcpp.js";
 import { DEFAULT_SYSTEM_CONFIG } from "../../src/core/shared/types.js";
 
-const deps = {
-  system: DEFAULT_SYSTEM_CONFIG,
-  apiKeyFor: () => "sk-test",
-  voiceIdFor: () => "voice-test",
-};
+const deps = { system: DEFAULT_SYSTEM_CONFIG };
 
-describe("providerFactory / MVP 実装セット(確定)", () => {
-  it("builds a text generator for every text provider id", () => {
-    for (const id of ["local-ollama", "openai", "anthropic"] as const) {
-      const result = createTextGeneratorFor(id, deps);
-      expect(result.ok, id).toBe(true);
-      if (result.ok) expect(typeof result.generator.generateMessages).toBe("function");
-    }
-  });
-
-  it("builds a voice synthesizer for every voice provider id", () => {
-    for (const id of ["local-voicevox", "openai-tts", "elevenlabs"] as const) {
-      const result = createVoiceSynthesizerFor(id, deps);
-      expect(result.ok, id).toBe(true);
-      if (result.ok) expect(typeof result.synthesizer.synthesize).toBe("function");
-    }
-  });
-});
-
-describe("providerFactory / APIキー未設定で外部プロバイダーを選んだ場合 [異常系]", () => {
-  it("refuses to build an external provider without its api key", () => {
-    // キー無しで組み立ててしまうと、送信段階まで失敗が遅れる。
-    const noKey = { ...deps, apiKeyFor: () => null };
-    for (const id of ["openai", "anthropic"] as const) {
-      const result = createTextGeneratorFor(id, noKey);
-      expect(result.ok, id).toBe(false);
-      if (!result.ok) expect(result.reason).toBe("missing-api-key");
-    }
-  });
-
-  it("still builds local providers without any api key [不変条件]", () => {
-    // ローカルはキー不要。ここが崩れるとオフライン既定が壊れる。
-    const noKey = { ...deps, apiKeyFor: () => null };
-    expect(createTextGeneratorFor("local-ollama", noKey).ok).toBe(true);
-    expect(createVoiceSynthesizerFor("local-voicevox", noKey).ok).toBe(true);
-  });
-});
-
-describe("providerFactory / ElevenLabs の voice ID 未設定", () => {
-  it("refuses to build elevenlabs when no voice id is configured [要確認]", () => {
-    // voice ID は 0009 で未確定のまま(声質の好みの判断)。
-    // 既定値を勝手に置くと、ユーザーの意図しない声で全文を合成してしまう。
-    const noVoice = { ...deps, voiceIdFor: () => null };
-    const result = createVoiceSynthesizerFor("elevenlabs", noVoice);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("voice-id-required");
-  });
-
-  it("does not block the other voice providers on a missing voice id", () => {
-    const noVoice = { ...deps, voiceIdFor: () => null };
-    expect(createVoiceSynthesizerFor("local-voicevox", noVoice).ok).toBe(true);
-    expect(createVoiceSynthesizerFor("openai-tts", noVoice).ok).toBe(true);
+describe("providerFactory / ローカルの生成器", () => {
+  it("builds the Ollama text generator and the VOICEVOX synthesizer without any key", () => {
+    // 生成はローカルだけ(論点 0054)。組み立てに秘密は要らない
+    const text = createTextGenerator(deps);
+    expect(text.id).toBe("local-ollama");
+    expect(typeof text.generateMessages).toBe("function");
+    expect(typeof text.generateImageTags).toBe("function");
+    const voice = createVoiceSynthesizer(deps);
+    expect(voice.id).toBe("local-voicevox");
+    expect(typeof voice.synthesize).toBe("function");
   });
 });
 
@@ -134,7 +85,7 @@ describe("providerFactory / 同梱した sd.cpp と重みが揃っていれば l
     const { runtime, spawned } = sdcppRuntime([SD_BIN, SD_MODEL, SD_LORA]);
 
     // WHEN 画像プロバイダーを組み立てて 1 枚作る
-    const result = createImageGeneratorFor("local-sdcpp", { ...deps, sdcpp: runtime });
+    const result = createImageGenerator({ ...deps, sdcpp: runtime });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const images = await result.generator.generateImages(imageRequest);
@@ -162,14 +113,14 @@ describe("providerFactory / 実行ファイルか重みが無ければ子プロ�
     for (const existing of missingOne) {
       // WHEN 画像プロバイダーを組み立てる
       const { runtime, spawned } = sdcppRuntime(existing);
-      const result = createImageGeneratorFor("local-sdcpp", { ...deps, sdcpp: runtime });
+      const result = createImageGenerator({ ...deps, sdcpp: runtime });
 
       // THEN 組み立てず(= 画像なしで生成を完了する)、子プロセスを起動しない
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.reason).toBe("runtime-not-installed");
       expect(spawned).toEqual([]);
     }
-    const withoutRuntime = createImageGeneratorFor("local-sdcpp", deps);
+    const withoutRuntime = createImageGenerator(deps);
     expect(withoutRuntime.ok).toBe(false);
   });
 });
@@ -180,7 +131,7 @@ describe("providerFactory / 起動するのは同梱した CPU 版だけ [否定
     const { runtime, spawned } = sdcppRuntime([SD_BIN, SD_MODEL, SD_LORA]);
 
     // WHEN local-sdcpp で画像を作る
-    const result = createImageGeneratorFor("local-sdcpp", { ...deps, sdcpp: runtime });
+    const result = createImageGenerator({ ...deps, sdcpp: runtime });
     if (result.ok) await result.generator.generateImages(imageRequest);
 
     // THEN 起動するのは同梱した実行ファイル 1 つだけで、GPU に関する引数は無い
@@ -209,7 +160,7 @@ describe("providerFactory / 実行ファイルと重みのパスを設定や入�
     const { runtime, spawned } = sdcppRuntime([SD_BIN, SD_MODEL, SD_LORA]);
 
     // WHEN local-sdcpp を組み立てて 1 枚作る
-    const result = createImageGeneratorFor("local-sdcpp", { ...deps, system, sdcpp: runtime });
+    const result = createImageGenerator({ ...deps, system, sdcpp: runtime });
     if (result.ok) await result.generator.generateImages(imageRequest);
 
     // THEN その値を使わない。パスは同梱物の配置と重みの置き場だけから決まる

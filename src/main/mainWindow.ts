@@ -45,8 +45,11 @@ export interface MainWindow {
 // (シナリオ: 重複表示の防止)。
 export function createMainWindow(deps: MainWindowDeps): MainWindow {
   const win = new BrowserWindow({
-    width: 480,
-    height: 640,
+    // 切り替え画面で一覧の横に 3 枚を並べる(論点 0050 S0050_01)ので、一覧と 3 枚が横に収まる幅にする(論点 0058)
+    width: 820,
+    height: 700,
+    minWidth: 720,
+    minHeight: 520,
     show: false,
     webPreferences: {
       preload: PRELOAD_PATH,

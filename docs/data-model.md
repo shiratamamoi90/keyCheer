@@ -1,6 +1,6 @@
 # 要件: データ契約(設定 / プール / 統計 / ランタイム / シークレット)
 
-`electron-store`(JSON)で永続化するデータ、メッセージプール、音声ファイル、API キー(OS セキュアストレージ)の構造を契約として固定する。型は `src/core/shared` に置き main/renderer で共有する。
+`electron-store`(JSON)で永続化するデータ、メッセージプール、音声ファイルの構造を契約として固定する。型は `src/core/shared` に置き main/renderer で共有する。
 
 > スキーマは設計時点のもの。変更時は `/new-change` で diff を切り、本ファイルへ反映する。
 
@@ -18,7 +18,7 @@
       "voicevoxSpeakerId": 3,
       // 生成元プロバイダー(再生成時の参照用。論点 0022)。
       // **実際に作った種別だけ**が現れる。各フィールドは任意で、未生成・未実装の種別は持たない
-      // (下の例は画像を作っていないため image が無い)。選択値は providers 側であって、ここではない
+      // (下の例は画像を作っていないため image が無い)
       // キャラ画像のパスは持たない。id と画像の種類から決まる(下の「画像ファイル」。論点 0036)
       "generatedBy": {
         "text": "local-ollama",
@@ -45,19 +45,8 @@
     // キャラの窓を動かした位置(画面の座標。論点 0052 → docs/popup.md S0052_06)。動かしていなければ持たない
     "customPosition": { "x": 830, "y": 380 },
   },
-  "providers": {
-    "text": "local-ollama", // "local-ollama" | "openai" | "anthropic"
-    "voice": "local-voicevox", // "local-voicevox" | "openai-tts" | "elevenlabs"
-    "image": "local-sdcpp", // "local-sdcpp" | "openai-dalle" | "stability-ai"
-    // 同意フラグ。プロバイダー単位で記録(外部送信は同意済みのみ)
-    "consent": {
-      "openai": false,
-      "anthropic": false,
-      "openai-tts": false,
-      "elevenlabs": false,
-      "openai-dalle": false,
-      "stability-ai": false,
-    },
+  "ui": {
+    "theme": "system", // 既定 "system"。"system" | "light" | "dark"。メインウィンドウだけに効く(論点 0057 → docs/main-window.md)
   },
   "system": {
     "ollamaModel": "sarashina2.2-3b-instruct", // 既定値(論点 0028)。旧既定値 "gemma2:2b" は読み込み時に移行する
@@ -66,9 +55,6 @@
     // 生成の大きさ。GPU は使わない(論点 0040)ので GPU の項目は無い。ステップ数は作り方で決まる定数で、設定に持たない(論点 0046)
     "imageGen": { "width": 512, "height": 768 },
     "startWithWindows": true,
-    // 画像の重みのライセンスへの同意(論点 0047 → docs/licenses.md)。同意していなければ null(既定)。
-    // 外部プロバイダーへの送信の同意(providers.consent)とは別。取り消す操作は無い
-    "imageWeightsLicenseAgreement": { "agreedAt": "2026-11-13T09:00:00.000Z", "version": "1" },
     "excludedApps": [], // スキーマのみ用意。Phase 1 では参照しない
     "excludedKeys": [], // スキーマのみ用意。Phase 1 では参照しない
   },
@@ -161,6 +147,19 @@
   下絵にする縮小前の待機画像はここに置かず、生成が終わったら残さない(→ S0046_19)
 - 欠損時は表示で代わりを使う(→ docs/popup.md S0036_20 / S0036_21)
 
+画像の生成記録(論点 0050 → docs/pool-generation.md S0050_08〜12):
+
+```jsonc
+// {userData}/characters/{characterId}/images/generation.json
+{
+  "seed": 43, // 最後に 3 枚をそろえたシード。生成(全体)では既定のシード、画像だけ作り直すたびに 1 増える
+  "imageTags": { "idle": "1girl, long hair, ...", "regular": "smile, ...", "milestone": "cheering, ..." },
+}
+```
+
+- 無ければ記録の無いキャラクター(S0050_12)。読めない・形が違うときも記録が無いものとして扱い、ファイルは書き換えない
+- 応援発動経路は読まない
+
 ## Baseline 定型文(同梱)
 
 - 同梱位置: `src/core/baseline/messages.ts`(コード同梱、外部リソースファイルではない)
@@ -168,23 +167,34 @@
 - 構造: `(zone, type, timeOfDay)` シナリオごとに 1〜数件の定型文を持つ
 - 1 文 30 字以内の契約はプール生成文と同一
 
-## 監査ログ(外部送信履歴・別ファイル)
+## 前の版が残したもの(論点 0054)
 
-```
-{userData}/audit.log.json
-```
+外部プロバイダーを削除した(論点 0054)ため、前の版が作った次の 2 つを起動時に消す。
+API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査ログ `{userData}/audit.log.json`。
 
-- 外部プロバイダーへ送信が発生したときに append される(キャラ作成時のみ発生)
-- エントリ: `{ timestamp, provider, action, payloadSummary }`(payload 本文は含めない・要約のみ)
-- `stats` と分離する(プライバシー方針の境界をデータレベルで明示するため)
-- UI から閲覧・エクスポート可能
+### S0054_01 起動時に、前の版の API キーの保存先を消す
 
-## API キー(OS セキュアストレージ)
+- GIVEN `{userData}/secrets.json` がある
+- WHEN アプリを起動する
+- THEN `{userData}/secrets.json` は消え、以後作られない
 
-- Electron `safeStorage` 経由(Windows: Credential Manager)
-- `electron-store` の JSON にはキー本体を書かない
-- `providers.consent` フラグは平文 JSON でよい(キーそのものではないため)
-- キー識別子の例: `keycheer.api-key.openai`, `keycheer.api-key.anthropic`, ...
+### S0054_02 起動時に、前の版の監査ログを消す
+
+- GIVEN `{userData}/audit.log.json` がある
+- WHEN アプリを起動する
+- THEN `{userData}/audit.log.json` は消え、以後作られない
+
+### S0054_03 消すものが無くても起動は続く [境界]
+
+- GIVEN `{userData}/secrets.json` と `{userData}/audit.log.json` のどちらも無い、または消せない(使用中・権限)
+- WHEN アプリを起動する
+- THEN エラーを出さずに起動を続ける(クラッシュしない。消せなかったものは次の起動で消し直す)
+
+### S0054_04 ほかのデータには触らない [否定]
+
+- GIVEN 設定・キャラクター・プール・wav・画像・統計・重みが保存されている
+- WHEN 起動時に前の版の 2 つを消す
+- THEN それ以外のファイルは**変化しない**
 
 ## 統計データ
 
@@ -227,12 +237,13 @@
 ```
 
 > 論点 0032 以降、下のシナリオの `character.*` は `characters` の各要素を指す。
+> S0015_05 / S0015_07 / S0015_08(プロバイダーの選択値・API キー・同意)は論点 0054 で廃止し、欠番。
 
 ### S0015_01 既存設定の読み込みと既定値補完
 
-- GIVEN 一部キーが欠けた設定 JSON(`providers` / `triggers.activeThresholdSec` 等が無い旧バージョン含む)
+- GIVEN 一部キーが欠けた設定 JSON(`triggers.activeThresholdSec` 等が無い旧バージョン含む)
 - WHEN 起動時に読み込む
-- THEN 欠損キーは既定値(`triggers.regular=50` / `activeThresholdSec=60` / ローカルプロバイダー / 同意=false 等)で補完され、型に適合した設定オブジェクトになる(**例外: `character.generatedBy` は補完しない** → S0022_09)
+- THEN 欠損キーは既定値(`triggers.regular=50` / `activeThresholdSec=60` 等)で補完され、型に適合した設定オブジェクトになる(**例外: `character.generatedBy` は補完しない** → S0022_09)
 
 ### S0015_02 `triggers.regular = 100` のマイグレーション [境界]
 
@@ -253,42 +264,24 @@
 - THEN `"morning" | "afternoon" | "evening" | "night"` のいずれか
 - 注:時刻 → timeOfDay の分類関数(境界定数)は `docs/time-of-day.md` に確定。各呼び出し側は core の `classifyTimeOfDay` を使い、独自実装で if を書かない。
 
-### S0015_05 プロバイダー識別子の定義域 [境界]
-
-- GIVEN `providers.text` / `providers.voice` / `providers.image`
-- WHEN 値を書き込む
-- THEN それぞれ閉じた union(`integrations.md`)に含まれる識別子のみ
-
 ### S0015_06 `triggers` 値域バリデーション [境界]
 
 - GIVEN `triggers.regular` / `triggers.activeThresholdSec` / `triggers.milestones`
 - WHEN 値を保存
 - THEN それぞれ `1 ≦ regular ≦ 10000` / `5 ≦ activeThresholdSec ≦ 600` / 各 milestone 値 1 以上・昇順・重複なし・最大 20 個 を満たす値のみ受理。違反値は拒否(JSON 直接編集時は起動時バリデーションで既定値に置換しログ)
 
-### S0015_07 API キーが平文 JSON に出ない [不変条件]
-
-- GIVEN 任意の API キー保存操作
-- WHEN 設定が保存される
-- THEN `electron-store` の JSON にキー本体は現れない(safeStorage にのみ存在)
-
-### S0015_08 同意フラグ未通過状態の永続化禁止
-
-- GIVEN 同意ダイアログ表示中に強制終了 → 再起動
-- WHEN 設定を読み込む
-- THEN `providers.consent.<プロバイダー>` は `false` のまま(永続化されない)
-
 ### S0022_09 `generatedBy` は既定値で補完しない [境界]
 
 - GIVEN `character.generatedBy` が無い、または一部の種別だけを持つ設定 JSON(旧バージョン含む)
 - WHEN 起動時に読み込む
 - THEN 欠けている種別は**未設定のまま**で、S0015_01 の既定値補完の**対象外**。
-  とくに `providers` の選択値で埋めない(「作った」と「選んだ」を混ぜないため)
+  とくにプロバイダーの識別子で埋めない(「作った」ものだけを記録するため)
 
 ### S0022_10 `generatedBy` の値はプロバイダー識別子の定義域に従う [境界]
 
 - GIVEN `generatedBy` に記録された値
 - WHEN 設定を読み込む
-- THEN 各種別の値は S0015_05 と同じ閉じた union に属する(未設定は許すが、定義域外の文字列は不正)
+- THEN 各種別の値はプロバイダー識別子の閉じた union(`docs/integrations.md`)に属する(未設定は許すが、定義域外の文字列は不正)
 
 ### S0037_04 目標サイズより多い既存のプールは切り詰めない [否定]
 
@@ -399,6 +392,12 @@
 - WHEN 起動時に読み込む
 - THEN `true` として扱う。真偽値でない保存値は**書き換えない**(エラーを記録するだけ。S0036_27 と同じ扱い)
 
+### S0057_08 `ui.theme` の既定値 [境界]
+
+- GIVEN `ui.theme` が無い、または `"system"` / `"light"` / `"dark"` 以外の設定 JSON
+- WHEN 起動時に読み込む
+- THEN `"system"` として扱う。定義域外の保存値は**書き換えない**(エラーを記録するだけ。S0053_07 と同じ扱い)
+
 ### S0036_28 旧形式の `imagePaths` は読まず、書き換えもしない [否定]
 
 - GIVEN キャラクターが旧形式の `imagePaths`(`normal` / `happy` / `excited`)を持つ設定 JSON
@@ -418,10 +417,8 @@
 - 統計肥大化時の保持期間・集約方針(未検討)。
 - sd.cpp バイナリ/モデル/LoRA のパスは同梱物配置で決まる内部定数とし、設定 JSON に持たない。
 - プールの version 互換戦略(将来スキーマ変更時の自動移行)。
-- 同意の有効期限(永続的か、一定期間で再同意を求めるか)。
 
 ## 確定済み(本 spec で固定)
 
 - 生成画像・プール・wav の保存先ルート = `app.getPath('userData')` 直下の `characters/{characterId}/`。
-- 監査ログは `{userData}/audit.log.json` の別ファイル(`stats` とは分離)。
 - baseline 定型文は `src/core/baseline/messages.ts` にコード同梱。

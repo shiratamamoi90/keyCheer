@@ -16,10 +16,7 @@ import type {
   SaveGenerationConfigResult,
   SavePopupDisplayResult,
   GenerationProgressPayload,
-  ImageWeightsLicenseTexts,
   PopupPointerEvent,
-  ImageWeightsStatus,
-  StartImageWeightsFetchResult,
   GetSpeakersResult,
   SaveCharacterRequest,
   SaveCharacterResult,
@@ -27,19 +24,17 @@ import type {
   StartGenerationResult,
   StatsSnapshot,
   UpdateTriggerConfigRequest,
-  ConsentSnapshot,
+  SaveThemeResult,
+  RegenerateImagesResult,
+  ImageRegenerationProgressPayload,
+  ThemeSnapshot,
 } from "../core/shared/ipc.js";
 import type {
   TriggerConfig,
-  ProviderId,
-  ProviderSelection,
+  ThemeSetting,
   GenerationConfig,
   PopupDisplayConfig,
 } from "../core/shared/types.js";
-
-// 保存結果の型は providerStore が正本。preload は形だけ再宣言せず構造で受ける
-// (main の実装を preload から import しないため — 発動経路/プロセス境界を跨がせない)。
-export type SaveProvidersResult = { ok: true } | { ok: false; errors: string[] };
 
 // Electron `ipcRenderer` のうち本 API が使う部分だけを型で表す(依存を薄く保つ・テストで差し替える)
 export interface IpcLike {
@@ -77,12 +72,16 @@ export interface KeyCheerApi {
   sendPopupPointer(event: PopupPointerEvent): void;
   // メインウィンドウが非表示から表示になった(最初の画面を決め直す。論点 0033)
   onMainWindowShown(listener: () => void): () => void;
-  // 画像の重みの取得とライセンスへの同意(論点 0042 / 0047)。進捗は onImageWeightsProgress で流れてくる
-  getImageWeightsStatus(): Promise<ImageWeightsStatus>;
-  getImageWeightsLicenseTexts(): Promise<ImageWeightsLicenseTexts>;
-  startImageWeightsFetch(hasAgreed: boolean): Promise<StartImageWeightsFetchResult>;
-  cancelImageWeightsFetch(): Promise<void>;
-  onImageWeightsProgress(listener: (status: ImageWeightsStatus) => void): () => void;
+  // 画像だけ作り直す(論点 0050)。中断は cancelGeneration と共通
+  regenerateImages(characterId: string): Promise<RegenerateImagesResult>;
+  onImageRegenerationProgress(
+    listener: (payload: ImageRegenerationProgressPayload) => void,
+  ): () => void;
+  canMakeImages(): Promise<boolean>;
+  // テーマ(論点 0057)。onOsThemeChanged は OS の設定が変わったときに届く
+  getTheme(): Promise<ThemeSnapshot>;
+  setTheme(theme: ThemeSetting): Promise<SaveThemeResult>;
+  onOsThemeChanged(listener: (isOsDark: boolean) => void): () => void;
   // プール・wav の生成(論点 0020)。進捗は onGenerationProgress で流れてくる。
   startGeneration(
     characterId: string,
@@ -90,12 +89,6 @@ export interface KeyCheerApi {
   ): Promise<StartGenerationResult>;
   cancelGeneration(): Promise<void>;
   onGenerationProgress(listener: (payload: GenerationProgressPayload) => void): () => void;
-  // 外部プロバイダーの同意(論点 0016)。grantConsent は同意ダイアログを
-  // 通過した時にだけ呼ぶ — ダイアログの表示・チェック操作では呼ばない。
-  getProviders(): Promise<ProviderSelection>;
-  setProviders(selection: ProviderSelection): Promise<SaveProvidersResult>;
-  getConsent(): Promise<ConsentSnapshot>;
-  grantConsent(id: ProviderId): Promise<ConsentSnapshot>;
 }
 
 function subscribe<T>(ipc: IpcLike, channel: string, listener: (payload: T) => void): () => void {
@@ -133,17 +126,14 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       void ipc.invoke(IpcChannel.PopupPointer, event);
     },
     onMainWindowShown: (listener) => subscribe(ipc, IpcChannel.MainWindowShown, () => listener()),
-    getImageWeightsStatus: () =>
-      ipc.invoke(IpcChannel.GetImageWeightsStatus) as Promise<ImageWeightsStatus>,
-    getImageWeightsLicenseTexts: () =>
-      ipc.invoke(IpcChannel.GetImageWeightsLicenseTexts) as Promise<ImageWeightsLicenseTexts>,
-    startImageWeightsFetch: (hasAgreed) =>
-      ipc.invoke(
-        IpcChannel.StartImageWeightsFetch,
-        hasAgreed,
-      ) as Promise<StartImageWeightsFetchResult>,
-    cancelImageWeightsFetch: () => ipc.invoke(IpcChannel.CancelImageWeightsFetch) as Promise<void>,
-    onImageWeightsProgress: (listener) => subscribe(ipc, IpcChannel.ImageWeightsProgress, listener),
+    regenerateImages: (characterId) =>
+      ipc.invoke(IpcChannel.RegenerateImages, characterId) as Promise<RegenerateImagesResult>,
+    onImageRegenerationProgress: (listener) =>
+      subscribe(ipc, IpcChannel.ImageRegenerationProgress, listener),
+    canMakeImages: () => ipc.invoke(IpcChannel.CanMakeImages) as Promise<boolean>,
+    getTheme: () => ipc.invoke(IpcChannel.GetTheme) as Promise<ThemeSnapshot>,
+    setTheme: (theme) => ipc.invoke(IpcChannel.SetTheme, theme) as Promise<SaveThemeResult>,
+    onOsThemeChanged: (listener) => subscribe(ipc, IpcChannel.OsThemeChanged, listener),
     startGeneration: (characterId, options) =>
       ipc.invoke(
         IpcChannel.StartGeneration,
@@ -152,10 +142,5 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
       ) as Promise<StartGenerationResult>,
     cancelGeneration: () => ipc.invoke(IpcChannel.CancelGeneration) as Promise<void>,
     onGenerationProgress: (listener) => subscribe(ipc, IpcChannel.GenerationProgress, listener),
-    getProviders: () => ipc.invoke(IpcChannel.GetProviders) as Promise<ProviderSelection>,
-    setProviders: (selection) =>
-      ipc.invoke(IpcChannel.SetProviders, selection) as Promise<SaveProvidersResult>,
-    getConsent: () => ipc.invoke(IpcChannel.GetConsent) as Promise<ConsentSnapshot>,
-    grantConsent: (id) => ipc.invoke(IpcChannel.GrantConsent, id) as Promise<ConsentSnapshot>,
   };
 }

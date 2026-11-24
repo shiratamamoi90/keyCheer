@@ -685,6 +685,10 @@ export async function buildProcessCases(
 }
 
 export interface ProcessTrialSettings extends ImageTrialSettings {
+  // 外側の帯の幅(画素。論点 0063 の案M1)。渡したときだけ帯を描かせず、描いたあと帯を下地の色で貼り戻す。下地(idleCanvasColor)が要る
+  maskBandPx?: number;
+  // 避ける語(論点 0065)。渡したときだけ 3 枚すべてに付ける。CFG 1 では sd.cpp が使わないので、cfgScale と一緒に振る
+  negativePrompt?: string;
   // 下絵から描き直す強さ。本計測は 1 つ、強さを決める試しは複数
   strengths: readonly number[];
   // 下絵から描き直す画像だけに使うステップ数。強さは「ステップ数 × 強さ」の整数部の段に丸められるので、
@@ -717,6 +721,40 @@ export function buildIdleExtraArgs(
 }
 
 const CANVAS_NAME = "canvas";
+const BAND_MASK_NAME = "band-mask";
+
+function isInBand(x: number, y: number, width: number, height: number, band: number): boolean {
+  return x < band || y < band || x >= width - band || y >= height - band;
+}
+
+// 案M1(論点 0063):外側の帯を描かせないマスク。白い所だけを sd.cpp が描き直す
+export function buildBandMask(width: number, height: number, band: number): RgbaImage {
+  const pixels = new Uint8Array(width * height * RGBA_BYTES);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const value = isInBand(x, y, width, height, band) ? 0 : OPAQUE;
+      pixels.set([value, value, value, OPAQUE], (y * width + x) * RGBA_BYTES);
+    }
+  }
+  return { width, height, pixels };
+}
+
+// 案M1:帯を下地の色で塗り直す。マスクの外も VAE を通ると少し色が変わるので、色コードまで揃えるために貼り戻す
+export function applyBandFill(
+  image: RgbaImage,
+  band: number,
+  color: readonly [number, number, number],
+): RgbaImage {
+  const pixels = Uint8Array.from(image.pixels);
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      if (isInBand(x, y, image.width, image.height, band)) {
+        pixels.set([...color, OPAQUE], (y * image.width + x) * RGBA_BYTES);
+      }
+    }
+  }
+  return { width: image.width, height: image.height, pixels };
+}
 
 export async function runProcessTrials(
   settings: ProcessTrialSettings,
@@ -739,7 +777,25 @@ export async function runProcessTrials(
     );
     canvasPath = buildContainerOutputPath(CANVAS_NAME);
   }
-  const idleExtraArgs = buildIdleExtraArgs(settings, canvasPath);
+  const negativeArgs =
+    settings.negativePrompt === undefined ? [] : ["--negative-prompt", settings.negativePrompt];
+  const band = settings.maskBandPx;
+  if (band !== undefined && settings.idleCanvasColor === null) {
+    throw new Error("外側の帯を貼り戻すには下地の色が要る(idle_canvas_color)");
+  }
+  let maskArgs: string[] = [];
+  if (band !== undefined) {
+    writeFileSync(
+      join(variantOutDir, `${BAND_MASK_NAME}.png`),
+      encodePng(buildBandMask(settings.width, settings.height, band)),
+    );
+    maskArgs = ["--mask", buildContainerOutputPath(BAND_MASK_NAME)];
+  }
+  const idleExtraArgs = [
+    ...buildIdleExtraArgs(settings, canvasPath),
+    ...negativeArgs,
+    ...maskArgs,
+  ];
 
   // 1 枚作って後処理まで行う。palette を渡さなければ、この画像から決める(待機画像)
   const runOne = async (
@@ -768,7 +824,13 @@ export async function runProcessTrials(
     let produced: { raw: RgbaImage; palette: number[][] } | null = null;
     if (!outcome.failed) {
       try {
-        const raw = decodePng(readFileSync(join(variantOutDir, `${name}.raw.png`)));
+        const rawPath = join(variantOutDir, `${name}.raw.png`);
+        let raw = decodePng(readFileSync(rawPath));
+        if (band !== undefined && settings.idleCanvasColor !== null) {
+          // 貼り戻した絵を書き戻す。応援種別の画像はこのファイルを下絵に読む
+          raw = applyBandFill(raw, band, settings.idleCanvasColor);
+          writeFileSync(rawPath, encodePng(raw));
+        }
         const keyColor = settings.backgroundColor ?? undefined;
         const cut = removeBackground(raw, settings.backgroundTolerance, keyColor);
         const palette = idle?.palette ?? computePalette(cut, settings.colorLimit);
@@ -843,6 +905,8 @@ export async function runProcessTrials(
             // 同じ引数が 2 度あるときは後のものが使われる(待機画像のステップ数は createSdcppImageGenerator が渡す)
             "--steps",
             String(settings.derivedSteps),
+            ...negativeArgs,
+            ...maskArgs,
           ],
           idle,
         );

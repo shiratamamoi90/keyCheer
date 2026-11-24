@@ -1,5 +1,5 @@
 // mainScreen: メインウィンドウの画面(タブ)の状態遷移と、各画面に並べる一覧(純粋関数)。
-// spec: docs/main-window.md「メインウィンドウの画面」(論点 0033)
+// spec: docs/main-window.md「メインウィンドウの画面」(論点 0033 / 0061)
 //
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは「どの画面を出すか」「何を並べるか」だけを持つ。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
@@ -10,17 +10,19 @@ import {
   applyGenerationEvent,
   type GenerationViewState,
 } from "./generationView.js";
-import type { CharacterFormInput } from "./characterForm.js";
 
-export const MAIN_SCREENS = ["save", "generate", "switch", "settings"] as const;
+// 保存と生成は 1 つの「キャラクター」画面にまとめた(論点 0061)
+export const MAIN_SCREENS = ["character", "switch", "settings"] as const;
 export type MainScreen = (typeof MAIN_SCREENS)[number];
 
 export interface MainScreenState {
   screen: MainScreen;
   items: CharacterListItem[];
   generation: GenerationViewState;
-  // 保存画面の書きかけの入力。保存するまで items には入らない
-  draft: CharacterFormInput | null;
+  // 生成を始めたキャラクター(S0061_06。一覧で別のキャラクターを選んでも、進捗と結果はこのキャラクターのもの)
+  generatingCharacterId: string | null;
+  // 切り替え画面の一覧で選んで、3 枚を見ているキャラクター(論点 0050)。使用中とは別
+  selectedSwitchId: string | null;
 }
 
 export type MainScreenEvent =
@@ -28,17 +30,24 @@ export type MainScreenEvent =
   | { type: "window-shown"; items: CharacterListItem[] }
   | { type: "tab-selected"; screen: MainScreen }
   | { type: "characters-loaded"; items: CharacterListItem[] }
-  | { type: "generation"; payload: GenerationProgressPayload };
+  | { type: "generation"; payload: GenerationProgressPayload }
+  | { type: "generation-started"; characterId: string }
+  | { type: "switch-selected"; characterId: string };
 
 export function initialMainScreenState(): MainScreenState {
-  return { screen: "save", items: [], generation: initialGenerationState(), draft: null };
+  return {
+    screen: "character",
+    items: [],
+    generation: initialGenerationState(),
+    generatingCharacterId: null,
+    selectedSwitchId: null,
+  };
 }
 
-// S0033_02 0 件なら保存 / S0033_03 プールのあるものがあれば切り替え / S0033_04 それ以外は生成
-// 一番多い「選び直すだけ」の利用で回り道をさせず、初回は何から始めるかを示すため(論点 0033)。
+// S0033_02 0 件ならキャラクター / S0033_03 プールのあるものがあれば切り替え / S0033_04 それ以外もキャラクター
+// 一番多い「選び直すだけ」の利用で回り道をさせず、初回は何から始めるかを示すため(論点 0033。0061 で保存と生成を 1 画面に)。
 export function resolveInitialScreen(items: readonly CharacterListItem[]): MainScreen {
-  if (items.length === 0) return "save";
-  return items.some((item) => item.hasPool) ? "switch" : "generate";
+  return items.some((item) => item.hasPool) ? "switch" : "character";
 }
 
 export function applyMainScreenEvent(
@@ -51,7 +60,7 @@ export function applyMainScreenEvent(
     // 利用者が開いている画面が勝手に切り替わる。
     case "window-shown":
       return { ...state, items: event.items, screen: resolveInitialScreen(event.items) };
-    // S0033_01 4 つの画面をタブでいつでも切り替えられる
+    // S0061_01 3 つの画面をタブでいつでも切り替えられる
     // S0033_06 生成中にほかの画面へ移っても生成は続く — 画面だけを変え、生成の状態には触れない
     case "tab-selected":
       return { ...state, screen: event.screen };
@@ -59,6 +68,11 @@ export function applyMainScreenEvent(
       return { ...state, items: event.items };
     case "generation":
       return { ...state, generation: applyGenerationEvent(state.generation, event.payload) };
+    case "generation-started":
+      return { ...state, generatingCharacterId: event.characterId };
+    // S0050_04 選んだだけでは使用中を変えない — 選択だけを持つ(使用中にするのは今の「これにする」)
+    case "switch-selected":
+      return { ...state, selectedSwitchId: event.characterId };
   }
 }
 
@@ -68,24 +82,26 @@ function isGenerationRunning(generation: GenerationViewState): boolean {
   );
 }
 
-// S0033_07 生成中はほかの画面でも生成タブに「生成中」と示す
+// S0033_07 生成中はほかの画面でもキャラクタータブに「生成中」と示す
 export function generationTabBadge(generation: GenerationViewState): string | null {
   return isGenerationRunning(generation) ? "生成中" : null;
 }
 
-// S0033_08 進捗と中断は生成画面だけに出す [否定]
+// S0033_08 進捗と中断はキャラクター画面だけに出す [否定]
 // どの生成を止めるのかが進捗と同じ場所で分かるようにするため(生成は同時に 1 件 = 論点 0032)。
 export function canShowGenerationControls(
   screen: MainScreen,
   _generation: GenerationViewState,
 ): boolean {
-  return screen === "generate";
+  return screen === "character";
 }
 
-// S0033_09 生成画面で選べるのは保存済みのキャラクターだけ [否定]
-// draft を候補に混ぜると、保存先の id が無いまま生成を始められてしまう。
-export function buildGenerationCandidates(state: MainScreenState): CharacterListItem[] {
-  return state.items;
+// S0061_06 進捗と結果には生成しているキャラクターの名前を示す [境界]
+// 入力の枠は一覧で選んだキャラクターの内容になるので、名前が無いと別のキャラクターの生成に見える。
+export function buildGenerationHeading(state: MainScreenState): string | null {
+  if (state.generatingCharacterId === null || state.generation.phase === "idle") return null;
+  const target = state.items.find((item) => item.id === state.generatingCharacterId);
+  return target === undefined ? null : `${target.name} の生成`;
 }
 
 export interface SwitchListEntry {

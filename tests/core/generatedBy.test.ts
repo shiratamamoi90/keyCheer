@@ -7,25 +7,25 @@ import { applyGeneratedBy, validateGeneratedBy } from "../../src/core/generatedB
 
 describe("generatedBy / 種別ごとの記録が他の種別を壊さない [否定]", () => {
   it("S0022_05 recording voice leaves the recorded text unchanged", () => {
-    const current = { text: "openai" as const };
+    const current = { text: "local-ollama" as const };
 
-    const next = applyGeneratedBy(current, { voice: "elevenlabs" });
+    const next = applyGeneratedBy(current, { voice: "local-voicevox" });
 
-    expect(next.text).toBe("openai");
-    expect(next.voice).toBe("elevenlabs");
+    expect(next.text).toBe("local-ollama");
+    expect(next.voice).toBe("local-voicevox");
     // 純関数:引数を書き換えない
-    expect(current).toEqual({ text: "openai" });
+    expect(current).toEqual({ text: "local-ollama" });
   });
 });
 
 describe("generatedBy / 再生成で生成元が更新される", () => {
-  it("S0022_06 regenerating voice with another provider replaces the recorded voice", () => {
+  it("S0022_06 regenerating voice records the voice provider again", () => {
     const next = applyGeneratedBy(
       { text: "local-ollama", voice: "local-voicevox" },
-      { voice: "elevenlabs" },
+      { voice: "local-voicevox" },
     );
 
-    expect(next).toEqual({ text: "local-ollama", voice: "elevenlabs" });
+    expect(next).toEqual({ text: "local-ollama", voice: "local-voicevox" });
   });
 });
 
@@ -36,6 +36,8 @@ describe("generatedBy / 値はプロバイダー識別子の定義域に従う [
     expect(validateGeneratedBy({ voice: "local-ollama" })).not.toEqual([]);
     // 未設定は許す
     expect(validateGeneratedBy({})).toEqual([]);
-    expect(validateGeneratedBy({ text: "anthropic", voice: "openai-tts" })).toEqual([]);
+    expect(validateGeneratedBy({ text: "local-ollama", voice: "local-voicevox" })).toEqual([]);
+    // 削除した外部プロバイダーの識別子は定義域外(論点 0054)
+    expect(validateGeneratedBy({ text: "openai" })).not.toEqual([]);
   });
 });

@@ -5,7 +5,12 @@
 // DOM 操作・IPC 購読は mainEntry 側の I/O グルー。ここは状態遷移と表示文言だけを持つ。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
-import type { GenerationImagesSummary, StartGenerationResult } from "../core/shared/ipc.js";
+import type {
+  CharacterListItem,
+  GenerationImagesSummary,
+  StartGenerationResult,
+} from "../core/shared/ipc.js";
+import type { CharacterFormInput } from "./characterForm.js";
 
 export type GenerationPhaseName = "idle" | "text" | "voice" | "image" | "done" | "failed";
 
@@ -68,6 +73,28 @@ export function canStartGeneration(
   return state.phase !== "text" && state.phase !== "voice" && state.phase !== "image";
 }
 
+export interface GenerateButtonState {
+  isEnabled: boolean;
+  notice: string | null;
+}
+
+// S0061_02 保存済みで入力が保存した内容と同じなら押せる
+// S0061_03 新規の入力では押せない [否定] / S0061_04 書き換えている間は押せない [否定]
+// 生成は main が保存済みのプロフィールで行うので、画面の入力と食い違うまま押せると、見えている内容と違うもので生成される(論点 0061)。
+export function resolveGenerateButton(input: {
+  generation: GenerationViewState;
+  editing: CharacterListItem | null;
+  form: CharacterFormInput;
+}): GenerateButtonState {
+  if (input.editing === null) return { isEnabled: false, notice: "保存すると生成できます" };
+  const isSaved =
+    input.form.name === input.editing.name &&
+    input.form.personality === input.editing.personality &&
+    input.form.speakerId === input.editing.voicevoxSpeakerId;
+  if (!isSaved) return { isEnabled: false, notice: "変更を保存すると生成できます" };
+  return { isEnabled: canStartGeneration(input.generation, true), notice: null };
+}
+
 const FAILURE_TEXT: Record<string, string> = {
   "text-generation-failed":
     "メッセージの生成に失敗しました。Ollama が起動しているか確認してください",
@@ -77,9 +104,8 @@ const FAILURE_TEXT: Record<string, string> = {
 
 // 画像の工程に進めなかった理由の文言
 const IMAGE_UNAVAILABLE_TEXT: Record<string, string> = {
-  "runtime-not-installed": "画像生成のモデルの重みがありません",
-  "missing-api-key": "画像プロバイダーの API キーがありません",
-  "consent-required": "画像プロバイダーへの送信に同意していません",
+  // S0055_09 重みはインストーラが置く(論点 0055)ので、入れ直しを案内する
+  "runtime-not-installed": "画像生成のモデルの重みがありません。インストーラで入れ直してください",
 };
 
 // 完了の文言のうち、画像の部分。画像が欠けても生成は完了だが、欠けたことは必ず見えるようにする

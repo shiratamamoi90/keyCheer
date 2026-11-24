@@ -4,7 +4,9 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  applyBandFill,
   applyPalette,
+  buildBandMask,
   buildAppearanceTagPrompt,
   buildIdleExtraArgs,
   buildProcessPage,
@@ -290,5 +292,23 @@ describe("buildProcessPage", () => {
     expect(row).toContain("baseline/counterfeit-v3/a.png");
     expect(row).toContain("idle-t0.raw.png");
     expect(row).toContain("idle-t0.png");
+  });
+});
+
+describe("imageProcessComparison / 外側の帯を描かせない(論点 0063 の案M1)", () => {
+  it("makes a mask that keeps the band black and lets the inside be drawn", () => {
+    const mask = buildBandMask(4, 3, 1);
+    const values = [];
+    for (let i = 0; i < 12; i++) values.push(mask.pixels[i * 4]);
+    expect(values).toEqual([0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0]);
+    expect(mask.pixels[3]).toBe(255);
+  });
+
+  it("paints the band with the canvas color and keeps the inside and the input", () => {
+    const image: RgbaImage = { width: 3, height: 3, pixels: new Uint8Array(36).fill(7) };
+    const filled = applyBandFill(image, 1, [255, 255, 255]);
+    expect([...filled.pixels.slice(0, 4)]).toEqual([255, 255, 255, 255]);
+    expect([...filled.pixels.slice(16, 20)]).toEqual([7, 7, 7, 7]);
+    expect(image.pixels[0]).toBe(7);
   });
 });

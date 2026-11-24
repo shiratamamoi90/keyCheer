@@ -34,11 +34,11 @@ describe("shared/types / timeOfDay は 4 値のみ [境界]", () => {
   });
 });
 
-describe("shared/types / プロバイダー識別子の定義域 [境界]", () => {
-  it("S0015_05 closes the text/voice/image unions to the documented identifiers", () => {
-    expect([...TEXT_PROVIDER_IDS]).toEqual(["local-ollama", "openai", "anthropic"]);
-    expect([...VOICE_PROVIDER_IDS]).toEqual(["local-voicevox", "openai-tts", "elevenlabs"]);
-    expect([...IMAGE_PROVIDER_IDS]).toEqual(["local-sdcpp", "openai-dalle", "stability-ai"]);
+describe("shared/types / プロバイダー識別子 [境界]", () => {
+  it("closes the text/voice/image unions to the local identifiers", () => {
+    expect([...TEXT_PROVIDER_IDS]).toEqual(["local-ollama"]);
+    expect([...VOICE_PROVIDER_IDS]).toEqual(["local-voicevox"]);
+    expect([...IMAGE_PROVIDER_IDS]).toEqual(["local-sdcpp"]);
   });
 
   it("does not mix identifiers across kinds", () => {

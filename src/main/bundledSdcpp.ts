@@ -25,7 +25,7 @@ export function resolveSdcppPaths(input: {
   platform: string;
 }): SdcppPaths {
   const extension = input.platform === "win32" ? ".exe" : "";
-  // 重みの置き場とファイル名は、取得(main/imageWeights.ts)と同じ定義から決める(core/shared/imageWeights.ts)
+  // 重みの置き場とファイル名は、インストーラが置く名前と同じ定義から決める(core/shared/imageWeights.ts。論点 0055)
   const weightsDir = `${input.userDataDir}/${IMAGE_WEIGHTS_DIR}`;
   const relativePathOf = (id: "base-model" | "lcm-lora"): string =>
     IMAGE_WEIGHT_FILES.find((file) => file.id === id)!.relativePath;

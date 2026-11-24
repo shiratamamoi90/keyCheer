@@ -245,44 +245,42 @@ describe("characterCreation / 生成中に再度生成を開始できない [境
 
 // 生成元の記録(論点 0022)。runner は「欠損なく完了した種別」と実際に使ったプロバイダー ID を
 // `completed` として返し、保存は呼び出し側(store.recordGeneratedBy)が行う。
-// 既定のローカル ID と区別するため、ここでは外部の ID を持つ偽物を使う
-// (ID を実装側でベタ書きしていても緑になってしまうのを防ぐ)。
 describe("characterCreation / 生成元の記録", () => {
   it("S0022_01 records the text provider once every bucket is generated", async () => {
     const fs = fakeFs();
-    const textGenerator: TextGenerator = { ...okText(), id: "anthropic" };
+    const textGenerator: TextGenerator = { ...okText(), id: "local-ollama" };
 
     const result = await createGenerationRunner().start(baseInput(fs, { textGenerator }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.completed.text).toBe("anthropic");
+    expect(result.completed.text).toBe("local-ollama");
   });
 
   it("S0022_02 records the voice provider when no wav is missing", async () => {
     const fs = fakeFs();
-    const synthesizer: VoiceSynthesizer = { ...okVoice(), id: "elevenlabs" };
+    const synthesizer: VoiceSynthesizer = { ...okVoice(), id: "local-voicevox" };
 
     const result = await createGenerationRunner().start(baseInput(fs, { synthesizer }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.missing).toBe(0);
-    expect(result.completed.voice).toBe("elevenlabs");
+    expect(result.completed.voice).toBe("local-voicevox");
   });
 
   it("S0022_03 does not record voice when a wav is missing but still records text", async () => {
     const fs = fakeFs();
     let n = 0;
     const synthesizer: VoiceSynthesizer = {
-      id: "elevenlabs",
+      id: "local-voicevox",
       synthesize: vi.fn(async () => {
         n += 1;
         if (n === 1) throw new Error("synthesis failed");
         return new Uint8Array([1, 2]);
       }),
     };
-    const textGenerator: TextGenerator = { ...okText(), id: "anthropic" };
+    const textGenerator: TextGenerator = { ...okText(), id: "local-ollama" };
 
     const result = await createGenerationRunner().start(
       baseInput(fs, { textGenerator, synthesizer }),
@@ -291,13 +289,13 @@ describe("characterCreation / 生成元の記録", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.missing).toBe(1);
-    expect(result.completed).toEqual({ text: "anthropic" });
+    expect(result.completed).toEqual({ text: "local-ollama" });
   });
 
   it("S0022_07 records no kind when text generation does not complete", async () => {
     const fs = fakeFs();
     const textGenerator: TextGenerator = {
-      id: "anthropic",
+      id: "local-ollama",
       generateMessages: vi.fn(async () => {
         throw new Error("ECONNREFUSED");
       }),
@@ -529,7 +527,9 @@ function imagePath(characterId: string, kind: ImageKind): string {
 
 function imageFiles(fs: { files: Record<string, string | Uint8Array> }, characterId = CHAR_ID) {
   return Object.keys(fs.files)
-    .filter((p) => p.startsWith(`/userdata/characters/${characterId}/images/`))
+    .filter(
+      (p) => p.startsWith(`/userdata/characters/${characterId}/images/`) && p.endsWith(".png"),
+    )
     .sort();
 }
 
@@ -718,7 +718,7 @@ describe("characterCreation / 画像が 3 枚揃ったら image を記録", () =
       baseInput(fs, {
         characterId: "char-c",
         textGenerator: labeledText(),
-        ...imageInput(fakeImages(BYTES_1, [], "stability-ai")),
+        ...imageInput(fakeImages(BYTES_1, [], "local-sdcpp")),
       }),
     );
     saveGenerationResult(deps, "char-c", result);
@@ -726,7 +726,7 @@ describe("characterCreation / 画像が 3 枚揃ったら image を記録", () =
     expect(store.loadCharacters()[0]?.generatedBy).toEqual({
       text: "local-ollama",
       voice: "local-voicevox",
-      image: "stability-ai",
+      image: "local-sdcpp",
     });
   });
 });
@@ -746,7 +746,7 @@ describe("characterCreation / 画像が欠けたら image を記録しない [�
       baseInput(fs, {
         characterId: "char-c",
         textGenerator: labeledText(),
-        ...imageInput(fakeImages(BYTES_1, ["regular"], "stability-ai")),
+        ...imageInput(fakeImages(BYTES_1, ["regular"], "local-sdcpp")),
       }),
     );
     saveGenerationResult(deps, "char-c", result);
@@ -928,19 +928,224 @@ describe("characterCreation / 画像の結果を画面へ渡す形にまとめ�
 });
 
 describe("characterCreation / 画像の重みが無くても生成は始められる [境界]", () => {
-  it("S0042_10 starts and completes without images when the image provider could not be built", async () => {
-    // GIVEN local-sdcpp で画像の重みが取得されていない(= 画像プロバイダーを組み立てられず、画像の工程を渡さない)。
+  it("starts and completes without images when the image provider could not be built", async () => {
+    // GIVEN 画像の重みが置き場に無い(= 画像プロバイダーを組み立てられず、画像の工程を渡さない)。
     //       テキストと音声は生成できる状態
     const fs = fakeFs();
 
     // WHEN 生成を始める
     const result = await createGenerationRunner().start(baseInput(fs));
 
-    // THEN 取得の案内で止めずに生成を始め、画像なしで完了する
+    // THEN 生成を始め、画像なしで完了する(論点 0055 / 0036)
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.images).toBeUndefined();
     expect(imageFiles(fs)).toEqual([]);
     expect(loadPool(fs, USER_DATA, CHAR_ID)).not.toBeNull();
+  });
+});
+
+// --- 画像だけ作り直す(論点 0050。docs/pool-generation.md)---
+
+const RECORD_PATH = `/userdata/characters/${CHAR_ID}/images/generation.json`;
+const DEFAULT_SEED = 42;
+const TAGS = { idle: "idle", regular: "regular", milestone: "milestone" };
+
+// 画像タグ(= 種類名)とシードから決まる 1 バイトを返す。呼ばれたシードを残す
+function seededImages(
+  failing: ImageKind[] = [],
+): ImageGenerator & { seeds: number[]; prompts: string[] } {
+  const seeds: number[] = [];
+  const prompts: string[] = [];
+  return {
+    id: "local-sdcpp",
+    seeds,
+    prompts,
+    generateImages: async ({ prompt, seed }) => {
+      seeds.push(seed);
+      prompts.push(prompt);
+      const kind = prompt as ImageKind;
+      if (failing.includes(kind)) throw new Error(`${kind} failed`);
+      return [new Uint8Array([(seed + BYTES_1[kind]) % 256])];
+    },
+  };
+}
+
+function writeRecord(fs: ReturnType<typeof fakeFs>, seed: number, tags = TAGS): void {
+  fs.files[RECORD_PATH] = JSON.stringify({ seed, imageTags: tags });
+}
+
+function readRecord(fs: ReturnType<typeof fakeFs>): unknown {
+  const text = fs.files[RECORD_PATH];
+  return typeof text === "string" ? JSON.parse(text) : undefined;
+}
+
+function writeImages(fs: ReturnType<typeof fakeFs>, bytes: Record<ImageKind, number>): void {
+  for (const kind of ["idle", "regular", "milestone"] as const) {
+    fs.files[imagePath(CHAR_ID, kind)] = new Uint8Array([bytes[kind]]);
+  }
+}
+
+// 画像タグの要求のプロンプトに応援種別のセリフ(= シナリオのキー)が入るよう、セリフにキーを書いたプール
+const LABELED_POOL: MessagePool = {
+  characterId: CHAR_ID,
+  version: 1,
+  buckets: Object.fromEntries(
+    ALL_BUCKET_KEYS.map((key) => [key, [{ id: `${key}#0`, text: `${key}#0` }]]),
+  ) as MessagePool["buckets"],
+};
+
+function imagesOnlyInput(fs: CharacterFs, generator: ImageGenerator, tagGenerator = fakeTags()) {
+  return {
+    characterId: CHAR_ID,
+    character,
+    pool: LABELED_POOL,
+    userDataDir: USER_DATA,
+    fs,
+    image: { generator, tagGenerator, seed: DEFAULT_SEED, width: 512, height: 768 },
+  };
+}
+
+describe("characterCreation / 生成で画像タグとシードを記録する", () => {
+  it("S0050_08 saves the three image tags and the default seed after making the images", async () => {
+    const fs = fakeFs();
+    fs.files[RECORD_PATH] = JSON.stringify({
+      seed: 99,
+      imageTags: { idle: "old", regular: "old", milestone: "old" },
+    });
+
+    const result = await createGenerationRunner().start(
+      baseInput(fs, { textGenerator: labeledText(), ...imageInput(fakeImages(BYTES_1)) }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(readRecord(fs)).toEqual({ seed: DEFAULT_SEED, imageTags: TAGS });
+  });
+});
+
+describe("characterCreation / 画像だけ作り直すと、記録の画像タグとシード + 1 で 3 枚を作る", () => {
+  it("S0050_09 reuses the recorded tags without asking for tags and uses the recorded seed plus one", async () => {
+    const fs = fakeFs();
+    writeImages(fs, BYTES_2);
+    writeRecord(fs, 50);
+    const tagGenerator = fakeTags();
+    const generator = seededImages();
+
+    const result = await createGenerationRunner().startImagesOnly(
+      imagesOnlyInput(fs, generator, tagGenerator),
+    );
+
+    expect(result).toEqual({ ok: true, completed: { image: "local-sdcpp" } });
+    expect(tagGenerator.generateImageTags).not.toHaveBeenCalled();
+    expect(generator.seeds).toEqual([51, 51, 51]);
+    expect(generator.prompts).toEqual(["idle", "regular", "milestone"]);
+    expect(fs.files[imagePath(CHAR_ID, "idle")]).toEqual(new Uint8Array([52]));
+    expect(readRecord(fs)).toEqual({ seed: 51, imageTags: TAGS });
+  });
+});
+
+describe("characterCreation / 画像だけの作り直しは文言・wav・プロフィールを変えない [否定]", () => {
+  it("S0050_10 leaves the pool, the wav files and the other characters untouched", async () => {
+    const fs = fakeFs();
+    const text = labeledText();
+    await createGenerationRunner().start(
+      baseInput(fs, { textGenerator: text, ...imageInput(fakeImages(BYTES_1)) }),
+    );
+    fs.files["/userdata/characters/other/images/idle.png"] = new Uint8Array([7]);
+    const before = Object.fromEntries(
+      Object.entries(fs.files).filter(([p]) => !p.includes(`/${CHAR_ID}/images/`)),
+    );
+    const voice = okVoice();
+    const callsBefore = vi.mocked(text.generateMessages).mock.calls.length;
+
+    await createGenerationRunner().startImagesOnly(imagesOnlyInput(fs, seededImages()));
+
+    const after = Object.fromEntries(
+      Object.entries(fs.files).filter(([p]) => !p.includes(`/${CHAR_ID}/images/`)),
+    );
+    expect(after).toEqual(before);
+    expect(vi.mocked(text.generateMessages).mock.calls.length).toBe(callsBefore);
+    expect(voice.synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe("characterCreation / 3 枚そろわなければ前の 3 枚と記録を残す [異常系]", () => {
+  it("S0050_11 keeps the previous images and record when one image fails or the run is cancelled", async () => {
+    const fs = fakeFs();
+    writeImages(fs, BYTES_2);
+    writeRecord(fs, 50);
+    const before = { ...fs.files };
+
+    const failed = await createGenerationRunner().startImagesOnly(
+      imagesOnlyInput(fs, seededImages(["regular"])),
+    );
+    expect(failed).toEqual({ ok: false, reason: "images-failed" });
+    expect(fs.files).toEqual(before);
+
+    const runner = createGenerationRunner();
+    const cancelling = imagesOnlyInput(fs, seededImages());
+    const cancelled = await runner.startImagesOnly({ ...cancelling, shouldCancel: () => true });
+    expect(cancelled).toEqual({ ok: false, reason: "cancelled" });
+    expect(fs.files).toEqual(before);
+  });
+});
+
+describe("characterCreation / 記録が無ければ画像タグを出させて記録してから作る [境界]", () => {
+  it("S0050_12 asks for the tags and uses the default seed plus one when there is no record", async () => {
+    const fs = fakeFs();
+    writeImages(fs, BYTES_2);
+    const tagGenerator = fakeTags();
+    const generator = seededImages();
+
+    const result = await createGenerationRunner().startImagesOnly(
+      imagesOnlyInput(fs, generator, tagGenerator),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(tagGenerator.generateImageTags).toHaveBeenCalledTimes(3);
+    expect(generator.seeds).toEqual([43, 43, 43]);
+    expect(readRecord(fs)).toEqual({ seed: 43, imageTags: TAGS });
+  });
+});
+
+describe("characterCreation / 同じ画像タグとシードなら同じ絵になる [不変条件]", () => {
+  it("S0050_13 makes the same three images from the same record twice", async () => {
+    const made: Record<string, unknown>[] = [];
+    for (let i = 0; i < 2; i++) {
+      const fs = fakeFs();
+      writeRecord(fs, 50);
+      await createGenerationRunner().startImagesOnly(imagesOnlyInput(fs, seededImages()));
+      made.push(Object.fromEntries(imageFiles(fs).map((p) => [p, fs.files[p]])));
+    }
+    expect(made[0]).toEqual(made[1]);
+    expect(Object.keys(made[0]!)).toHaveLength(3);
+  });
+});
+
+describe("characterCreation / 実行中は生成と画像だけの作り直しを重ねない [境界]", () => {
+  it("S0050_14 refuses an image-only run during a generation and a generation during an image-only run", async () => {
+    const fs = fakeFs();
+    writeRecord(fs, 50);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: ImageGenerator = {
+      id: "local-sdcpp",
+      generateImages: async ({ prompt }) => {
+        await gate;
+        return [new Uint8Array([prompt.length])];
+      },
+    };
+    const runner = createGenerationRunner();
+
+    const running = runner.startImagesOnly(imagesOnlyInput(fs, slow));
+    expect(runner.isRunning()).toBe(true);
+    expect(await runner.start(baseInput(fs))).toEqual({ ok: false, reason: "already-running" });
+    expect(await runner.startImagesOnly(imagesOnlyInput(fs, slow))).toEqual({
+      ok: false,
+      reason: "already-running",
+    });
+    release();
+    await running;
+    expect(runner.isRunning()).toBe(false);
   });
 });

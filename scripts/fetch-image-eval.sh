@@ -7,6 +7,8 @@
 #
 # 使い方: bash scripts/fetch-image-eval.sh
 #   KEYCHEER_MODEL_CACHE … 取得先(既定 ~/.cache/keycheer-models)。計測ドライバも同じ変数で置き場を引く
+#   KEYCHEER_IMAGE_EVAL_WEIGHTS … 取得する重みの置き先の名前を空白区切りで(既定 すべて)。
+#     例: "counterfeit-v3.safetensors lora/lcm-lora-sdv1-5.safetensors"(論点 0062 はベースモデルを振らないので MeinaMix は要らない)
 #
 # ここの値(タグ・コミット・ファイル名・sha256)は decisions/**/0041-image-base-model/config.yaml に
 # 記録した計測条件と一致させる。片方だけ直さない。
@@ -56,6 +58,9 @@ fi
 
 for entry in "${WEIGHTS[@]}"; do
   IFS='|' read -r name repo revision file sha <<<"$entry"
+  if [ -n "${KEYCHEER_IMAGE_EVAL_WEIGHTS:-}" ] && [[ " $KEYCHEER_IMAGE_EVAL_WEIGHTS " != *" $name "* ]]; then
+    continue
+  fi
   fetch_verified "https://huggingface.co/$repo/resolve/$revision/$file" "$MODEL_DIR/$name" "$sha"
 done
 

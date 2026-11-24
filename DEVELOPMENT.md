@@ -8,7 +8,7 @@ README.md の「動作環境」に**加えて**必要なもの。
 
 ```bash
 npm install       # 依存導入(バージョンは package-lock.json で固定)
-npm run build     # tsc -p tsconfig.build.json → scripts/postbuild.mjs
+npm run build     # tsc -p tsconfig.build.json → scripts/postbuild.mjs → Tailwind の CLI(build:css)
 npm run dev       # build 後に electron dist/main/index.js を起動
 ```
 
@@ -26,7 +26,7 @@ npm run services:down    # 停止
 - **既定は CPU。** 製品ターゲットが iGPU/CPU なので、開発機の GPU で速さに慣れないようにする。
   GPU で回したいときだけ `docker compose --profile gpu up -d`。
   **cpu と gpu を同時に起動しない**(同じポートを公開するので衝突する。先に `services:down`)。
-- **これは開発機だけの構成。** 配布物は論点 0010 のとおりランタイムを同梱し、重みはインストール中かアプリの中で取得する(論点 0042 / 0048)。
+- **これは開発機だけの構成。** 配布物は論点 0010 のとおりランタイムを同梱し、重みも別ファイルとして一緒に配る(論点 0055)。
   **利用者に Docker は要求しない。**
 - イメージはタグ + digest で固定してある。更新するときは digest も取り直す(固定しないと再現できない)。
 - 起動していなくても**アプリはクラッシュしない**。キャラ作成が完了しないだけで、
@@ -36,8 +36,7 @@ npm run services:down    # 停止
 プール 24 バケットで約 4 分、wav 1 文の合成が約 0.6 秒。
 
 - 依存はバージョンを固定する(`package-lock.json`)。固定しないと再現できない。
-- `.env` はコミットしない。**API キーは `.env` に置かず** Electron `safeStorage`
-  (Windows Credential Manager)へ保存する。必要な環境変数:無し。
+- `.env` はコミットしない。必要な環境変数:無し(外部プロバイダーは論点 0054 で削除したので API キーも無い)。
 - 開発は Windows 実機のほか WSL2 でも可。
 
 ### WSL で開発する場合の日本語入力
@@ -126,9 +125,10 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 ├── src/                            # 依存方向 core ← app(Core/Adapt)
 │   ├── core/                       #   決定的・安定。純関数中心(仕様ループ対象)
 │   │   └── shared/                 #   型・IPC チャンネル契約・開示情報(core も app も参照する)
-│   ├── agent/                      #   app: 生成 I/O(プロバイダー実装・プール生成・監査ログ)
+│   ├── agent/                      #   app: 生成 I/O(プロバイダー実装・プール生成)
 │   ├── main/                       #   app: Electron メイン(キーフック・IPC・store・窓・トレイ)
 │   ├── preload/  renderer/         #   app: レンダラに公開する最小 API と UI
+│   │   └── renderer/styles/main.css #   メインウィンドウの色の変数(ライト / ダーク)と Tailwind の入口(論点 0058)
 │   └── eval/                       #   app: 計測(応援メッセージの品質・レイテンシ、画像のモデルと作り方)
 ├── tests/                          # 単体 + 総合の両方を書く(Core)
 │   ├── core/                       #   単体:docs の全シナリオ
@@ -158,7 +158,7 @@ src/core          ←          src/{agent,main,preload,renderer,eval}
 
 - **プライバシー**:キーの種類のみ数える。入力内容・キーシーケンスは記録も送信もしない。
   キーカウント・KPM・統計・応援発動経路は**永久に外部送信しない**。
-  外部送信はキャラ作成時に、利用者が外部プロバイダーを明示選択し同意した場合のみ。
+  キャラ作成の生成もローカルだけで、外部送信しない(論点 0054)。
 - **応援発動経路はプロバイダーに依存しない**。発動はプール + wav のみで成立する。
 - **KPM 算出窓は 60 秒固定**(`triggers.activeThresholdSec` とは独立)。
 - **再現性**:乱数シード(画像生成 seed・メッセージ選択)と依存バージョンを固定する。
@@ -231,11 +231,14 @@ src/core          ←          src/{agent,main,preload,renderer,eval}
 ## このプロジェクト固有の注意
 
 - **生成ランタイムは現状「各自で用意」**。キャラ作成には Ollama(:11434)と
-  VOICEVOX ENGINE(:50021)が要る。論点 0010 でランタイム同梱、論点 0042 / 0048 でモデル重みの取得(インストール中・アプリの中)を決めたが、
+  VOICEVOX ENGINE(:50021)が要る。論点 0010 でランタイム同梱、論点 0055 でモデル重みの同梱を決めたが、
   その仕組みは未実装。エンドポイントは `system` 設定で上書きできる。
   未起動でもアプリはクラッシュせず、baseline 定型文で応援する。
 - **バンドラを使わない**。`tsc` の出力を `scripts/postbuild.mjs` が Electron 向けに整える
   (renderer の HTML コピー、preload を `.mjs` へ、React の UMD を `dist/renderer/vendor` へ)。
   出力パスを変えたら postbuild と `package.json` の `main` を同時に直す。
+- **メインウィンドウの見た目は Tailwind**(論点 0058)。`npm run build:css` が `src/renderer/styles/main.css` から
+  `dist/renderer/main.css` を作る(`tailwind.config.js` が `mainEntry.ts` のクラス名を拾う)。色は `main.css` の変数だけで決め、
+  ダーク(論点 0057)は `<html class="dark">` で変数を差し替える。画面側に色を直書きしない。キャラの窓(`popup.html`)は使わない。
 - **sd.cpp の画像生成は重い**。時間予算(budget/timeout)を引数で受け、超過前にフォールバックする。
 - キー監視(uiohook-napi)はネイティブ依存。Windows 実機での確認が要る場面がある。

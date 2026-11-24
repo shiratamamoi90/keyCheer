@@ -1,94 +1,39 @@
-# 要件: 生成プロバイダーと外部連携の決定的契約
+# 要件: 生成プロバイダーの決定的契約
 
-キャラ作成時のテキスト/音声/画像生成は**プロバイダー**として抽象化され、ローカル(Ollama / VOICEVOX / sd.cpp)または外部 API(OpenAI / Anthropic / ElevenLabs / DALL-E / Stability AI 等)を差し替え可能。**応援発動経路は本契約に依存せず、外部送信は一切しない**(→ docs/cheer-trigger.md)。
+キャラ作成時のテキスト/音声/画像生成は**プロバイダー**として抽象化され、ローカル(Ollama / VOICEVOX / sd.cpp)だけで行う(論点 0054。外部プロバイダーは削除した)。**応援発動経路は本契約に依存せず、外部送信は一切しない**(→ docs/cheer-trigger.md)。
 
-メッセージや画像の品質は仕様化しない(→ experiments/)。決定的に縛るのは「契約を満たす」「クラッシュしない」「予算内」「外部送信ガードが効く」。
+メッセージや画像の品質は仕様化しない(→ experiments/)。決定的に縛るのは「契約を満たす」「クラッシュしない」「予算内」「外部へ送信しない」。
 
 ## プロバイダー識別子(閉じた union)
 
-- `text`: `"local-ollama" | "openai" | "anthropic"`
-- `voice`: `"local-voicevox" | "openai-tts" | "elevenlabs"`
-- `image`: `"local-sdcpp" | "openai-dalle" | "stability-ai"`
+- `text`: `"local-ollama"`
+- `voice`: `"local-voicevox"`
+- `image`: `"local-sdcpp"`
 
-### MVP 実装セット(確定)
+種別ごとに 1 つだけで、利用者は選ばない(設定に `providers` を持たない。論点 0054)。
+3 種別とも同一インターフェース(`TextGenerator` / `VoiceSynthesizer` / `ImageGenerator`)上に実装する。
 
-union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stability-ai` は 論点 0016 で追加):
-
-- text: `local-ollama` + `openai` + `anthropic`
-- voice: `local-voicevox` + `openai-tts` + `elevenlabs`
-- image: `local-sdcpp` + `openai-dalle` + `stability-ai`
-
-3 種別とも同一インターフェース(`TextGenerator` / `VoiceSynthesizer` / `ImageGenerator`)上に実装され、
-プロバイダーを増やしてもインターフェースは変えない。
-
-> **UI 未接続**:外部プロバイダーを選ぶ画面と同意ダイアログは未実装のため、
-> 現時点で外部プロバイダーへ到達する経路はアプリ上に存在しない(論点 0016 の残タスク)。
+> 論点 0054 で外部プロバイダー(`openai` / `anthropic` / `openai-tts` / `elevenlabs` / `openai-dalle` / `stability-ai`)・
+> 同意ダイアログ・API キー・監査ログを削除した。それらのシナリオ
+> S0016_02〜08・S0016_10・S0016_19〜21・S0016_26・S0016_27・S0016_30〜32・S0036_06・S0024_02・S0024_03・S0024_12・S0049_02・S0049_03・S0046_03・S0046_16 は欠番(ID は再利用しない)。
 
 ## 共通: プライバシー境界
 
-### S0016_01 ローカル選択時は外部送信が発生しない [不変条件]
+### S0016_01 生成で外部送信が発生しない [不変条件]
 
-- GIVEN `providers` 3 種すべてが `local-*`
+- GIVEN 任意のキャラクター
 - WHEN キャラ作成・プール生成・音声合成・画像生成を実行
 - THEN localhost 以外への HTTP リクエストは一切発生しない
 
-### S0016_02 外部選択時は同意ダイアログを経る
-
-- GIVEN 任意の `providers` を外部に切り替えた直後
-- WHEN 初回の生成を試行
-- THEN 送信される情報(性格説明・プロンプト等)を明示するダイアログが出て、同意するまで送信は発生しない
-
-### S0016_03 同意はプロバイダー単位で 1 回のみ
-
-- GIVEN `openai` テキストへ同意済み、`anthropic` には未同意
-- WHEN テキスト生成プロバイダーを `anthropic` に変更して再試行
-- THEN `anthropic` で同意ダイアログが再表示される。一度同意した `openai` は再度ダイアログを出さない(プロバイダー単位で 1 回、生成のたびには問わない)
-
-### S0016_04 同意ダイアログに ToS リンクと必須チェック
-
-- GIVEN 外部プロバイダーの同意ダイアログ
-- WHEN 表示
-- THEN 当該プロバイダーの利用規約(ToS)・プライバシーポリシーへのリンクと、「同意します」必須チェックボックスを含む。チェックなしでは「送信」ボタンは無効
-
-### S0016_05 API キーは平文 JSON に出ない [不変条件]
-
-- GIVEN ユーザーが任意の外部 API キーを入力
-- WHEN 設定を保存
-- THEN キーは OS セキュアストレージ(Electron `safeStorage` / Windows Credential Manager)に保存され、`electron-store` の JSON にはプレースホルダ参照しか出ない
-
-### S0016_06 外部生成失敗時は自動でローカルに切り替えない [異常系]
-
-- GIVEN 外部プロバイダー選択、API 失敗
-- WHEN 生成中にエラー
-- THEN 自動フォールバックはせず、エラー表示+再試行/プロバイダー変更を促す
-
-### S0016_07 通信失敗・プロキシ環境 [異常系]
-
-- GIVEN プロキシ・社用ネット環境などで外部プロバイダーへ到達できない
-- WHEN 生成リクエストがタイムアウト or 接続失敗
-- THEN **自動リトライしない**。エラー内容を表示し、ユーザーに再試行/プロバイダー変更を促す(意図しない通信の反復を防ぐ)
-
-### S0016_08 外部送信を監査ログに記録
-
-- GIVEN 外部プロバイダーへの送信が発生
-- WHEN 送信前 / 送信後
-- THEN `{userData}/audit.log.json` に `{ timestamp, provider, action, payloadSummary }` を append する(payload 本文は含めず要約のみ。データ位置・構造は docs/data-model.md)
-
 ### S0016_09 応援発動経路から外部 API を呼ばない [不変条件]
 
-- GIVEN プロバイダー設定が何であれ、キャラ作成完了
+- GIVEN キャラ作成完了
 - WHEN 応援が発動する
-- THEN providers 設定は参照されず、localhost を含めて一切のサーバー通信が発生しない(→ cheer-trigger.md)
+- THEN プロバイダー実装は参照されず、localhost を含めて一切のサーバー通信が発生しない(→ cheer-trigger.md)
 
-## 共通: 外部プロバイダー呼び出しの契約
+## 共通: HTTP で呼ぶプロバイダーの契約
 
-種別(text / voice / image)を問わず、すべての外部プロバイダー実装が満たす。
-
-### S0016_10 API キーは認証ヘッダにのみ乗る [不変条件]
-
-- GIVEN 任意の外部プロバイダー実装に API キーを渡す
-- WHEN リクエストを組み立てる
-- THEN キーは認証ヘッダにのみ現れ、URL クエリ・リクエストボディ・ログには現れない
+HTTP で呼ぶプロバイダー(`local-ollama` / `local-voicevox`)が満たす。
 
 ### S0016_11 タイムアウト予算を超えたら中断する [境界]
 
@@ -98,7 +43,7 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ### S0016_12 HTTP エラーは throw する [異常系]
 
-- GIVEN API が 4xx / 5xx を返す
+- GIVEN Ollama / VOICEVOX が 4xx / 5xx を返す
 - WHEN 生成を実行する
 - THEN 自動リトライせず、ステータスコードと本文を含むエラーを throw する
   (呼び出し側の `providerRouter` が `generation-failed` に変換する)
@@ -107,7 +52,7 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 - GIVEN テストコード
 - WHEN プロバイダー実装を生成する
-- THEN `fetchFn` を注入でき、テストは実際の外部通信を一切発生させない
+- THEN `fetchFn` を注入でき、テストは実際の通信(localhost を含む)を一切発生させない
 
 ## テキスト(セリフ生成 — キャラ作成時のみ)
 
@@ -195,43 +140,13 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 - WHEN プール生成を要求
 - THEN エラーを表示し、キャラ作成は完了させない(クラッシュもしない)。**自動で別プロバイダーには切り替えない**
 
-### S0016_19 Anthropic (外部) の呼び出し契約
-
-- GIVEN `TextGenerationRequest`(`systemPrompt` / `scenarioKey` / `count` / `timeoutMs`)
-- WHEN `generateMessages` を呼ぶ
-- THEN `POST https://api.anthropic.com/v1/messages` へ送信し、下の「テキスト応答のパース契約」に従って N 文を返す
-  - ヘッダは `content-type: application/json` / `anthropic-version: 2023-06-01` / `x-api-key`
-  - `systemPrompt` は**トップレベルの `system` パラメータ**に置く(`messages` 内の system ロールではない。OpenAI 実装と構造が異なる)
-  - `messages` には最低 1 件の `user` ロールが必要なため、生成指示(`scenarioKey` と `count` を含む文)を user メッセージとして送る
-  - 応答は `content[]` のうち `type === "tool_use"` の要素の `input` から取る(S0024_03。
-    旧規則「`type === "text"` の本文を 1 行 1 文に分割」は論点 0024 で置き換えた)
-
-### S0016_20 Anthropic の max_tokens を要求量から決める [境界]
-
-- GIVEN `count` 文の生成要求
-- WHEN リクエストボディを組み立てる
-- THEN Anthropic API が**必須とする** `max_tokens` を `count` から決定的に算出して渡す
-  - 算出式は `count * TOKENS_PER_MESSAGE + MARGIN`。係数は定数として 1 箇所に定義する
-  - 初期値は `TOKENS_PER_MESSAGE = 64` / `MARGIN = 256`(`count = 20` なら `1536`)
-  - 根拠は 1 文 30 字以内という上記「文字数契約」。日本語は 1 文字あたり複数トークンになり得るため係数に余裕を持たせる
-  - 定数は実疎通での実測後に調整しうる(調整しても本契約は変わらない)
-
-### S0016_21 Anthropic はシードを受け付けない [境界]
-
-- GIVEN `seed` を指定した `TextGenerationRequest`
-- WHEN リクエストを組み立てる
-- THEN シードは**送らない**(Messages API に `seed` パラメータが存在しないため)。
-  このプロバイダーは「同一シードで同一出力」を満たさない
-  - テキスト生成の再現性はベストエフォート(既存の `openai` 実装も同様)。
-    再現性の不変条件は画像生成(`local-sdcpp` / `stability-ai`)で担保する
-
 ## テキスト応答のパース契約
 
-テキスト生成の 3 実装(`local-ollama` / `openai` / `anthropic`)は、応答を**共通の応答スキーマ**で
+テキスト生成(`local-ollama`)は、応答を**応答スキーマ**で
 返させ、同じ規則で N 文に落とす(論点 0024)。プロンプトの文言はこの契約に含まない
 (書式の指示は足さない — 論点 0026 で計測して決めた)。
 
-応答スキーマ(3 実装で共通):
+応答スキーマ:
 
 ```json
 {
@@ -257,19 +172,6 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 - GIVEN `text = "local-ollama"` の `TextGenerationRequest`
 - WHEN リクエストボディを組み立てる
 - THEN `/api/generate` のボディの `format` に上の応答スキーマを渡す
-
-### S0024_02 OpenAI に応答スキーマを要求する
-
-- GIVEN `text = "openai"` の `TextGenerationRequest`
-- WHEN リクエストボディを組み立てる
-- THEN `response_format` に `{ type: "json_schema", json_schema: { name, strict: true, schema: <応答スキーマ> } }` を渡す
-
-### S0024_03 Anthropic に応答スキーマを tool で要求する
-
-- GIVEN `text = "anthropic"` の `TextGenerationRequest`
-- WHEN リクエストボディを組み立てる
-- THEN `tools` に `input_schema` = 応答スキーマのツールを 1 つ定義し、`tool_choice` でそのツールの使用を強制する。
-  応答は `content[]` の `tool_use` 要素の `input` から取る
 
 ### S0024_04 配列の各要素を 1 文として返す
 
@@ -314,19 +216,12 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
   配列でない / 文字列でない要素を含む
 - WHEN パースする
 - THEN そのバケットは `failed` になり、他のバケットの生成は続く。**行分割に退避しない**。
-  **別プロバイダーへ自動で切り替えない**(S0016_06)
 
 ### S0024_11 文中の記号は本文として残す [否定]
 
 - GIVEN 要素 `"No.1を目指そう#勝利"` / `"100%(全力)で行こう!"` / `"3*3=9だね"`
 - WHEN パースする
 - THEN どれも**変化しない**(見出し・番号は先頭だけ、括弧の注記は末尾だけ、単独の `*` は落とさない)
-
-### S0024_12 3 実装で同じ応答なら同じ結果 [不変条件]
-
-- GIVEN 同じ `messages` 配列を、3 実装それぞれの応答の形(`format` の本文 / `response_format` の本文 / `tool_use.input`)で受け取る
-- WHEN パースする
-- THEN 3 実装とも同じ N 文の配列を返す
 
 ### S0024_13 パースは受け取った応答を変更しない [否定]
 
@@ -362,79 +257,26 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 - WHEN 完了処理に入る
 - THEN 失敗 5 文は「wav 欠損」フラグで残り、キャラ作成は完了する(発動時のフォールバックで吸収 → cheer-trigger.md)
 
-### S0016_26 ElevenLabs (外部) の呼び出し契約
+## 画像 (sd.cpp — キャラ作成時のみ)
 
-- GIVEN `VoiceSynthesisRequest`(`text` / `speakerId` / `timeoutMs`)
-- WHEN `synthesize` を呼ぶ
-- THEN `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}` へ送信し、音声バイト列を返す
-  - 認証ヘッダは `xi-api-key`(Bearer ではない)
-  - 必須ボディは `text` のみ。`model_id` 未指定時はプロバイダー既定に任せる
-  - `voice_id` は**パスパラメータ**。数値の `speakerId` を注入された写像テーブル(`Record<number, string>`)で voice ID 文字列へ変換する
-  - `speakerId` 未指定、またはテーブルに該当が無い場合は既定 voice ID を使う
-
-### S0016_27 ElevenLabs も wav を返す [不変条件]
-
-- GIVEN `VoiceSynthesizer` の戻り値契約(wav バイト列)
-- WHEN ElevenLabs から音声を受け取る
-- THEN `output_format` に `wav_*` を指定して **wav** バイト列を直接受け取る(既定は mp3 のため明示指定が必須)
-  - **`wav_44100` は使わない**(Pro 以上のプラン契約が必要)。既定は `wav_22050`
-  - wav を直接要求できるため、変換用の依存追加は不要で `voiceSynth` と再生側への波及もない
-
-## 画像 (sd.cpp / 外部 — キャラ作成時のみ)
-
-メインウィンドウの生成(生成タブ。`docs/pool-generation.md`)の中で、テキスト・音声の後に起動する(常駐しない)。
+メインウィンドウの生成(キャラクタータブ。`docs/pool-generation.md`)の中で、テキスト・音声の後に起動する(常駐しない)。
 ローカルは Counterfeit V3.0 + LCM LoRA(論点 0041)を CPU で動かす(GPU は使わない。論点 0040)。ステップ数は待機画像が 4、ほかの 2 枚が 8(S0046_06 / S0046_07)。
 **キャラ画像**は 1 キャラ 3 枚 — **待機画像**(`idle`)・`regular` の画像・`milestone` の画像 — を
-生成する(論点 0036。旧「通常/喜び/激励の 3 枚」は論点 0036 で置き換えた)。作り方はプロバイダーで違う:
-外部は 3 枚とも画像タグから作る(シードを受け付けるものは同一シード)。`local-sdcpp` は待機画像から残りの 2 枚を描き直し、
+生成する(論点 0036。旧「通常/喜び/激励の 3 枚」は論点 0036 で置き換えた)。待機画像から残りの 2 枚を描き直し、
 背景を透明にして色を減らす(下の「ローカル画像生成の作り方」。論点 0045 / 0046)。
-ローカル生成のモデル重み(Counterfeit V3.0 + LCM LoRA。論点 0041)は、`local-sdcpp` を選んだ利用者だけが取得する(取得の仕組みは論点 0042。実行ファイルの同梱は論点 0040)。手動アップロードは無い。
+モデル重み(Counterfeit V3.0 + LCM LoRA。論点 0041)の同梱は論点 0055、実行ファイルの同梱は論点 0040。手動アップロードは無い。
 
 ### S0016_28 3 枚生成して終了
 
-- GIVEN 必要資材(sd.cpp とモデル重み or 外部 API キー)が揃い、3 枚それぞれの画像タグがある
+- GIVEN 必要資材(sd.cpp とモデル重み)が揃い、3 枚それぞれの画像タグがある
 - WHEN 画像の工程を実行する
-- THEN `idle` / `regular` / `milestone` の 3 枚が保存され(パスは `docs/data-model.md`「画像ファイル」)、子プロセス(ローカル時)は終了する
-
-### S0036_06 3 枚は同じシードで作る
-
-- GIVEN シードを受け付ける外部の画像プロバイダー(`stability-ai`)
-- WHEN 1 キャラの 3 枚を生成する
-- THEN 3 枚とも同じ `seed` で要求し、違うのはプロンプトの画像タグだけ
-  (`local-sdcpp` も 3 枚とも同じ `seed` だが、下絵とプロンプトの組み立てが違う。S0046_05〜07。論点 0046 で対象を外部に絞った)
+- THEN `idle` / `regular` / `milestone` の 3 枚が保存され(パスは `docs/data-model.md`「画像ファイル」)、子プロセスは終了する
 
 ### S0016_29 同一シードで再現
 
-- GIVEN 同じシード・プロンプト・プロバイダー
-- WHEN 2 回生成
-- THEN 同じ画像が得られる(プロバイダー側の決定性に依存)
-  - `local-sdcpp` / `stability-ai` は `seed` を受け付けるため再現性を満たせる
-  - `openai-dalle` は seed 非対応のため満たさない([要確認] — 再現性が要る用途では選ばせない)
-
-### S0016_30 Stability AI (外部) の呼び出し契約
-
-- GIVEN `ImageGenerationRequest`(`prompt` / `seed` / `count` / `width` / `height` / `timeoutMs`)
-- WHEN `generateImages` を呼ぶ
-- THEN `POST https://api.stability.ai/v2beta/stable-image/generate/core` へ送信し、`count` 枚の画像バイト列を返す
-  - 認証は `Authorization: Bearer`、`accept: image/*` で生バイト列を受け取る(`application/json` にすると base64 JSON になるため使わない)
-  - リクエストは `multipart/form-data`。`prompt` / `seed` / `aspect_ratio` / `output_format` を送る
-  - **1 リクエスト 1 枚**しか返らないため、`openai-dalle` と同じく `count` 回呼ぶ
-  - 表情差分は同一 `seed` + プロンプトのタグ差し替えで作る(sd.cpp と同じ方式)
-
-### S0016_31 Stability AI は width/height をアスペクト比へ写像する [境界]
-
-- GIVEN `ImageGenerationRequest` の `width` / `height`(既定は 512x768)
-- WHEN リクエストを組み立てる
-- THEN 任意の width/height は受け付けられず `aspect_ratio` のみを取るため、`width:height` の比を決定的な規則で許容値へ写像する
-  - 許容値は `21:9` / `16:9` / `3:2` / `5:4` / `1:1` / `4:5` / `2:3` / `9:16` / `9:21`。一覧はコード内の 1 箇所にまとめる
-  - 512x768 は `2:3` に完全一致する
-  - 完全一致しない比は**数値として最も近い許容値**を選ぶ(決定的な規則)
-
-### S0016_32 解決できないサイズはエラーにする [異常系]
-
-- GIVEN `width` または `height` が 0 以下、あるいは比が写像規則で解決できない
-- WHEN 生成を実行する
-- THEN 黙って別サイズで生成せず、エラーを throw する
+- GIVEN 同じシード・プロンプト
+- WHEN `local-sdcpp` で 2 回生成
+- THEN 同じ画像が得られる(sd.cpp に `seed` を渡す。sd.cpp 側の決定性に依存)
 
 ### S0016_33 タイムアウト/失敗時 [異常系]
 
@@ -444,13 +286,13 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ### S0040_01 同梱した sd.cpp と重みが揃っていれば local-sdcpp で画像の工程を実行する
 
-- GIVEN `providers.image = "local-sdcpp"`、同梱した sd.cpp の実行ファイルとモデル重みがどちらも置き場にある
+- GIVEN 同梱した sd.cpp の実行ファイルとモデル重みがどちらも置き場にある
 - WHEN 生成が画像の工程に進む
 - THEN 同梱した sd.cpp を子プロセスで起動して画像を作る(3 枚の契約は S0016_28 / S0046_01〜19 のとおり)
 
 ### S0040_02 実行ファイルか重みが無ければ子プロセスを起動しない [異常系]
 
-- GIVEN `providers.image = "local-sdcpp"`、sd.cpp の実行ファイルまたはモデル重みのどちらかが置き場に無い
+- GIVEN sd.cpp の実行ファイルまたはモデル重みのどちらかが置き場に無い
 - WHEN 生成が画像の工程に進む
 - THEN 子プロセスを起動せず、画像プロバイダーが使えないときの扱い(S0036_10)で画像なしのまま生成を完了する。クラッシュしない
 
@@ -475,63 +317,101 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 ## ローカル画像生成の作り方(local-sdcpp。論点 0045 / 0046)
 
 `local-sdcpp` は、**待機画像を白の下地から描き、`regular`・`milestone` の画像は待機画像を下絵にして描き直す**。
-3 枚とも、縮小したあとに背景を透明にし、7 色以下に減らして保存する。値(固定の語・強さ・ステップ数・色の差)は
-論点 0045 が計測で決めたもの。**外部の画像プロバイダーにはこの節を当てない**(S0046_16)。
+3 枚とも、縮小したあとに背景を透明にし、7 色以下に減らして保存する。背景を透明にするのは、人物を切り抜くモデル(u2netp。論点 0063)。
+切り抜けなかったときだけ、縁の色から抜く(論点 0045)。値(固定の語・強さ・ステップ数・色の差)は
+論点 0045 が計測で決めたもの。応援種別のポーズの語は論点 0062 が計測で決めたもの。
 
-用語(この節の中だけ):**固定の語** = `solo, upper body, simple background, flat color, limited palette`。
+用語(この節の中だけ):**固定の語** = `solo, upper body, simple background`(論点 0067 で色の語 `flat color, limited palette` を外した)。
 **色の差** = 2 つの色の R・G・B それぞれの差を 2 乗して足し、平方根を取った値。**下絵** = sd.cpp に渡す、描き直しのもとにする絵。
 
-### S0046_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
+> S0046_01・S0046_02・S0062_01・S0062_02 は論点 0067 で置き換えた(欠番)。固定の語から色の語を外した。
 
-- GIVEN `providers.image = "local-sdcpp"`、待機画像の画像タグが `1girl, long hair`
+### S0067_01 プロンプトは固定の語・画像タグ・LoRA の指定の順に組み立てる
+
+- GIVEN 待機画像の画像タグが `1girl, long hair`
 - WHEN 待機画像のプロンプトを組み立てる
-- THEN `solo, upper body, simple background, flat color, limited palette, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>` になる
+- THEN `solo, upper body, simple background, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>` になる
 
-### S0046_02 人物の語が画像タグに無ければ 1girl を足す [境界]
+### S0067_02 人物の語が画像タグに無ければ 1girl を足す [境界]
 
 - GIVEN 待機画像の画像タグが `long hair`(単語としての `1girl` も `1boy` も含まない)
 - WHEN 待機画像のプロンプトを組み立てる
-- THEN 固定の語の直後に `1girl` を足し、`…, limited palette, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>` になる
+- THEN 固定の語の直後に `1girl` を足し、`solo, upper body, simple background, 1girl, long hair, <lora:lcm-lora-sdv1-5:1>` になる
 
-### S0046_03 応援種別の画像のプロンプトは待機画像の画像タグにその画像の画像タグを足す
+### S0067_03 通常の応援の画像のプロンプトは待機画像の画像タグ・表情の画像タグ・通常のポーズの語の順に組み立てる
 
-- GIVEN 待機画像の画像タグが `1girl, long hair`、`regular` の画像の画像タグが `smile, waving`
+- GIVEN 待機画像の画像タグが `1girl, long hair`、`regular` の画像の画像タグ(表情)が `smile`
 - WHEN `regular` の画像のプロンプトを組み立てる
-- THEN `solo, upper body, simple background, flat color, limited palette, 1girl, long hair, smile, waving, <lora:lcm-lora-sdv1-5:1>` になる
+- THEN `solo, upper body, simple background, 1girl, long hair, smile, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>` になる
+
+### S0067_04 節目の応援の画像のプロンプトには節目のポーズの語を足す
+
+- GIVEN 待機画像の画像タグが `1girl, long hair`、`milestone` の画像の画像タグ(表情)が `grin`
+- WHEN `milestone` の画像のプロンプトを組み立てる
+- THEN `solo, upper body, simple background, 1girl, long hair, grin, arms up, jumping, <lora:lcm-lora-sdv1-5:1>` になる
+
+### S0067_05 アプリが足す語に色の語を含めない [否定]
+
+- GIVEN 画像の工程を実行できる状態
+- WHEN 3 枚それぞれのプロンプトを組み立てる
+- THEN アプリが足す語(固定の語・ポーズの語)に `flat color` も `limited palette` も**含めない**(画像タグに入っていればそのまま残す)
+
+### S0062_03 待機画像のプロンプトにポーズの語を足さない [否定]
+
+- GIVEN 待機画像の画像タグが `1girl, long hair`
+- WHEN 待機画像のプロンプトを組み立てる
+- THEN `fist pump`・`pointing at viewer`・`arms up`・`jumping` を**含まない**(S0046_01 のとおり)
+
+### S0062_04 応援種別の画像にほかの応援種別のポーズの語と演出の語を足さない [否定]
+
+- GIVEN 待機画像の画像タグと、`regular` / `milestone` の画像の画像タグ(表情)
+- WHEN `regular` と `milestone` の画像のプロンプトを組み立てる
+- THEN `regular` のプロンプトは `arms up`・`jumping` を、`milestone` のプロンプトは `fist pump`・`pointing at viewer` を**含まない**。
+  どちらも演出の語(`sparkle`・`confetti`)を**含まない**
 
 ### S0049_01 待機画像の画像タグの要求は見た目を訊く
 
-- GIVEN `providers.image = "local-sdcpp"`、プールのあるキャラクター
+- GIVEN プールのあるキャラクター
 - WHEN 待機画像の画像タグの要求を組み立てる
 - THEN 人物の語(`1girl` か `1boy`)・髪の色・髪型・目の色・服装を訊く文になる。プールのセリフは 1 文も含まない
 
-### S0049_02 応援種別の画像の画像タグの要求は表情とポーズだけを訊く
+### S0062_05 応援種別の画像の画像タグの要求は表情だけを訊く
 
-- GIVEN `providers.image = "local-sdcpp"`、`regular` と `milestone` のセリフを持つプール
+- GIVEN `regular` と `milestone` のセリフを持つプール
 - WHEN `regular` の画像の画像タグの要求を組み立てる
-- THEN `regular` のバケットのセリフを示して表情とポーズを訊き、髪・目・服は書かないよう指示する文になる。`milestone` のセリフは含まない
+- THEN `regular` のバケットのセリフを示して表情だけを 1〜2 個訊き、ポーズ・髪・目・服は書かないよう指示する文になる。`milestone` のセリフは含まない
 
-### S0049_03 外部の画像プロバイダーでは画像タグの要求を変えない [否定]
+> S0046_04・S0046_05 は論点 0065 で置き換えた(欠番)。CFG を 1.5 にし、避ける語を渡す。
 
-- GIVEN `providers.image` が `openai-dalle` または `stability-ai`
-- WHEN 3 枚の画像タグを要求する
-- THEN 要求は S0036_01〜03 の形のまま**変わらない**(見た目だけ・表情とポーズだけ、という訊き分けをしない)
+用語(この節の中だけ):**避ける語** = `multiple heads, extra arms, extra hands, bad anatomy, fused body`(sd.cpp のネガティブプロンプト。論点 0065)。
 
-### S0046_04 背景の色の語と避ける語を渡さない [否定]
+### S0065_01 どの画像もサンプラー lcm・CFG 1.5・512x768・同じシードで作る
 
-- GIVEN `providers.image = "local-sdcpp"`
-- WHEN 3 枚それぞれの sd.cpp の引数を組み立てる
-- THEN アプリが足す語に背景の色の語(`white background` など)を**含めず**、避ける語(ネガティブプロンプト)の引数を**渡さない**
-
-### S0046_05 どの画像もサンプラー lcm・CFG 1・512x768・同じシードで作る
-
-- GIVEN `providers.image = "local-sdcpp"`
+- GIVEN 画像の工程を実行できる状態
 - WHEN 1 キャラの 3 枚を生成する
-- THEN 3 枚とも、サンプラー `lcm`・CFG `1`・幅 512・高さ 768・同じ `seed`・LCM LoRA の置き場を sd.cpp に渡す
+- THEN 3 枚とも(待機画像も)、サンプラー `lcm`・CFG `1.5`・幅 512・高さ 768・同じ `seed`・LCM LoRA の置き場を sd.cpp に渡す
+
+### S0065_02 どの画像にも避ける語を渡す
+
+- GIVEN 画像の工程を実行できる状態
+- WHEN 3 枚それぞれの sd.cpp の引数を組み立てる
+- THEN 3 枚とも、避ける語をネガティブプロンプトの引数として渡す
+
+### S0065_03 背景の色の語を足さない [否定]
+
+- GIVEN 画像の工程を実行できる状態
+- WHEN 3 枚それぞれの sd.cpp の引数を組み立てる
+- THEN アプリが足す語(プロンプトと避ける語のどちらにも)に背景の色の語(`white background` など)を**含めない**
+
+### S0065_04 避ける語に画像タグを混ぜない [否定]
+
+- GIVEN テキストモデルが返した画像タグに `multiple heads` や任意の語が入っている
+- WHEN 避ける語の引数を組み立てる
+- THEN 避ける語は上の固定の文字列のままで、画像タグ・性格説明・セリフを**含まない**(画像タグはプロンプトの側にだけ入る)
 
 ### S0046_06 待機画像は白の下地から強さ 0.9・4 ステップで描く
 
-- GIVEN `providers.image = "local-sdcpp"`
+- GIVEN 画像の工程を実行できる状態
 - WHEN 待機画像を生成する
 - THEN 512x768 を白(R 255・G 255・B 255)で塗りつぶした絵を下絵に、強さ `0.9`・ステップ数 `4` で sd.cpp を起動する
 
@@ -543,13 +423,51 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ### S0046_08 待機画像を作れなければ応援種別の画像も作らない [異常系]
 
-- GIVEN `providers.image = "local-sdcpp"`、待機画像を作れなかった(画像タグの形式違反 / sd.cpp の失敗・タイムアウト)
+- GIVEN 待機画像を作れなかった(画像タグの形式違反 / sd.cpp の失敗・タイムアウト)
 - WHEN 画像の工程を続ける
 - THEN `regular` / `milestone` の画像は生成せず、画像は 1 枚も保存しない。生成は完了とし、エラーを表示する(S0036_10 と同じ扱い)
 
+### S0063_01 人物を切り抜くモデルの入力は 320x320 に縮めて正規化した絵にする
+
+- GIVEN sd.cpp が出した 512x768 の絵(縮小の前)
+- WHEN 人物を切り抜くモデル(u2netp)への入力を作る
+- THEN 両端をそろえた双線形補間で 320x320 に縮め、R・G・B の全部の値の最大値で割り、チャンネルごとに
+  平均(0.485 / 0.456 / 0.406)を引いて標準偏差(0.229 / 0.224 / 0.225)で割った値を、R・G・B の順にチャンネルを先にして並べる(1 x 3 x 320 x 320)
+
+### S0063_02 人物である確率が 0.5 未満の画素を透明にする
+
+- GIVEN モデルの最初の出力(320x320)
+- WHEN 保存する絵の背景を透明にする
+- THEN 出力を最小 0・最大 1 に引き伸ばし(全部同じ値なら 0)、両端をそろえた双線形補間で縮小した絵(S0036_15)の大きさにして、
+  0.5 未満の画素を透明に、ほかの画素を完全に不透明にする。そのあと 7 色以下に減らす(S0046_11〜13)
+
+### S0063_03 人物と判定した画素は背景の色に近くても透明にしない [否定]
+
+- GIVEN 縁の色(背景の色)に近い色の服が縁まで届いていて、その画素の人物である確率が 0.5 以上
+- WHEN 背景を透明にする
+- THEN その画素は**不透明のまま**残る(色で抜くやり方 S0046_09 を重ねて当てない)
+
+### S0063_04 切り抜きに失敗したら色で抜くやり方に戻す [異常系]
+
+- GIVEN 人物を切り抜くモデルの重みか実行ライブラリが置き場に無い・読めない、または実行がエラーになった
+- WHEN 画像を保存する
+- THEN その画像は S0046_09・S0046_10 のやり方で背景を透明にして保存する。画像の工程は失敗にしない
+
+### S0063_05 3 枚それぞれを切り抜く
+
+- GIVEN 待機画像・`regular`・`milestone` の 3 枚を作る
+- WHEN 背景を透明にする
+- THEN 3 枚それぞれ、その絵自身から出した確率で切り抜く(待機画像の切り抜きをほかの 2 枚に流用しない)
+
+### S0066_01 切り抜きのモデルと実行ライブラリは同梱したものだけを使う [否定]
+
+- GIVEN 設定ファイル・画面の入力・環境変数に、切り抜きのモデルや実行ライブラリのパスに見える値がある
+- WHEN 人物を切り抜く
+- THEN アプリ本体に同梱した u2netp の重みと、CPU 版の実行ライブラリだけを使う。ほかの置き場のファイルは読まない
+
 ### S0046_09 縮小してから、縁からつながる背景の色を透明にする
 
-- GIVEN sd.cpp が出した 512x768 の絵
+- GIVEN sd.cpp が出した 512x768 の絵で、人物の切り抜きができなかった(S0063_04)
 - WHEN 保存する
 - THEN 先に S0036_15 のとおり縮小する。縮小した絵の縁(いちばん外側の 1 画素の列と行)でいちばん多い色を背景の色とし、
   縁の画素から上下左右にたどれる、背景の色との色の差が 48 以内の画素を透明にする
@@ -592,12 +510,6 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 **[要確認]** 待機画像に不透明の画素が 1 つも無いとき、応援種別の画像を何色で塗るかは決めていない(S0046_13 の色が空になる)。
 
-### S0046_16 外部の画像プロバイダーにはローカルの作り方を当てない [否定]
-
-- GIVEN `providers.image` が `openai-dalle` または `stability-ai`
-- WHEN 1 キャラの 3 枚を生成して保存する
-- THEN 固定の語・下地・下絵・背景を透明にする処理・減色のどれも**行わない**。3 枚とも画像タグから作り、縮小だけして保存する(S0036_15)
-
 ### S0046_17 再開では残っている縮小前の待機画像を下絵にする
 
 - GIVEN `local-sdcpp` の画像の工程の途中で中断し、`idle` が保存されていて、sd.cpp が出した縮小前の待機画像が残っている
@@ -618,7 +530,7 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ## 画像タグの要求(テキストプロバイダー — キャラ作成時のみ)
 
-画像のプロンプトに入れる**画像タグ**(英語の短い語句)は、`providers.text` のテキストプロバイダーに出させる(論点 0036)。
+画像のプロンプトに入れる**画像タグ**(英語の短い語句)は、テキストプロバイダー(`local-ollama`)に出させる(論点 0036)。
 **画像 1 枚につき 1 回**要求する(計 3 回)。セリフの生成(上の「テキスト応答のパース契約」)とは別の要求で、S0024 は変えない。
 画像タグの良し悪し(セリフやキャラに合った絵になるか)は仕様化しない。
 
@@ -662,14 +574,13 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 - GIVEN 応答が JSON として読めない / `tags` が無い / 配列でない / 文字列でない要素を含む / 有効な要素が 0 個
 - WHEN パースする
-- THEN その画像は作らず失敗として扱い、ほかの画像の工程は続く。**別プロバイダーへ自動で切り替えない**(S0016_06)。
-  ただし `local-sdcpp` で待機画像が作れなかったときは、ほかの 2 枚も作らない(S0046_08)
+- THEN その画像は作らず失敗として扱い、ほかの画像の工程は続く。
+  ただし待機画像が作れなかったときは、ほかの 2 枚も作らない(S0046_08)
 
 ## 生成元の記録
 
 `character.generatedBy` は「**実際にそのキャラを作った**プロバイダー」を種別ごとに残す
-(再生成時の参照用)。`providers` の**選択値ではない** — 選択しただけで生成していない種別は
-記録しない。各フィールドは任意で、記録済みの種別だけが存在する(スキーマは docs/data-model.md)。
+(再生成時の参照用)。生成していない種別は記録しない。各フィールドは任意で、記録済みの種別だけが存在する(スキーマは docs/data-model.md)。
 
 > 旧 S0016_34「生成元プロバイダーの保存」は本節が置き換えた(論点 0022)。ID は再利用しない。
 
@@ -693,9 +604,9 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 ### S0022_04 生成していない種別は未設定のまま [否定]
 
-- GIVEN 画像を 1 枚も生成していない(`providers.image` は選択されている)
+- GIVEN 画像を 1 枚も生成していない(画像の重みが無い など)
 - WHEN 生成完了を保存する
-- THEN `generatedBy.image` は未設定であり、**`providers.image` の選択値が書き込まれない**
+- THEN `generatedBy.image` は未設定であり、**画像プロバイダーの識別子が書き込まれない**
 
 ### S0022_05 種別ごとの記録が他の種別を壊さない [否定]
 
@@ -706,8 +617,8 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 ### S0022_06 再生成で生成元が更新される
 
 - GIVEN `generatedBy.voice` に記録済みのキャラ
-- WHEN 別の音声プロバイダーで wav を欠損なく作り直す
-- THEN `generatedBy.voice` が新しいプロバイダー ID に更新される
+- WHEN wav を欠損なく作り直す
+- THEN `generatedBy.voice` にその音声プロバイダー ID が記録し直される(作り直しの途中で消えたままにならない)
 
 ### S0022_07 全種別が失敗したら記録しない [境界]
 
@@ -827,14 +738,8 @@ union の **9 件すべてを実装済み**(`anthropic` / `elevenlabs` / `stabil
 
 - 子プロセス(ローカル画像生成)はタイムアウト・キャンセル・重複起動排他を持つ。
 - 画像/音声/メッセージの**品質**は決定的に縛らない(→ experiments/)。
-- 同意ダイアログ通過前の中断時に同意は永続化されない(→ docs/data-model.md)。
 - **自動リトライしない**(C6 確定)。失敗は常にユーザー判断で再試行。
 
 ### [要確認](β 以降)
 
-- 量子化(q4/q8)。ベースモデルは Counterfeit V3.0 に決定(論点 0041。量子化はしない)。作り方は、外部が同一シード + 画像タグの差し替え(論点 0036)、
-  `local-sdcpp` が待機画像からの描き直し(論点 0045 / 0046)。
-- **外部画像 API の制約**: `openai-dalle` は画像タグ差し替えの 3 枚を 1 リクエスト = 1 枚で生成するが、
-  (a) この API に **seed 指定が無い**ため「同一シードで再現」はローカル(sd.cpp)でのみ成立する、
-  (b) 受け付ける **size が固定値**(1024x1024 等)で `system.imageGen` の 512x768 は渡せない。
-  外部選択時に size をどう決めるか(プロバイダーごとの許容値へ丸めるか、UI で選ばせるか)は未確定。
+- 量子化(q4/q8)。ベースモデルは Counterfeit V3.0 に決定(論点 0041。量子化はしない)。作り方は待機画像からの描き直し(論点 0045 / 0046)。

@@ -156,27 +156,6 @@ describe("characterImage / 画像タグの形式違反はその画像だけ失�
   });
 });
 
-describe("characterImage / 3 枚は同じシードで作る", () => {
-  it("S0036_06 requests every image with the same seed, one image per request, differing only in tags", async () => {
-    // GIVEN シードを受け付ける外部の画像プロバイダー
-    const imageGenerator = fakeImageGenerator("stability-ai");
-    const { input } = baseInput({ imageGenerator, seed: 777 });
-
-    // WHEN 1 キャラの 3 枚を生成する
-    await generateCharacterImages(input);
-
-    // THEN 3 枚とも同じ seed、違うのはプロンプトの画像タグだけ
-    expect(imageGenerator.calls).toHaveLength(3);
-    expect(imageGenerator.calls.map((c) => c.seed)).toEqual([777, 777, 777]);
-    expect(imageGenerator.calls.every((c) => c.count === 1)).toBe(true);
-    expect(imageGenerator.calls.map((c) => c.prompt).sort()).toEqual([
-      "idle-tag",
-      "milestone-tag",
-      "regular-tag",
-    ]);
-  });
-});
-
 // --- ローカル画像生成の作り方(論点 0045 / 0046。docs/integrations.md「ローカル画像生成の作り方」)---
 
 const CANVAS = new Uint8Array([0xca, 0x4e]);
@@ -277,8 +256,8 @@ describe("characterImage / 応援種別の画像は待機画像を下絵に強�
       expect(call.steps).toBe(8);
     }
     expect(derived.map((call) => call.prompt)).toEqual([
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, regular-tag, <lora:lcm-lora-sdv1-5:1>",
-      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, milestone-tag, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, regular-tag, fist pump, pointing at viewer, <lora:lcm-lora-sdv1-5:1>",
+      "solo, upper body, simple background, flat color, limited palette, 1girl, idle-tag, milestone-tag, arms up, jumping, <lora:lcm-lora-sdv1-5:1>",
     ]);
   });
 });
@@ -377,73 +356,5 @@ describe("characterImage / 背景が抜けなかった絵・全部抜けた絵�
     expect(result.failed).toEqual([]);
     expect(written.map((w) => w.kind)).toEqual(["idle", "regular", "milestone"]);
     expect(alphaOf(local.encoded[0]!)).toEqual([0, 0, 0, 0]);
-  });
-});
-
-describe("characterImage / 外部の画像プロバイダーにはローカルの作り方を当てない [否定]", () => {
-  it("S0046_16 sends the plain image tags without canvas, init image or post-processing", async () => {
-    // GIVEN providers.image が stability-ai(ローカルの後処理の手段が渡されていても)
-    const imageGenerator = fakeImageGenerator("stability-ai");
-    const local = fakeLocalProcess();
-    const { input, written } = baseInput({ imageGenerator, local: local.process });
-
-    // WHEN 1 キャラの 3 枚を生成して保存する
-    await generateCharacterImages(input);
-
-    // THEN 固定の語・下地・下絵・背景を透明にする処理・減色のどれも行わない
-    expect(imageGenerator.calls.map((call) => call.prompt)).toEqual([
-      "idle-tag",
-      "regular-tag",
-      "milestone-tag",
-    ]);
-    for (const call of imageGenerator.calls) {
-      expect(call.initImage).toBeUndefined();
-      expect(call.strength).toBeUndefined();
-      expect(call.steps).toBeUndefined();
-    }
-    expect(local.canvasSizes).toEqual([]);
-    expect(local.decoded).toEqual([]);
-    expect(local.encoded).toEqual([]);
-    expect(local.savedSources).toEqual([]);
-    expect(written.map((w) => Array.from(w.bytes))).toEqual([[8], [11], [13]]);
-  });
-});
-
-describe("characterImage / 外部の画像プロバイダーでは画像タグの要求を変えない [否定]", () => {
-  it("S0049_03 asks for the appearance only for local-sdcpp and keeps the request as before for an external provider", async () => {
-    // GIVEN providers.image が stability-ai の場合と、local-sdcpp の場合
-    const externalTags = fakeTagGenerator();
-    const localTags = fakeTagGenerator();
-    const external = baseInput({
-      tagGenerator: externalTags,
-      imageGenerator: fakeImageGenerator("stability-ai"),
-      local: fakeLocalProcess().process,
-    });
-    const local = baseInput({
-      tagGenerator: localTags,
-      imageGenerator: fakeLocalGenerator(),
-      local: fakeLocalProcess().process,
-    });
-
-    // WHEN 3 枚の画像タグを要求する
-    await generateCharacterImages(external.input);
-    await generateCharacterImages(local.input);
-
-    // THEN 外部の要求は今までの形のまま(訊き分けをしない)。local-sdcpp だけが見た目・表情とポーズを訊き分ける
-    for (const call of externalTags.calls) {
-      expect(call.prompt).toContain("表情・ポーズ・雰囲気");
-      expect(call.prompt).not.toContain("髪の色");
-      expect(call.prompt).not.toContain("表情とポーズだけ");
-    }
-    expect(localTags.calls.map((call) => call.prompt.includes("髪の色"))).toEqual([
-      true,
-      false,
-      false,
-    ]);
-    expect(localTags.calls.map((call) => call.prompt.includes("表情とポーズだけ"))).toEqual([
-      false,
-      true,
-      true,
-    ]);
   });
 });
