@@ -34,27 +34,62 @@
   ${EndIf}
 !macroend
 
-; 論点 0075 インストーラから削除を選べる。.onInit(同意の画面より前)で、入っているかを登録情報の InstallLocation で見る。
+; 論点 0075 / 0076 インストーラから削除を選べる。入っているときだけ、最初(同意の画面より前)に自作のページを出し、
+; 「更新する」「削除する」のボタンと、下の「キャンセル」(インストーラ標準。何も変えずに終わる)で選ばせる。
+; NSIS の確認の画面(MessageBox)はボタンの名前を「はい / いいえ」から変えられないので使わない(論点 0076)。
+; 入っているかは、electron-builder が書く登録情報の InstallLocation と、そこにあるアンインストーラで見る。
 ; 削除はアンインストール(S0048_13)と同じものを消す — 入っているアンインストーラを、アプリのデータも消す指定で動かす。
 ; アンインストーラは自分を一時フォルダへ写して起動し直すので、そのままでは ExecWait が終わりを待てない。
 ; electron-builder の更新と同じく一時フォルダへ写してから `_?=` で入っている場所を渡し、終わるまで待つ。
 ; 削除には重みの別ファイルも同意の画面も要らない(S0075_05)。通信はしない(S0075_06)。
-!macro customInit
-  Var /GLOBAL keycheerInstalled
-  ReadRegStr $keycheerInstalled HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $keycheerInstalled == ""
-    Goto removeSkip
-  ${EndIf}
-  ${IfNot} ${FileExists} "$keycheerInstalled\${UNINSTALL_FILENAME}"
-    Goto removeSkip
-  ${EndIf}
+!macro customWelcomePage
+  Var keycheerInstalled
+  Var keycheerNextButton
 
-  removeChoice:
-    MessageBox MB_YESNOCANCEL|MB_ICONQUESTION "KeyCheer はすでに入っています。$\r$\n$\r$\nはい … 更新する$\r$\nいいえ … 削除する$\r$\nキャンセル … 中止する" IDYES removeSkip IDNO removeConfirm
-    Goto removeCancelled
+  Page custom keycheerChoicePageCreate keycheerChoicePageLeave
 
-  removeConfirm:
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "KeyCheer を削除します。アプリと、重み・キャラクター・設定・統計がすべて消えます。よろしいですか?" IDCANCEL removeChoice
+  Function keycheerChoicePageCreate
+    ReadRegStr $keycheerInstalled HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $keycheerInstalled == ""
+      Abort
+    ${EndIf}
+    ${IfNot} ${FileExists} "$keycheerInstalled\${UNINSTALL_FILENAME}"
+      Abort
+    ${EndIf}
+
+    !insertmacro MUI_HEADER_TEXT "KeyCheer はすでに入っています" "更新するか、削除するかを選んでください。"
+    nsDialogs::Create 1018
+    Pop $0
+    ${NSD_CreateLabel} 0 0 100% 40u "更新する … 新しい版に入れ替えます。作ったキャラクターと設定は残ります。$\r$\n$\r$\n削除する … アプリと、重み・キャラクター・設定・統計をすべて消します。"
+    Pop $0
+    ${NSD_CreateButton} 0 52u 90u 18u "更新する"
+    Pop $0
+    ${NSD_OnClick} $0 keycheerUpdateClicked
+    ${NSD_CreateButton} 100u 52u 90u 18u "削除する"
+    Pop $0
+    ${NSD_OnClick} $0 keycheerRemoveClicked
+    ; 選ぶのはページのボタンだけにする(下の「次へ」は隠し、次のページで戻す)
+    GetDlgItem $keycheerNextButton $HWNDPARENT 1
+    ShowWindow $keycheerNextButton ${SW_HIDE}
+    nsDialogs::Show
+  FunctionEnd
+
+  Function keycheerChoicePageLeave
+    ShowWindow $keycheerNextButton ${SW_SHOW}
+  FunctionEnd
+
+  ; 更新する:今のインストールの手順(同意の画面)へ進める
+  Function keycheerUpdateClicked
+    Pop $0
+    SendMessage $HWNDPARENT ${WM_COMMAND} 1 0
+  FunctionEnd
+
+  ; 削除する:確かめてから消す。取りやめたらこのページに戻る(S0075_03)
+  Function keycheerRemoveClicked
+    Pop $0
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "KeyCheer を削除します。アプリと、重み・キャラクター・設定・統計がすべて消えます。よろしいですか?" IDOK keycheerRemoveConfirmed
+    Return
+    keycheerRemoveConfirmed:
     InitPluginsDir
     CopyFiles /SILENT "$keycheerInstalled\${UNINSTALL_FILENAME}" "$PLUGINSDIR\keycheer-uninstaller.exe"
     ExecWait '"$PLUGINSDIR\keycheer-uninstaller.exe" /S /currentuser --delete-app-data _?=$keycheerInstalled' $0
@@ -67,9 +102,5 @@
     RMDir "$keycheerInstalled"
     MessageBox MB_ICONINFORMATION|MB_OK "KeyCheer を削除しました。"
     Quit
-
-  removeCancelled:
-    Quit
-
-  removeSkip:
+  FunctionEnd
 !macroend
