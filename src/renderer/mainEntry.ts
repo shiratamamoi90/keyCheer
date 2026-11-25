@@ -41,6 +41,12 @@ import {
 } from "./mainScreen.js";
 import { createThemeController, type ThemeController } from "./theme.js";
 import {
+  createTriggerSettingsController,
+  type TriggerField,
+  type TriggerSettingsController,
+} from "./triggerSettings.js";
+import type { TriggerConfig } from "../core/shared/types.js";
+import {
   buildImageSlots,
   canShowGeneratedImages,
   resolveImageRegeneration,
@@ -235,6 +241,37 @@ function toggleSwitch(props: {
   );
 }
 
+// 数の欄(論点 0070)。打っている間は下書きだけを持ち、欄から離れる・Enter で確定する。
+// 確定した値(値域に寄せた後)を欄に出し直す
+function TriggerNumberField(props: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  disabled: boolean;
+  onCommit: (input: string) => number;
+}): ReactNS.ReactElement {
+  const [draft, setDraft] = React.useState(String(props.value));
+  React.useEffect(() => setDraft(String(props.value)), [props.value]);
+  const commit = (): void => setDraft(String(props.onCommit(draft)));
+  return React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    "aria-label": props.label,
+    className: `${FIELD_BASE_CLASS} w-28 shrink-0 text-right`,
+    value: draft,
+    min: props.min,
+    max: props.max,
+    step: 1,
+    disabled: props.disabled,
+    onChange: (e: ReactNS.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value),
+    onBlur: commit,
+    onKeyDown: (e: ReactNS.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") commit();
+    },
+  });
+}
+
 // 一覧の 1 件(保存画面・切り替え画面)。待機画像があれば小さく出す
 function characterCard(props: {
   key: string;
@@ -333,6 +370,9 @@ function App(): ReactNS.ReactElement {
   // テーマ(論点 0057)。見た目は <html> の dark クラスで切り替える
   const [theme, setTheme] = React.useState<ThemeSetting | null>(null);
   const themeControllerRef = React.useRef<ThemeController | null>(null);
+  // 応援の回数・秒数・節目(論点 0070)
+  const [triggers, setTriggers] = React.useState<TriggerConfig | null>(null);
+  const triggerControllerRef = React.useRef<TriggerSettingsController | null>(null);
 
   React.useEffect(() => {
     let off: (() => void) | null = null;
@@ -390,6 +430,14 @@ function App(): ReactNS.ReactElement {
   React.useEffect(() => {
     void window.keycheer.getGenerationConfig().then(setGenerationConfig);
     void window.keycheer.getPopupDisplay().then(setPopupDisplay);
+    void window.keycheer.getTriggerConfig().then((config) => {
+      triggerControllerRef.current = createTriggerSettingsController({
+        config,
+        // main が同じ値域で検証し、保存して次の打鍵から効かせる(S0070_02)
+        save: (next) => void window.keycheer.updateTriggerConfig(next),
+      });
+      setTriggers(config);
+    });
   }, []);
 
   // シナリオ: 話者一覧を VOICEVOX から取得する / VOICEVOX 未起動でも画面は壊れない [異常系]
@@ -941,6 +989,30 @@ function App(): ReactNS.ReactElement {
     ];
   };
 
+  const triggerField = (field: TriggerField, label: string): ReactNS.ReactElement => {
+    const controller = triggerControllerRef.current;
+    const range = controller?.getFieldRange(field) ?? { min: 0, max: 0 };
+    return settingRow(
+      field,
+      label,
+      React.createElement(TriggerNumberField, {
+        label,
+        value: triggers?.[field] ?? 0,
+        min: range.min,
+        max: range.max,
+        disabled:
+          controller === null ||
+          (field === "milestoneInterval" && !controller.isMilestoneIntervalEditable()),
+        onCommit: (input: string) => {
+          if (controller === null) return 0;
+          const value = controller.commitField(field, input);
+          setTriggers(controller.getConfig());
+          return value;
+        },
+      }),
+    );
+  };
+
   const settingRows = (key: string, ...rows: Child[]): ReactNS.ReactElement =>
     React.createElement("div", { key, className: "flex flex-col divide-y divide-line" }, ...rows);
 
@@ -989,6 +1061,32 @@ function App(): ReactNS.ReactElement {
             ),
           ),
         ),
+      ),
+    ),
+    // S0070_01 応援の回数・秒数・節目
+    card(
+      "cheer",
+      "応援",
+      settingRows(
+        "rows",
+        triggerField("regular", "通常の応援を出す回数(キーを押した回数ごと)"),
+        triggerField("activeThresholdSec", "打つのが止まったとみなすまでの秒数"),
+        settingRow(
+          "milestone-enabled",
+          "節目の応援を出す",
+          toggleSwitch({
+            label: "節目の応援を出す",
+            checked: triggers?.isMilestoneEnabled ?? true,
+            disabled: triggers === null,
+            onChange: (checked) => {
+              const controller = triggerControllerRef.current;
+              if (controller === null) return;
+              controller.setMilestoneEnabled(checked);
+              setTriggers(controller.getConfig());
+            },
+          }),
+        ),
+        triggerField("milestoneInterval", "節目の応援を出す回数(通常の回数より大きい)"),
       ),
     ),
     card(

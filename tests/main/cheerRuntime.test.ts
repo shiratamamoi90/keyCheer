@@ -14,7 +14,8 @@ import type { CheerHistoryEntry, TriggerConfig } from "../../src/core/shared/typ
 
 const CONFIG: TriggerConfig = {
   regular: 50,
-  milestones: [1000, 5000],
+  milestoneInterval: 1000,
+  isMilestoneEnabled: true,
   activeThresholdSec: 60,
 };
 

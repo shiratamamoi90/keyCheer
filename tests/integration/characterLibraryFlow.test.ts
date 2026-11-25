@@ -256,8 +256,8 @@ describe("総合: 生成 → 48 文のプール → 1 文だけのバケット�
     const { runtime } = buildRuntime(store, fs, emitted);
     runtime.setActiveCharacter(id, pool);
 
-    // 既定のマイルストーン 250 / 1250 まで打鍵する(同じ速度ゾーン・時間帯 = 同じバケット。論点 0069)
-    for (let pressed = 1; pressed <= 1250; pressed++) runtime.handleKeyPress(T0 + pressed);
+    // 既定の節目 250 の 2 回目(500)まで打鍵する(同じ速度ゾーン・時間帯 = 同じバケット。論点 0071)
+    for (let pressed = 1; pressed <= 500; pressed++) runtime.handleKeyPress(T0 + pressed);
     const milestones = emitted.filter((p) => p.type === "milestone");
 
     expect(milestones).toHaveLength(2);

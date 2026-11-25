@@ -233,7 +233,7 @@ describe("総合: 発動経路は外部と通信しない", () => {
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     try {
       // マイルストーンを含む回数まで打つ(発動が複数回起きる経路を通す)
-      for (let i = 1; i <= config.milestones[0]!; i++) runtime.handleKeyPress(T0 + i);
+      for (let i = 1; i <= config.milestoneInterval; i++) runtime.handleKeyPress(T0 + i);
       runtime.flushStats();
     } finally {
       globalThis.fetch = originalFetch;

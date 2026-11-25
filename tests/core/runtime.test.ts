@@ -90,8 +90,8 @@ describe("runtime / 通常応援の発動", () => {
   });
 });
 
-describe("runtime / マイルストーン発動と数値補間", () => {
-  it("S0013_03 fires milestone and interpolates {milestone} with the reached count", () => {
+describe("runtime / 節目の文の数値は達した累計にする", () => {
+  it("S0071_05 interpolates {milestone} with the reached count, not the interval", () => {
     const now = 1_000_000;
     const pool = makePool((k) =>
       k === bucketKey("slow", "milestone", "evening")
@@ -100,14 +100,13 @@ describe("runtime / マイルストーン発動と数値補間", () => {
     );
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 999, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 749, lastKeyTimestamp: now - 100, activeMs: 0 },
     };
-    // GIVEN マイルストーン = [1000, 5000, 10000](docs/cheer-trigger.md の GIVEN のとおり。既定値には頼らない)
-    const config = { ...DEFAULT_TRIGGER_CONFIG, milestones: [1000, 5000, 10000] };
+    // GIVEN milestoneInterval = 250(既定値には頼らない)
+    const config = { ...DEFAULT_TRIGGER_CONFIG, milestoneInterval: 250, isMilestoneEnabled: true };
     const result = onKeyPress({ ...baseInput(), config, now, pool, state });
     expect(result.cheer!.type).toBe("milestone");
-    expect(result.cheer!.count).toBe(1000);
-    expect(result.cheer!.message).toBe("1000回達成!");
+    expect(result.cheer!.message).toBe("750回達成!");
   });
 });
 

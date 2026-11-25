@@ -27,16 +27,28 @@ export const TIMES_OF_DAY = [
 ] as const satisfies readonly TimeOfDay[];
 
 export interface TriggerConfig {
-  regular: number; // 1..10000
-  milestones: number[]; // 各 1 以上・昇順・重複なし・最大 20、空配列許容
-  activeThresholdSec: number; // 5..600
+  regular: number;
+  activeThresholdSec: number;
+  // 累計がこの倍数になるたびに節目の応援(論点 0071)。regular より大きい
+  milestoneInterval: number;
+  isMilestoneEnabled: boolean;
 }
+
+// トリガー設定の値域(docs/data-model.md S0071_07)。main の検証と設定画面の入力の両方が使う
+// (片方だけ変えると、画面で作れる値を main が拒否する)。節目の下限は regular + 1 で、値ではなく関係で決まる
+export const TRIGGER_RANGES = {
+  regular: { min: 1, max: 10_000 },
+  activeThresholdSec: { min: 5, max: 600 },
+  // 上限は旧既定の最大の節目(論点 0071)。regular の上限 10000 でも節目を選べる
+  milestoneInterval: { max: 100_000 },
+} as const;
 
 export const DEFAULT_TRIGGER_CONFIG: TriggerConfig = {
   regular: 50,
-  // 論点 0069 旧既定 [1000, 5000, 10000, 50000, 100000] の 4 分の 1。全期間の累計で数えるので、旧既定では節目の応援が一生で 5 回しか出なかった
-  milestones: [250, 1250, 2500, 12500, 25000],
   activeThresholdSec: 60,
+  // 論点 0071 節目を 1 つの回数にし、その倍数ごとに繰り返す(論点 0069 の最初の節目 250 を引き継ぐ)
+  milestoneInterval: 250,
+  isMilestoneEnabled: true,
 };
 
 // 統計データ契約(docs/data-model.md「統計データ」)。main が永続化、renderer が表示に使う。

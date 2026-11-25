@@ -33,7 +33,8 @@
   },
   "triggers": {
     "regular": 50, // 既定 50、1 ≦ N ≦ 10000(設定可能)
-    "milestones": [250, 1250, 2500, 12500, 25000], // 論点 0069 で旧既定の 4 分の 1。設定可能、各値 1 以上・昇順・重複なし、最大 20、空配列許容(milestone OFF)
+    "milestoneInterval": 250, // 既定 250、regular + 1 ≦ M ≦ 100000(設定可能)。累計がこの倍数になるたびに節目の応援(論点 0071)
+    "isMilestoneEnabled": true, // 既定 true。false = 節目の応援を出さない(milestoneInterval は覚えておく)
     "activeThresholdSec": 60, // 既定 60、5 ≦ s ≦ 600(設定可能、KPM 窓とは独立)
   },
   "popup": {
@@ -264,11 +265,7 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 - THEN `"morning" | "afternoon" | "evening" | "night"` のいずれか
 - 注:時刻 → timeOfDay の分類関数(境界定数)は `docs/time-of-day.md` に確定。各呼び出し側は core の `classifyTimeOfDay` を使い、独自実装で if を書かない。
 
-### S0015_06 `triggers` 値域バリデーション [境界]
-
-- GIVEN `triggers.regular` / `triggers.activeThresholdSec` / `triggers.milestones`
-- WHEN 値を保存
-- THEN それぞれ `1 ≦ regular ≦ 10000` / `5 ≦ activeThresholdSec ≦ 600` / 各 milestone 値 1 以上・昇順・重複なし・最大 20 個 を満たす値のみ受理。違反値は拒否(JSON 直接編集時は起動時バリデーションで既定値に置換しログ)
+> S0015_06(節目の一覧を含む値域)は論点 0071 で廃止し、欠番(S0071_07〜09 が置き換え)。
 
 ### S0022_09 `generatedBy` は既定値で補完しない [境界]
 
@@ -330,35 +327,64 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 - THEN S0016_18 と同じく、エラーを表示してキャラ作成を完了させない(クラッシュしない)。
   **`gemma2:2b` へ自動で戻さない**、別プロバイダーへも切り替えない
 
-### S0069_01 `triggers.milestones` の既定値 [境界]
+> S0069_01〜05(節目の一覧の既定値と移行)は論点 0071 で廃止し、欠番(S0071_06・S0071_10〜14 が置き換え)。
 
-- GIVEN `triggers.milestones` が保存されていない設定 JSON
+### S0071_06 節目の既定値 [境界]
+
+- GIVEN `triggers.milestoneInterval` と `triggers.isMilestoneEnabled` が保存されていない設定 JSON(`triggers.milestones` も無い)
 - WHEN 起動時に読み込む
-- THEN `triggers.milestones` は `[250, 1250, 2500, 12500, 25000]` になる(S0015_01 の既定値補完)
+- THEN `triggers.milestoneInterval = 250`・`triggers.isMilestoneEnabled = true` になる(S0015_01 の既定値補完)
 
-### S0069_02 旧既定値の節目を移行する
+### S0071_07 `triggers` の値域の中の値だけを保存する [境界]
 
-- GIVEN 保存値 `triggers.milestones = [1000, 5000, 10000, 50000, 100000]`
+- GIVEN 保存を求められた `triggers`
+- WHEN 値を保存する
+- THEN `1 ≦ regular ≦ 10000`・`5 ≦ activeThresholdSec ≦ 600`・`regular + 1 ≦ milestoneInterval ≦ 100000`(どれも整数)・
+  `isMilestoneEnabled` が真偽値 を満たすときだけ保存する。満たさなければ拒否し、保存されている値を変えない
+
+### S0071_08 節目が回数以下になる保存は拒否する [否定]
+
+- GIVEN `triggers.regular = 50`・`triggers.milestoneInterval = 250`
+- WHEN `regular = 250`・`milestoneInterval = 250`(または `isMilestoneEnabled = false` で `milestoneInterval = 40`)を保存しようとする
+- THEN 拒否し、保存されている値は変化しない(節目の応援を出さない設定の間も、節目は回数より大きいまま)
+
+### S0071_09 読み込んだ値が値域の外なら直す [異常系]
+
+- GIVEN 手で書き換えた設定 JSON:`regular = 0`・`activeThresholdSec = 60`・`milestoneInterval = 250`(または `regular = 300`・`milestoneInterval = 200`)
 - WHEN 起動時に読み込む
-- THEN `triggers.milestones` は `[250, 1250, 2500, 12500, 25000]` になり、その値が保存し直される。通知は出さない
+- THEN `regular` / `activeThresholdSec` は値域の外なら既定値(50 / 60)にする。そのうえで `milestoneInterval` が値域の外なら 250 にし、
+  それでも外(`regular` が 250 以上)なら `regular` の 5 倍にする(例:`regular = 300`・`milestoneInterval = 200` → 1500)。
+  値域の中の値は変えない。直した値は保存し直し、エラーをログに出す
 
-### S0069_03 利用者が変えた節目は移行しない [否定]
+### S0071_10 前の版の節目の一覧を移す
 
-- GIVEN 保存値 `triggers.milestones` が旧既定値と完全には同じでない(例 `[1000, 5000]`・`[1000, 5000, 10000, 50000, 100000, 200000]`・`[]`)
+- GIVEN 保存値 `triggers.milestones = [1000, 5000, 10000, 50000, 100000]`(空でない一覧。`milestoneInterval` は無い)、`triggers.regular = 50`
 - WHEN 起動時に読み込む
-- THEN `triggers.milestones` は**変化せず**、設定も保存し直さない
+- THEN `milestoneInterval = 250`・`isMilestoneEnabled = true` になり、`triggers.milestones` を消して保存し直す。通知は出さない
 
-### S0069_04 移行済みの節目は再び書き換えない [境界]
+### S0071_11 前の版の空の一覧は節目を出さない設定に移す [境界]
 
-- GIVEN 保存値 `triggers.milestones = [250, 1250, 2500, 12500, 25000]`
+- GIVEN 保存値 `triggers.milestones = []`(前の版の milestone OFF)
+- WHEN 起動時に読み込む
+- THEN `milestoneInterval = 250`・`isMilestoneEnabled = false` になり、`triggers.milestones` を消して保存し直す
+
+### S0071_12 前の版で回数が 250 以上なら節目を回数の 5 倍にする [境界]
+
+- GIVEN 保存値 `triggers.milestones = [1000]`・`triggers.regular = 300`
+- WHEN 起動時に読み込む
+- THEN `milestoneInterval = 1500`・`isMilestoneEnabled = true` になる(250 は回数以下なので、S0071_09 と同じ直し方)
+
+### S0071_13 節目の移行は他の設定項目に波及しない [否定]
+
+- GIVEN 保存値 `triggers.milestones = [1000, 5000]`・`triggers.regular = 30`・`triggers.activeThresholdSec = 90`
+- WHEN 起動時に読み込んで移行する
+- THEN `regular = 30`・`activeThresholdSec = 90` は**変化しない**
+
+### S0071_14 移行済みの値は保存し直さない [境界]
+
+- GIVEN 保存値 `triggers = { regular: 50, activeThresholdSec: 60, milestoneInterval: 500, isMilestoneEnabled: false }`
 - WHEN 起動時に読み込む
 - THEN 値は変化せず、設定も保存し直さない
-
-### S0069_05 節目の移行は他の設定項目に波及しない [否定]
-
-- GIVEN 保存値 `triggers.milestones` が旧既定値で、`triggers.regular = 30`・`triggers.activeThresholdSec = 90`
-- WHEN 起動時に読み込んで移行する
-- THEN `triggers.milestones` 以外の値は**変化しない**
 
 ### S0032_24 旧形式の `character` を読み込み時に移行する
 

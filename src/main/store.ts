@@ -6,7 +6,8 @@ import Store from "electron-store";
 import {
   mergeWithDefaults,
   validateTriggerConfig,
-  applyMilestoneDefaultMigration,
+  applyLegacyMilestonesMigration,
+  applyTriggerConfigRepair,
   migrateLegacyDefaults,
   DEFAULT_TRIGGER_CONFIG,
 } from "../core/index.js";
@@ -167,26 +168,27 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
   }
 
   return {
-    // 起動時:欠損キー補完 → 検証 → 旧既定(100)からの移行。不正値は既定に置換。
+    // 起動時:前の版の節目の一覧を移す → 欠損キー補完 → 値域の外を直す → 旧既定(100)からの移行。
     loadTriggerConfig() {
-      const raw = store.get("triggers") as Partial<TriggerConfig> | undefined;
-      const merged = mergeWithDefaults(raw ?? {});
-      const validated = validateTriggerConfig(merged);
-      const base = validated.ok ? validated.value : DEFAULT_TRIGGER_CONFIG;
+      const raw = store.get("triggers") as unknown as Record<string, unknown> | undefined;
+      const moved = applyLegacyMilestonesMigration(raw ?? {});
+      const merged = mergeWithDefaults(moved as Partial<TriggerConfig>);
+      // S0071_09 値域の外は外の値だけを直してログに出す(起動は止めない)
+      const { config: base, errors } = applyTriggerConfigRepair(merged);
+      for (const message of errors) console.error(`[keycheer] triggers: ${message}`);
 
       // 移行は 1 回だけ。以降 regular=100 はユーザーの明示設定として尊重する。
       const meta = (store.get("meta") as AppMeta | undefined) ?? {};
-      const { config: regularMigrated, migrated } = migrateLegacyDefaults(
+      const { config, migrated } = migrateLegacyDefaults(
         base,
         meta.regularDefaultMigrated === true,
       );
       if (migrated) {
         store.set("meta", { ...meta, regularDefaultMigrated: true });
       }
-      const config = applyMilestoneDefaultMigration(regularMigrated);
 
-      // 補完・移行・置換の結果を書き戻して JSON を正規化する。変わらなければ書かない
-      // (S0069_03 / S0069_04 移行しない値は保存し直さない)
+      // 補完・移行・直した結果を書き戻して JSON を正規化する。変わらなければ書かない
+      // (S0071_14 移行済みの値は保存し直さない)
       if (JSON.stringify(raw) !== JSON.stringify(config)) store.set("triggers", config);
       return { config, migrated };
     },

@@ -4,128 +4,64 @@ import {
   validateTriggerConfig,
   mergeWithDefaults,
   migrateLegacyDefaults,
+  applyLegacyMilestonesMigration,
+  applyTriggerConfigRepair,
 } from "../../src/core/triggerConfig.js";
 
+const VALID = {
+  regular: 50,
+  activeThresholdSec: 60,
+  milestoneInterval: 250,
+  isMilestoneEnabled: true,
+};
+
 describe("trigger-config / defaults", () => {
-  it("既定値: regular=50, milestones=[250,1250,2500,12500,25000], activeThresholdSec=60", () => {
+  it("既定値: regular=50, activeThresholdSec=60, milestoneInterval=250, isMilestoneEnabled=true", () => {
     expect(DEFAULT_TRIGGER_CONFIG).toEqual({
       regular: 50,
-      milestones: [250, 1250, 2500, 12500, 25000],
       activeThresholdSec: 60,
+      milestoneInterval: 250,
+      isMilestoneEnabled: true,
     });
   });
 });
 
-describe("trigger-config / validateTriggerConfig: regular", () => {
-  it("accepts boundary values 1 and 10000", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, regular: 1 }).ok).toBe(true);
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, regular: 10_000 }).ok).toBe(true);
-  });
-
-  it("rejects 0, negative, non-integer, and out-of-upper-bound", () => {
-    for (const v of [0, -1, 1.5, 10_001, NaN, Infinity]) {
-      const r = validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, regular: v });
-      expect(r.ok, `regular=${v} should reject`).toBe(false);
-    }
-  });
-});
-
-describe("trigger-config / validateTriggerConfig: activeThresholdSec", () => {
-  it("accepts boundary values 5 and 600", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, activeThresholdSec: 5 }).ok).toBe(
-      true,
-    );
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, activeThresholdSec: 600 }).ok).toBe(
-      true,
-    );
-  });
-
-  it("rejects 0, negative, below 5, above 600, and non-integer", () => {
-    for (const v of [0, -1, 4, 601, 60.5, NaN]) {
-      const r = validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, activeThresholdSec: v });
-      expect(r.ok, `activeThresholdSec=${v} should reject`).toBe(false);
-    }
-  });
-});
-
-describe("trigger-config / validateTriggerConfig: milestones", () => {
-  it("accepts empty array (milestone OFF)", () => {
-    const r = validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [] });
-    expect(r.ok).toBe(true);
-  });
-
-  it("accepts strictly ascending positive integers", () => {
-    const r = validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [1, 100, 1000] });
-    expect(r.ok).toBe(true);
-  });
-
-  it("rejects values <= 0", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [0, 100] }).ok).toBe(
-      false,
-    );
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [-1, 100] }).ok).toBe(
-      false,
-    );
-  });
-
-  it("rejects duplicates", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [100, 100] }).ok).toBe(
-      false,
-    );
-  });
-
-  it("rejects descending order", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [1000, 100] }).ok).toBe(
-      false,
-    );
-  });
-
-  it("rejects non-integer values", () => {
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: [1.5, 100] }).ok).toBe(
-      false,
-    );
-  });
-
-  it("rejects more than 20 milestones", () => {
-    const ms = Array.from({ length: 21 }, (_, i) => (i + 1) * 100);
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: ms }).ok).toBe(false);
-  });
-
-  it("accepts exactly 20 milestones (boundary)", () => {
-    const ms = Array.from({ length: 20 }, (_, i) => (i + 1) * 100);
-    expect(validateTriggerConfig({ ...DEFAULT_TRIGGER_CONFIG, milestones: ms }).ok).toBe(true);
-  });
-});
-
-// docs/data-model.md の値域シナリオ(1≦regular≦10000 / 5≦activeThresholdSec≦600 /
-// milestones は 1 以上・昇順・重複なし・最大 20)をひとまとめに縛る。
-describe("trigger-config / `triggers` 値域バリデーション [境界]", () => {
-  it("S0015_06 accepts the documented ranges and rejects anything outside them", () => {
-    const ok = validateTriggerConfig({ regular: 1, milestones: [], activeThresholdSec: 5 });
-    expect(ok.ok).toBe(true);
-    const ok2 = validateTriggerConfig({
-      regular: 10_000,
-      milestones: [1, 2, 3],
-      activeThresholdSec: 600,
-    });
-    expect(ok2.ok).toBe(true);
-
-    for (const bad of [
-      { regular: 0, milestones: [], activeThresholdSec: 60 },
-      { regular: 10_001, milestones: [], activeThresholdSec: 60 },
-      { regular: 50, milestones: [], activeThresholdSec: 4 },
-      { regular: 50, milestones: [], activeThresholdSec: 601 },
-      { regular: 50, milestones: [0], activeThresholdSec: 60 },
-      { regular: 50, milestones: [2, 1], activeThresholdSec: 60 },
-      { regular: 50, milestones: [1, 1], activeThresholdSec: 60 },
+describe("trigger-config / `triggers` の値域の中の値だけを保存する [境界]", () => {
+  it("S0071_07 accepts the documented ranges and rejects anything outside them", () => {
+    for (const ok of [
+      { regular: 1, activeThresholdSec: 5, milestoneInterval: 2, isMilestoneEnabled: true },
       {
-        regular: 50,
-        milestones: Array.from({ length: 21 }, (_, i) => i + 1),
-        activeThresholdSec: 60,
+        regular: 10_000,
+        activeThresholdSec: 600,
+        milestoneInterval: 100_000,
+        isMilestoneEnabled: false,
       },
     ]) {
-      expect(validateTriggerConfig(bad).ok).toBe(false);
+      expect(validateTriggerConfig(ok).ok, JSON.stringify(ok)).toBe(true);
     }
+    for (const bad of [
+      { ...VALID, regular: 0 },
+      { ...VALID, regular: 10_001 },
+      { ...VALID, regular: 1.5 },
+      { ...VALID, activeThresholdSec: 4 },
+      { ...VALID, activeThresholdSec: 601 },
+      { ...VALID, milestoneInterval: 100_001 },
+      { ...VALID, milestoneInterval: 250.5 },
+      { ...VALID, isMilestoneEnabled: "yes" },
+    ]) {
+      expect(validateTriggerConfig(bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
+describe("trigger-config / 節目が回数以下になる保存は拒否する [否定]", () => {
+  it("S0071_08 rejects milestoneInterval <= regular, even while milestones are disabled", () => {
+    expect(validateTriggerConfig({ ...VALID, regular: 250, milestoneInterval: 250 }).ok).toBe(
+      false,
+    );
+    expect(
+      validateTriggerConfig({ ...VALID, isMilestoneEnabled: false, milestoneInterval: 40 }).ok,
+    ).toBe(false);
   });
 });
 
@@ -136,77 +72,83 @@ describe("trigger-config / validateTriggerConfig: shape", () => {
     expect(validateTriggerConfig("nope").ok).toBe(false);
     expect(validateTriggerConfig({ regular: 50 }).ok).toBe(false); // 必須キー欠落
   });
+
+  it("does not carry extra keys (e.g. the former milestones) into the value", () => {
+    const r = validateTriggerConfig({ ...VALID, milestones: [1000] });
+    expect(r.ok && r.value).toEqual(VALID);
+  });
 });
 
 describe("trigger-config / mergeWithDefaults", () => {
   it("fills missing keys with defaults (旧 JSON 補完)", () => {
-    // GIVEN activeThresholdSec キーがない旧 JSON
-    const merged = mergeWithDefaults({ regular: 80, milestones: [500] });
-    expect(merged).toEqual({
-      regular: 80,
-      milestones: [500],
-      activeThresholdSec: 60,
-    });
+    expect(mergeWithDefaults({ regular: 80 })).toEqual({ ...DEFAULT_TRIGGER_CONFIG, regular: 80 });
   });
 
   it("uses all defaults when partial is empty", () => {
     expect(mergeWithDefaults({})).toEqual(DEFAULT_TRIGGER_CONFIG);
   });
+});
 
-  it("preserves provided values", () => {
-    const merged = mergeWithDefaults({
-      regular: 25,
-      activeThresholdSec: 120,
-      milestones: [500],
+describe("trigger-config / applyLegacyMilestonesMigration", () => {
+  it("turns a non-empty legacy list into enabled and drops the list", () => {
+    expect(applyLegacyMilestonesMigration({ regular: 50, milestones: [1000, 5000] })).toEqual({
+      regular: 50,
+      isMilestoneEnabled: true,
     });
-    expect(merged).toEqual({ regular: 25, milestones: [500], activeThresholdSec: 120 });
+  });
+
+  it("turns an empty legacy list into disabled", () => {
+    expect(applyLegacyMilestonesMigration({ milestones: [] })).toEqual({
+      isMilestoneEnabled: false,
+    });
+  });
+
+  it("leaves a stored value without the legacy list as it is (no mutation)", () => {
+    const raw = { regular: 50, milestoneInterval: 500 };
+    const result = applyLegacyMilestonesMigration(raw);
+    expect(result).toEqual(raw);
+    expect(raw).toEqual({ regular: 50, milestoneInterval: 500 });
+  });
+});
+
+describe("trigger-config / applyTriggerConfigRepair", () => {
+  it("keeps a valid config with no errors", () => {
+    expect(applyTriggerConfigRepair(VALID)).toEqual({ config: VALID, errors: [] });
+  });
+
+  it("replaces only the out-of-range fields with defaults", () => {
+    const { config, errors } = applyTriggerConfigRepair({
+      ...VALID,
+      regular: 0,
+      activeThresholdSec: 90,
+    });
+    expect(config).toEqual({ ...VALID, regular: 50, activeThresholdSec: 90 });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("sets milestoneInterval to five times regular when the default is not above regular", () => {
+    const { config } = applyTriggerConfigRepair({ ...VALID, regular: 300, milestoneInterval: 200 });
+    expect(config).toEqual({ ...VALID, regular: 300, milestoneInterval: 1500 });
   });
 });
 
 describe("trigger-config / migrateLegacyDefaults", () => {
   it("resets regular=100 (legacy default) to 50 and flags migrated", () => {
-    const result = migrateLegacyDefaults({
-      regular: 100,
-      milestones: [1000, 5000, 10000, 50000, 100000],
-      activeThresholdSec: 60,
-    });
+    const result = migrateLegacyDefaults({ ...VALID, regular: 100 });
     expect(result.config.regular).toBe(50);
     expect(result.migrated).toBe(true);
   });
 
   it("preserves user-set regular if not legacy default", () => {
-    const result = migrateLegacyDefaults({
-      regular: 30,
-      milestones: [1000],
-      activeThresholdSec: 60,
-    });
+    const result = migrateLegacyDefaults({ ...VALID, regular: 30 });
     expect(result.config.regular).toBe(30);
-    expect(result.migrated).toBe(false);
-  });
-
-  it("preserves regular=50 (new default already in effect)", () => {
-    const result = migrateLegacyDefaults({
-      regular: 50,
-      milestones: [1000],
-      activeThresholdSec: 60,
-    });
-    expect(result.config.regular).toBe(50);
     expect(result.migrated).toBe(false);
   });
 
   // docs/data-model.md「以降ユーザーが明示変更した値は尊重する(再上書きしない)」
   it("以降ユーザーが明示変更した値は尊重する: keeps a user-set 100 once the migration already ran", () => {
-    const result = migrateLegacyDefaults(
-      { regular: 100, milestones: [1000], activeThresholdSec: 60 },
-      true, // 移行済み
-    );
+    const result = migrateLegacyDefaults({ ...VALID, regular: 100 }, true);
     expect(result.config.regular).toBe(100);
     expect(result.migrated).toBe(false);
-  });
-
-  it("migrates only when it has not run before (未移行なら 1 回だけ効く)", () => {
-    const legacy = { regular: 100, milestones: [1000], activeThresholdSec: 60 };
-    expect(migrateLegacyDefaults(legacy, false).migrated).toBe(true);
-    expect(migrateLegacyDefaults(legacy, true).migrated).toBe(false);
   });
 });

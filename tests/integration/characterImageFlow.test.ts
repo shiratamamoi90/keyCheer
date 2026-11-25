@@ -109,7 +109,7 @@ describe("総合: 生成 → キャラ画像 → 常時表示の窓 → 応援�
         },
         random: () => 0,
       },
-      { regular: 50, milestones: [1000], activeThresholdSec: 60 },
+      { regular: 50, activeThresholdSec: 60, milestoneInterval: 1000, isMilestoneEnabled: true },
     );
     runtime.setActiveCharacter(CHAR_ID, loadPool(fs, USER_DATA, CHAR_ID));
 

@@ -26,6 +26,7 @@ const { createAppStore } = await import("../../src/main/store.js");
 const { createCheerRuntime } = await import("../../src/main/cheerRuntime.js");
 const { IpcChannel } = await import("../../src/core/shared/ipc.js");
 const { DEFAULT_TRIGGER_CONFIG } = await import("../../src/core/shared/types.js");
+const { createTriggerSettingsController } = await import("../../src/renderer/triggerSettings.js");
 
 type StoreLike = Parameters<typeof createAppStore>[0];
 type UpdateResult = { ok: true; config: { regular: number } } | { ok: false; errors: string[] };
@@ -98,9 +99,8 @@ describe("総合: 設定更新が永続化と発動間隔の両方に届く", ()
 
     // renderer が間隔を 10 に変更(IPC の実ハンドラを通す)。
     const result = invoke(IpcChannel.UpdateTriggerConfig, {
+      ...DEFAULT_TRIGGER_CONFIG,
       regular: 10,
-      milestones: [],
-      activeThresholdSec: 60,
     }) as UpdateResult;
     expect(result.ok).toBe(true);
 
@@ -118,8 +118,9 @@ describe("総合: 設定更新が永続化と発動間隔の両方に届く", ()
 
     const result = invoke(IpcChannel.UpdateTriggerConfig, {
       regular: -1,
-      milestones: "x",
       activeThresholdSec: 0,
+      milestoneInterval: "x",
+      isMilestoneEnabled: true,
     }) as UpdateResult;
 
     expect(result.ok).toBe(false);
@@ -135,8 +136,44 @@ describe("総合: 設定更新が永続化と発動間隔の両方に届く", ()
   });
 });
 
-describe("総合: 旧既定の節目を保存していた設定が、起動で新しい節目に移って発動する(論点 0069)", () => {
-  it("moves the former default milestones on launch and fires the first milestone at 250", () => {
+describe("総合: 設定画面の応援の欄で確定した値が、保存されて次の打鍵から効く(論点 0070 / 0071)", () => {
+  it("commits regular and milestone interval from the settings screen and fires milestones repeatedly", () => {
+    const { raw, runtime, fired, firedTypes, invoke } = bootstrap();
+    const results: UpdateResult[] = [];
+    // 設定画面と同じ配線:確定した値を UpdateTriggerConfig で main に送る
+    const controller = createTriggerSettingsController({
+      config: invoke(IpcChannel.GetTriggerConfig) as typeof DEFAULT_TRIGGER_CONFIG,
+      save: (next) => results.push(invoke(IpcChannel.UpdateTriggerConfig, next) as UpdateResult),
+    });
+
+    // 回数を 20 に、節目を 100 に(値域の外の 30 → 21 に寄せられるのは単体で縛った)
+    controller.commitField("regular", "20");
+    controller.commitField("milestoneInterval", "100");
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(raw.raw["triggers"]).toEqual({
+      regular: 20,
+      activeThresholdSec: 60,
+      milestoneInterval: 100,
+      isMilestoneEnabled: true,
+    });
+
+    for (let i = 1; i <= 200; i++) runtime.handleKeyPress(T0 + i);
+    // 100 と 200 は節目(繰り返す)、それ以外の 20 の倍数は通常
+    expect(fired).toEqual([20, 40, 60, 80, 100, 120, 140, 160, 180, 200]);
+    expect(firedTypes.filter((t) => t === "milestone")).toHaveLength(2);
+    expect(firedTypes[4]).toBe("milestone");
+    expect(firedTypes[9]).toBe("milestone");
+
+    // 節目の応援を切ると、節目の倍数でも通常の応援になる
+    controller.setMilestoneEnabled(false);
+    for (let i = 201; i <= 300; i++) runtime.handleKeyPress(T0 + i);
+    expect(fired.at(-1)).toBe(300);
+    expect(firedTypes.at(-1)).toBe("regular");
+  });
+});
+
+describe("総合: 前の版の節目の一覧を保存していた設定が、起動で節目の回数に移って発動する(論点 0071)", () => {
+  it("moves the former milestones list on launch and fires milestones at every 250", () => {
     const { raw, runtime, fired, firedTypes } = bootstrap({
       triggers: {
         regular: 50,
@@ -145,14 +182,15 @@ describe("総合: 旧既定の節目を保存していた設定が、起動で�
       },
     });
 
-    // 起動の読み込みで新しい節目に移り、保存し直されている
-    expect((raw.raw["triggers"] as { milestones: number[] }).milestones).toEqual([
-      250, 1250, 2500, 12500, 25000,
-    ]);
+    // 起動の読み込みで節目の回数に移り、一覧を消して保存し直されている
+    expect(raw.raw["triggers"]).toEqual({
+      regular: 50,
+      activeThresholdSec: 60,
+      milestoneInterval: 250,
+      isMilestoneEnabled: true,
+    });
 
-    // 250 打目で節目の応援が出る(50 の倍数でもあるが節目が優先)
-    for (let i = 1; i <= 250; i++) runtime.handleKeyPress(T0 + i);
-    expect(fired.at(-1)).toBe(250);
-    expect(firedTypes.at(-1)).toBe("milestone");
+    for (let i = 1; i <= 500; i++) runtime.handleKeyPress(T0 + i);
+    expect(fired.filter((_, i) => firedTypes[i] === "milestone")).toEqual([250, 500]);
   });
 });

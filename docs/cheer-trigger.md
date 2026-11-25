@@ -1,11 +1,12 @@
 # 要件: 応援トリガー & メッセージプール選択
 
-累計カウントが `triggers.regular` の倍数・`triggers.milestones` のいずれかに達したら応援を発動し、その時点の `(speedZone, type, timeOfDay)` に対応するメッセージプールから 1 文を選び、対応する事前合成 wav を再生する。**発動経路では外部 API・localhost を含めて一切のサーバー通信を行わない**(プールと wav はキャラ作成時に確定済み — → docs/integrations.md)。
+累計カウントが `triggers.regular` の倍数・`triggers.milestoneInterval` の倍数のどちらかに達したら応援を発動し、その時点の `(speedZone, type, timeOfDay)` に対応するメッセージプールから 1 文を選び、対応する事前合成 wav を再生する。**発動経路では外部 API・localhost を含めて一切のサーバー通信を行わない**(プールと wav はキャラ作成時に確定済み — → docs/integrations.md)。
 
 トリガー設定値(既定):
 
 - `triggers.regular = 50`(設定可、1 ≦ N ≦ 10000)
-- `triggers.milestones = [250, 1250, 2500, 12500, 25000]`(設定可、空配列 = milestone OFF を許容。論点 0069 で旧既定の 4 分の 1 にした)
+- `triggers.milestoneInterval = 250`(設定可、`triggers.regular + 1` ≦ M ≦ 100000。論点 0071 で節目を 1 つの回数にし、その倍数ごとに繰り返す)
+- `triggers.isMilestoneEnabled = true`(設定可。false = milestone OFF)
 - 詳細は `docs/data-model.md` および `論点 0009(`decisions/decided/0009-configurable-triggers/`)`。
 
 ### S0013_01 通常応援を N 回ごとに発動
@@ -20,11 +21,37 @@
 - WHEN カウントが 51 になる
 - THEN 応援は発動しない
 
-### S0013_03 マイルストーン発動
+> S0013_03(節目の一覧)・S0013_13(節目の空配列)は論点 0071 で廃止し、欠番(S0071_01〜05 が置き換え)。
 
-- GIVEN マイルストーン = [1000, 5000, 10000]、カウントが 999
-- WHEN カウントが 1000 になる
-- THEN 種別 `milestone` の特別応援が発動する(同時に通常条件も満たす場合は milestone を優先)
+### S0071_01 節目の回数ごとに節目の応援を繰り返す
+
+- GIVEN `triggers.regular = 50`・`triggers.milestoneInterval = 250`・`triggers.isMilestoneEnabled = true`、累計カウントが 499
+- WHEN キーが押されてカウントが 500 になる
+- THEN 種別 `milestone` の応援が 1 回発動する(250 の 2 回目の倍数。1 回目の 250 で終わらない)
+
+### S0071_02 節目の倍数でなければ節目の応援を出さない [境界]
+
+- GIVEN `triggers.regular = 50`・`triggers.milestoneInterval = 250`・`triggers.isMilestoneEnabled = true`
+- WHEN カウントが 300(`regular` の倍数で、`milestoneInterval` の倍数でない)になる
+- THEN 種別 `regular` の応援が発動し、`milestone` は発動しない
+
+### S0071_03 通常の応援と重なったら節目だけを出す [否定]
+
+- GIVEN `triggers.regular = 50`・`triggers.milestoneInterval = 250`・`triggers.isMilestoneEnabled = true`
+- WHEN カウントが 750(両方の倍数)になる
+- THEN 種別 `milestone` の応援が 1 回だけ発動する。**`regular` の応援は重ねて発動しない**
+
+### S0071_04 節目の応援を出さない設定では節目を出さない [境界]
+
+- GIVEN `triggers.regular = 50`・`triggers.milestoneInterval = 250`・`triggers.isMilestoneEnabled = false`
+- WHEN カウントが 250 になる
+- THEN `milestone` は発動せず、種別 `regular` の応援が発動する(`regular` の倍数判定だけが行われる)
+
+### S0071_05 節目の文の数値は達した累計にする
+
+- GIVEN `triggers.milestoneInterval = 250`、milestone バケットの文が「{milestone} 回達成だよ!」
+- WHEN カウントが 750 になり節目の応援を出す
+- THEN 表示する文は「750 回達成だよ!」(`milestoneInterval` の 250 ではない)
 
 ### S0013_04 発動時に現在の (zone, timeOfDay) を付与
 
@@ -92,12 +119,6 @@
 - GIVEN 応援が発動し、選択文 m と現在の `(kpm, speedZone, type, timeOfDay)` が確定
 - WHEN `cheerHistory` に記録する
 - THEN そのエントリの `count` / `kpm` / `speedZone` / `message` / `type` / `timeOfDay` / `messageId` が保存される(→ docs/data-model.md)
-
-### S0013_13 マイルストーン空配列 [境界]
-
-- GIVEN `triggers.milestones = []`(milestone OFF 設定)
-- WHEN 任意のカウント到達
-- THEN `milestone` 種別の応援は発動しない。`regular` の倍数判定のみが行われる
 
 ## 不変条件
 
