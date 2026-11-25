@@ -16,13 +16,11 @@ import {
   computePopupContentLayout,
   type Rect,
 } from "../core/shared/popupLayout.js";
-import type { KeyCheerApi } from "../preload/api.js";
+import { APP_DISPLAY_NAME } from "../core/shared/appIdentity.js";
 
-declare global {
-  interface Window {
-    keycheer: KeyCheerApi;
-  }
-}
+// window.keycheer の型は globals.d.ts(メインウィンドウと共有)
+// 論点 0077 窓の題名は見える名前の定義から付ける(HTML に名前を直書きしない)
+document.title = APP_DISPLAY_NAME;
 
 // wav は file:// を直接開かず、main が登録した専用スキーム経由で読む(spec 確定事項 #4)。
 // スキーム名は core/shared/ipc.ts が正本(main 側と同じ値を参照する)。

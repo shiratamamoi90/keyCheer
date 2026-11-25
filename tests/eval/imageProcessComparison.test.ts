@@ -9,7 +9,6 @@ import {
   buildBandMask,
   buildAppearanceTagPrompt,
   buildIdleExtraArgs,
-  buildProcessPage,
   buildProcessPrompt,
   computeBackgroundMatchPct,
   computeChangedRatioPct,
@@ -268,30 +267,6 @@ describe("プロンプト", () => {
     const prompt = buildAppearanceTagPrompt({ name: "チア", personality: "元気" });
     expect(prompt).toContain("キャラクター: チア");
     expect(prompt).not.toContain("セリフ");
-  });
-});
-
-describe("buildProcessPage", () => {
-  it("escapes the prompt so that tags from the model cannot inject markup", () => {
-    const page = buildProcessPage({
-      models: ["counterfeit-v3"],
-      records: [makeRecord({ prompt: "<script>alert(1)</script>" })],
-      baselineFiles: {},
-    });
-    expect(page).not.toContain("<script>alert(1)</script>");
-    expect(page).toContain("&lt;script&gt;");
-  });
-
-  it("puts the baseline image, the raw image and the processed image of a case in one row", () => {
-    const page = buildProcessPage({
-      models: ["counterfeit-v3"],
-      records: [makeRecord()],
-      baselineFiles: { "counterfeit-v3/チア/idle/0": "baseline/counterfeit-v3/a.png" },
-    });
-    const row = page.split("\n").find((line) => line.includes('class="case"'))!;
-    expect(row).toContain("baseline/counterfeit-v3/a.png");
-    expect(row).toContain("idle-t0.raw.png");
-    expect(row).toContain("idle-t0.png");
   });
 });
 

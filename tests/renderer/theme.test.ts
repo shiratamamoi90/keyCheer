@@ -43,9 +43,10 @@ describe("theme / 設定画面でテーマを選ぶとすぐ反映する", () =>
 
 describe("theme / テーマはキャラの窓と確認ダイアログを変えない [否定]", () => {
   it("S0057_05 the popup does not read the theme and the OS theme source is never overridden", () => {
-    // キャラの窓(popup.html / popup.ts / popupView.ts)はテーマを読まない
+    // キャラの窓(popup.html / popup.css / popup.ts / popupView.ts)はテーマを読まない
     for (const file of [
       "src/renderer/popup.html",
+      "src/renderer/styles/popup.css",
       "src/renderer/popup.ts",
       "src/renderer/popupView.ts",
     ]) {

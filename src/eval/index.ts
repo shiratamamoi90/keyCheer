@@ -4,7 +4,7 @@
 //   例: npm run eval -- decisions/undecided/0027-local-text-model-sarashina
 // 論点フォルダの config.yaml を読み、baseline と variant を同じ条件で測る。
 // 振る変数は `axis` で選ぶ:model(既定。論点 0027)はモデル名、prompt(論点 0026)はプロンプト案、
-// image_model(論点 0041)は画像のベースモデル(runImageModelEval。画像と見比べる頁を出力フォルダに置く)、
+// image_model(論点 0041)は画像のベースモデル(runImageModelEval。画像を出力フォルダに置く)、
 // cheer_image_tags(論点 0062)は応援種別の画像の画像タグの決め方(runCheerImageEval)、
 // background_removal(論点 0063)・palette_size(論点 0064)は 0062 で描いた絵の後処理だけ(runPostProcessEval)、
 // negative_prompt(論点 0065)は避ける語と CFG(runNegativePromptEval)、
@@ -15,21 +15,13 @@
 // 生の記録(JSONL)は KEYCHEER_EVAL_OUT(既定 ~/.cache/keycheer-eval)に置き、リポジトリには
 // 入れない。result.md に書くのは集計値だけ(@.claude/rules/experiment-rules.md「規律」)。
 
-import {
-  appendFileSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { buildSystemPrompt } from "../agent/poolGenerator.js";
 import { DEFAULT_SYSTEM_CONFIG } from "../core/shared/types.js";
 import { parseFlatConfig, requireNumber, requireString, type FlatConfig } from "./configFile.js";
 import {
-  buildComparisonPage,
   buildImageCases,
   computeImageSummary,
   runImageTrials,
@@ -38,7 +30,6 @@ import {
 import {
   BACKGROUND_PLACEHOLDER,
   buildProcessCases,
-  buildProcessPage,
   computeProcessSummary,
   runProcessTrials,
   type PaletteColor,
@@ -148,8 +139,6 @@ async function runImageModelEval(
     );
     records.push(...variantRecords);
     summaries.push(computeImageSummary(variant, variantRecords));
-    // 途中で止めても見られるよう、候補が 1 つ終わるたびに頁を書き直す
-    writeFileSync(join(outDir, "index.html"), buildComparisonPage(variants, records));
   }
 
   console.log(
@@ -166,26 +155,6 @@ function requireList(config: FlatConfig, key: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
-}
-
-// 今の作り方の画像(論点 0041 の計測の出力)を、並べて見る頁の隣に写す。無ければ空のまま進める
-function copyBaselineImages(baselineDir: string, outDir: string): Record<string, string> {
-  const recordsPath = join(baselineDir, "records.jsonl");
-  if (!existsSync(recordsPath)) {
-    console.error(`[eval] baseline の記録が無い: ${recordsPath}(今の作り方の列は空になる)`);
-    return {};
-  }
-  const files: Record<string, string> = {};
-  for (const line of readFileSync(recordsPath, "utf8").split("\n")) {
-    if (line.trim().length === 0) continue;
-    const record = JSON.parse(line) as ImageRecord;
-    if (record.file === null) continue;
-    const target = join("baseline", record.file);
-    mkdirSync(dirname(join(outDir, target)), { recursive: true });
-    copyFileSync(join(baselineDir, record.file), join(outDir, target));
-    files[`${record.variant}/${record.character}/${record.kind}/${record.trial}`] = target;
-  }
-  return files;
 }
 
 type ProcessEvalMode = "main" | "probe" | "background";
@@ -273,10 +242,6 @@ async function runImageProcessEval(
     `[eval] 画像タグ: ${built.cases.length} 組(タグの失敗 ${tagFailureCount}、人物のタグを足した組 ${addedPersonTagCount})`,
   );
 
-  const baselineFiles =
-    mode === "background"
-      ? {}
-      : copyBaselineImages(join(outRoot, requireString(config, "baseline_run")), outDir);
   const summaries = [];
   for (const background of backgrounds) {
     // 背景の試しは候補ごとにフォルダを分ける(同じケースの名前がぶつかるため)
@@ -343,11 +308,6 @@ async function runImageProcessEval(
           ),
         );
       }
-      // 途中で止めても見られるよう、モデルが 1 つ終わるたびに頁を書き直す
-      writeFileSync(
-        join(runDir, "index.html"),
-        buildProcessPage({ models, records, baselineFiles }),
-      );
     }
   }
 

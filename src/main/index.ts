@@ -6,6 +6,7 @@
 // テスト対象外(electron/uiohook を import する I/O グルー)。検証は typecheck / lint。
 
 import { app, nativeTheme } from "electron";
+import { join } from "node:path";
 import { existsSync as fsExistsSync, mkdirSync, rmSync, statfsSync } from "node:fs";
 import { createStore, createAppStore } from "./store.js";
 import { removeRetiredFiles } from "./retiredFiles.js";
@@ -37,6 +38,7 @@ import {
 } from "./bundledRuntime.js";
 import { computeFileSha256, isTextModelIntact, resolveTextModelPath } from "./textModelCheck.js";
 import { TEXT_MODEL_FILE } from "../core/shared/textModel.js";
+import { USER_DATA_DIR_NAME } from "../core/shared/appIdentity.js";
 import { BUNDLED_WEIGHT_FILES } from "../core/shared/bundledWeights.js";
 import { installWeights } from "./weightInstall.js";
 import { importTextModel } from "./textModelImport.js";
@@ -45,6 +47,11 @@ import {
   runWeightInstallMode,
   type WeightInstallArgs,
 } from "./weightInstallMode.js";
+import { logError, logInfo } from "./log.js";
+
+// 論点 0077 データの置き場は、見える名前(TypeYell)ではなく前の版と同じ %APPDATA%\keycheer に固定する。
+// Electron は productName から置き場を決めるので、何かが置き場を使う前(単一インスタンスのロックより前)に指定する
+app.setPath("userData", join(app.getPath("appData"), USER_DATA_DIR_NAME));
 
 // インストーラが重みを置くために起動したとき(論点 0072)。窓・トレイ・キーフックを出さずに終わるので、
 // 単一インスタンスのロックも取らない(取ると、置き終わるまで利用者がアプリを起動できなくなる)
@@ -268,9 +275,7 @@ function bootstrap(): void {
   // 表示先の設定ウィンドウは本スライスに無いため、今はログに残すだけ。
   // 設定 UI の change で IpcChannel.ConfigMigrated を使って画面に出す。
   if (migrated) {
-    console.info(
-      `[keycheer] triggers.regular を既定値 ${config.regular} にリセットしました(旧既定 100)`,
-    );
+    logInfo(`triggers.regular を既定値 ${config.regular} にリセットしました(旧既定 100)`);
   }
 
   // 常駐アプリ:全ウィンドウを閉じても終了しない(トレイに残る)。
@@ -336,7 +341,7 @@ async function runWeightInstall(args: WeightInstallArgs): Promise<void> {
     app.exit(exitCode);
   } catch (error) {
     // 想定外の失敗(コピー中の I/O エラーなど)。インストールは完了させない
-    console.error("[keycheer] 重みを置けませんでした", error);
+    logError("重みを置けませんでした", error);
     ollama.stopAll();
     app.exit(1);
   }

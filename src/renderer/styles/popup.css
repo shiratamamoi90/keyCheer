@@ -1,0 +1,5 @@
+/* キャラの窓の見た目(論点 0079)。npm run build で Tailwind の CLI が dist/renderer/popup.css を作る。
+   見た目は仕様外(デザイン判断)。「読める・入力を邪魔しない」だけを満たす。メインウィンドウの色の変数(ライト / ダーク)は
+   使わない — 窓の色が OS やアプリの見た目の設定で変わらないようにする(S0057_05)。 */
+@tailwind base;
+@tailwind utilities;

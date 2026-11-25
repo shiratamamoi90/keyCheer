@@ -8,9 +8,9 @@
 // 見た目と表情の画像タグは 1 回だけ作り、3 案で同じものを使う(違いが画像タグの決め方だけから出るように)。
 //
 // 絵の良し悪しは指標で決めない。regular と milestone の差(変わった画素の割合・人物の外形の重なり)を数で出し、
-// 並べて見る頁で人間が判断する。
+// 出力フォルダの画像を人間が見て判断する(並べて見る頁は論点 0079 でやめた)。
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generatePool } from "../agent/poolGenerator.js";
 import { createOllamaTextGenerator } from "../agent/providers/localOllama.js";
@@ -20,7 +20,6 @@ import {
   type ImageTagCharacter,
 } from "../core/characterImage.js";
 import { ALL_BUCKET_KEYS, computeCheerType, type MessagePool } from "../core/messagePool.js";
-import { escapeHtml } from "./imageModelComparison.js";
 import {
   buildAppearanceTagPrompt,
   buildPoseTagPrompt,
@@ -150,53 +149,6 @@ export function computeCheerDifferenceSummary(
     meanChangedPct: computeMean(own.map((r) => r.changedPct)),
     meanMaskOverlapPct: computeMean(own.map((r) => r.maskOverlapPct)),
   };
-}
-
-// 同じキャラ・試行を 1 行にし、案ごとに「待機・通常・節目」の 3 枚(後処理の後)を並べる。
-// プロンプトはモデルが出した画像タグを含むので、頁に埋める前に必ずエスケープする。
-export function buildCheerDifferencePage(input: {
-  variants: readonly CheerImageVariant[];
-  records: readonly ProcessRecord[];
-  differences: readonly CheerDifferenceRecord[];
-}): string {
-  const keys = [...new Set(input.records.map((r) => `${r.character}\u0000${r.trial}`))];
-  const rows = keys.map((key) => {
-    const [character = "", trialText = "0"] = key.split("\u0000");
-    const trial = Number(trialText);
-    const cells = input.variants.map((variant) => {
-      const own = input.records.filter(
-        (r) => r.variant === variant && r.character === character && r.trial === trial,
-      );
-      const figures = (["idle", "regular", "milestone"] as const).map((kind) => {
-        const record = own.find((r) => r.kind === kind);
-        if (record === undefined) return "<figure>未計測</figure>";
-        if (record.failed || record.file === null) {
-          return `<figure>失敗<figcaption>${escapeHtml(record.error ?? "")}</figcaption></figure>`;
-        }
-        const tags = kind === "idle" ? "" : `<br><small>${escapeHtml(record.prompt)}</small>`;
-        return `<figure><img src="${record.file.split("/").map(encodeURIComponent).join("/")}" width="192" alt=""><figcaption>${kind}${tags}</figcaption></figure>`;
-      });
-      const diff = input.differences.find(
-        (d) => d.variant === variant && d.character === character && d.trial === trial,
-      );
-      const metric =
-        diff === undefined
-          ? ""
-          : `<p>変化 ${diff.changedPct ?? "—"}% / 外形の重なり ${diff.maskOverlapPct ?? "—"}%</p>`;
-      return `<td>${figures.join("")}${metric}</td>`;
-    });
-    return `<tr><th>${escapeHtml(character)}<br>試行 ${trial}</th>${cells.join("")}</tr>`;
-  });
-  const head = input.variants.map((v) => `<th>${escapeHtml(v)}</th>`).join("");
-  return [
-    "<!doctype html>",
-    '<html lang="ja"><head><meta charset="utf-8"><title>通常と節目の絵の違い(論点 0062)</title>',
-    "<style>body{font-family:sans-serif}table{border-collapse:collapse}th,td{border:1px solid #999;padding:8px;vertical-align:top}th{text-align:left;font-weight:normal}figure{display:inline-block;margin:0 8px 0 0;max-width:200px}figcaption{font-size:small;word-break:break-word}img{background:repeating-conic-gradient(#bbb 0% 25%,#eee 0% 50%) 0 0/24px 24px}</style>",
-    "</head><body><table>",
-    `<tr><th>ケース</th>${head}</tr>`,
-    ...rows,
-    "</table></body></html>",
-  ].join("\n");
 }
 
 // --- 計測の実行(ここから下は I/O) ---
@@ -340,7 +292,7 @@ function loadImage(outDir: string, file: string | null): RgbaImage | null {
   }
 }
 
-// 案ごとに 3 枚ずつ作り、regular と milestone の差を測る。案が 1 つ終わるたびに頁と記録を書き直す
+// 案ごとに 3 枚ずつ作り、regular と milestone の差を測る。案が 1 つ終わるたびに記録を書き直す
 export async function runCheerDifferenceTrials(input: {
   variants: readonly CheerImageVariant[];
   tagCases: readonly CheerTagCase[];
@@ -411,10 +363,6 @@ export async function runCheerDifferenceTrials(input: {
             : computeMaskOverlapPct(regularCut, milestoneCut),
       });
     }
-    writeFileSync(
-      join(outDir, "index.html"),
-      buildCheerDifferencePage({ variants: input.variants, records, differences }),
-    );
   }
   return { records, differences };
 }

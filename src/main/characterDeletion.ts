@@ -6,6 +6,7 @@
 import { characterDir, type CharacterFs } from "./characterStore.js";
 import type { DeleteCharacterResult } from "../core/shared/ipc.js";
 import type { AppStore } from "./store.js";
+import { logError } from "./log.js";
 
 export interface CharacterDeletionDeps {
   store: Pick<AppStore, "loadCharacters" | "loadActiveCharacterId" | "removeCharacter">;
@@ -34,7 +35,7 @@ export function deleteCharacter(
   try {
     deps.fs.removeDirRecursive(characterDir(deps.userDataDir, characterId));
   } catch (error) {
-    console.error(`[keycheer] ${characterId} の生成物を削除できませんでした`, error);
+    logError(`${characterId} の生成物を削除できませんでした`, error);
     return { ok: false, reason: "remove-failed" };
   }
 

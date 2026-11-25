@@ -1,6 +1,8 @@
 // 共有型(main / renderer / core の境界)。
 // 各 union のランタイム配列(SPEED_ZONES など)は core からの単一参照点。
 
+import { DEFAULT_OLLAMA_ENDPOINT, DEFAULT_VOICEVOX_ENDPOINT } from "./localEndpoints.js";
+
 export type SpeedZone = "slow" | "normal" | "fast";
 export type CheerType = "regular" | "milestone";
 export type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
@@ -173,8 +175,8 @@ export interface SystemConfig {
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   // 論点 0027 で採ったモデル。Ollama 上の名前(公式の重みを取り込んだときに付けた名前)
   ollamaModel: "sarashina2.2-3b-instruct",
-  ollamaEndpoint: "http://localhost:11434",
-  voicevoxEndpoint: "http://localhost:50021",
+  ollamaEndpoint: DEFAULT_OLLAMA_ENDPOINT,
+  voicevoxEndpoint: DEFAULT_VOICEVOX_ENDPOINT,
   excludedApps: [],
   excludedKeys: [],
 };

@@ -13,7 +13,7 @@ import { IMAGE_TAG_RESPONSE_SCHEMA } from "../../core/characterImage.js";
 import { requireTextResponseMessages } from "./textResponseGuard.js";
 
 export interface OllamaConfig {
-  endpoint: string; // 例: "http://localhost:11434"(system.ollamaEndpoint)
+  endpoint: string; // 例: "http://127.0.0.1:11434"(system.ollamaEndpoint)
   model: string; // 例: "sarashina2.2-3b-instruct"(system.ollamaModel)
   fetchFn?: typeof fetch;
 }

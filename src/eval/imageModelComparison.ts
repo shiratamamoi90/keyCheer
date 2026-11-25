@@ -11,7 +11,7 @@
 //
 // 作り方の計測(論点 0045。imageProcessComparison)も、ここの sd.cpp の起動(createContainerSdRunner)を使う。
 //
-// 絵の良し悪しは指標にしない。並べて見る頁(buildComparisonPage)を作り、人間が判断する。
+// 絵の良し悪しは指標にしない。出力フォルダの画像を人間が見て判断する(並べて見る頁は論点 0079 でやめた)。
 
 import { spawn as spawnProcess } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -123,60 +123,6 @@ export function computeImageSummary(
 // 計測でだけ sd.cpp に足す引数(アプリの実装はまだ渡していない)
 export function buildSdcppExtraArgs(settings: SamplerSettings): string[] {
   return ["--sampling-method", settings.samplingMethod, "--cfg-scale", String(settings.cfgScale)];
-}
-
-export function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function caseKey(record: ImageCase): string {
-  return `${record.character}/${record.kind}/${record.trial}`;
-}
-
-// 同じケース(キャラ・画像の種類・試行)を候補ごとに横に並べる。主指標は人間の目なので、見比べやすさだけを考える。
-// プロンプトはモデルが出した画像タグなので、頁に埋める前に必ずエスケープする。
-export function buildComparisonPage(
-  variants: readonly string[],
-  records: readonly ImageRecord[],
-): string {
-  const byCase = new Map<string, ImageRecord[]>();
-  for (const record of records) {
-    const group = byCase.get(caseKey(record)) ?? [];
-    group.push(record);
-    byCase.set(caseKey(record), group);
-  }
-
-  const rows = [...byCase.values()].map((group) => {
-    const first = group[0]!;
-    const cells = variants.map((variant) => {
-      const record = group.find((r) => r.variant === variant);
-      if (record === undefined) return "<td>未計測</td>";
-      if (record.failed || record.file === null) {
-        return `<td>失敗<br><small>${escapeHtml(record.error ?? "")}</small></td>`;
-      }
-      const src = record.file.split("/").map(encodeURIComponent).join("/");
-      const seconds = (record.latencyMs / 1000).toFixed(1);
-      const memory = record.peakMemoryMb === null ? "—" : `${record.peakMemoryMb} MB`;
-      return `<td><img src="${src}" width="256" alt=""><br><small>${seconds} 秒 / ${memory}</small></td>`;
-    });
-    const label = `${escapeHtml(first.character)} / ${escapeHtml(first.kind)} / 試行 ${first.trial}(seed ${first.seed})`;
-    return `<tr class="case"><th>${label}<br><small>${escapeHtml(first.prompt)}</small></th>${cells.join("")}</tr>`;
-  });
-
-  const head = variants.map((v) => `<th>${escapeHtml(v)}</th>`).join("");
-  return [
-    "<!doctype html>",
-    '<html lang="ja"><head><meta charset="utf-8"><title>画像のベースモデルの比較</title>',
-    "<style>body{font-family:sans-serif}table{border-collapse:collapse}th,td{border:1px solid #999;padding:8px;vertical-align:top}th{max-width:320px;text-align:left;font-weight:normal}</style>",
-    "</head><body><table>",
-    `<tr><th>ケース</th>${head}</tr>`,
-    ...rows,
-    "</table></body></html>",
-  ].join("\n");
 }
 
 // --- 計測の実行(ここから下は I/O) ---

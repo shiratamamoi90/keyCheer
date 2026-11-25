@@ -1,4 +1,8 @@
-# 開発ガイド:KeyCheer
+# 開発ガイド:keyCheer(アプリの名前は TypeYell)
+
+> **名前**:利用者に見えるアプリの名前は **TypeYell**(タイプエール)。プロジェクトの名前は **keyCheer** のまま(リポジトリ・npm の名前 `keycheer`・IPC の名前・ログの先頭 `[keycheer]`)。
+> データの置き場 `{userData}` も前の版と同じ `keycheer`(Windows は `%APPDATA%\keycheer`、Linux は `~/.config/keycheer`)。名前の値は `src/core/shared/appIdentity.ts` と `package.json` の `productName`(論点 0077)。
+> アイコンは `assets/icon.png`(512×512 以上の正方形の PNG)。置くと窓・トレイ・インストーラ(`package.json` の `build.win.icon`)が使う。
 
 このリポジトリで**開発・改修する人**のための文書。ソフトの導入と使い方は [README.md](README.md)。
 
@@ -133,7 +137,9 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 │   ├── agent/                      #   app: 生成 I/O(プロバイダー実装・プール生成)
 │   ├── main/                       #   app: Electron メイン(キーフック・IPC・store・窓・トレイ)
 │   ├── preload/  renderer/         #   app: レンダラに公開する最小 API と UI
-│   │   └── renderer/styles/main.css #   メインウィンドウの色の変数(ライト / ダーク)と Tailwind の入口(論点 0058)
+│   │   ├── renderer/*.tsx          #   メインウィンドウ(JSX。tsc が React.createElement に変換。バンドラ無し。論点 0079):
+│   │   │                           #   mainEntry(タブと根)・characterScreen / switchScreen / settingsScreen・imagePanel・ui(部品)
+│   │   └── renderer/styles/        #   Tailwind の入口:main.css(色の変数 ライト / ダーク。論点 0058)と popup.css(キャラの窓。論点 0079)
 │   ├── eval/                       #   app: 計測(応援メッセージの品質・レイテンシ、画像のモデルと作り方)
 │   └── installer/                  #   app: インストーラの同意の文書の組み立て(ビルドのときだけ使う。論点 0060)
 ├── installer/                      # インストーラ(NSIS)に足す手順 installer.nsh。license.txt はビルドのたびに作る(追跡外)

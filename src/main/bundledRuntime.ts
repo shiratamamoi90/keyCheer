@@ -7,6 +7,14 @@
 
 import { spawn } from "node:child_process";
 import type { ChildHandleLike } from "../agent/providers/localSdcpp.js";
+import {
+  DEFAULT_OLLAMA_ENDPOINT,
+  DEFAULT_VOICEVOX_ENDPOINT,
+  LOOPBACK_HOST,
+  OLLAMA_PORT,
+  VOICEVOX_PORT,
+} from "../core/shared/localEndpoints.js";
+import { logError } from "./log.js";
 
 export type BundledRuntimeId = "ollama" | "voicevox";
 
@@ -19,12 +27,10 @@ export interface BundledRuntime {
   healthUrl: string;
 }
 
-// S0034_12 127.0.0.1 だけで待ち受ける(ほかの機械から届かない)
-const LISTEN_HOST = "127.0.0.1";
-const OLLAMA_PORT = 11434;
-const VOICEVOX_PORT = 50021;
+// S0034_12 127.0.0.1 だけで待ち受ける(ほかの機械から届かない)。宛先と待ち受けの値は core/shared/localEndpoints の 1 か所
+const LISTEN_HOST = LOOPBACK_HOST;
 // Ollama の HTTP API の宛先(補助モードの取り込み。論点 0073)
-export const BUNDLED_OLLAMA_URL = `http://${LISTEN_HOST}:${OLLAMA_PORT}`;
+export const BUNDLED_OLLAMA_URL = DEFAULT_OLLAMA_ENDPOINT;
 // 同梱物の中の置き場(公式の Windows 向け CPU 版の配布物の中身。論点 0034)
 const OLLAMA_DIR_NAME = "ollama";
 const VOICEVOX_DIR_NAME = "voicevox";
@@ -54,7 +60,7 @@ export function resolveBundledRuntimes(input: {
       binPath: `${input.resourcesDir}/${VOICEVOX_DIR_NAME}/run${extension}`,
       args: ["--host", LISTEN_HOST, "--port", String(VOICEVOX_PORT)],
       env: {},
-      healthUrl: `http://${LISTEN_HOST}:${VOICEVOX_PORT}/version`,
+      healthUrl: `${DEFAULT_VOICEVOX_ENDPOINT}/version`,
     },
   ];
 }
@@ -155,7 +161,7 @@ export function createBundledRuntimeController(deps: {
 
     // S0034_06 時間上限までに応答が出なければ止めて、未起動のときと同じ扱いにする
     if (!(await waitUntilResponding(runtime)) && owned.get(runtime.id) === child) {
-      console.error(`[keycheer] 同梱ランタイム ${runtime.id} が時間内に応答しませんでした`);
+      logError(`同梱ランタイム ${runtime.id} が時間内に応答しませんでした`);
       stop(runtime.id);
     }
   };

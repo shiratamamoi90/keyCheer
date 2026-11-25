@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   applyTwoPassBackgroundRemoval,
-  buildPostProcessPage,
   computeAlphaChangedPct,
   computeMeanColorError,
   computeOpaqueBlobCount,
@@ -115,17 +114,5 @@ describe("postProcessComparison / 指標", () => {
     const pieces = image(["kk..k", "kk...", ".....", "..rr."]);
     expect(computeOpaqueBlobCount(pieces, 2)).toBe(2);
     expect(computeOpaqueBlobCount(pieces, 1)).toBe(3);
-  });
-});
-
-describe("postProcessComparison / 並べて見る頁", () => {
-  it("escapes the names it shows", () => {
-    const page = buildPostProcessPage({
-      title: "<b>x</b>",
-      variants: ["single"],
-      rows: [{ label: '<script>alert("x")</script>', files: { single: ["a.png"] } }],
-    });
-    expect(page).not.toContain("<script>");
-    expect(page).toContain("&lt;script&gt;");
   });
 });

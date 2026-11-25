@@ -14,6 +14,12 @@ import {
 import { applyGeneratedBy, validateGeneratedBy } from "../core/generatedBy.js";
 import { isThemeSetting } from "../core/shared/theme.js";
 import {
+  DEFAULT_OLLAMA_ENDPOINT,
+  DEFAULT_VOICEVOX_ENDPOINT,
+  LEGACY_DEFAULT_OLLAMA_ENDPOINT,
+  LEGACY_DEFAULT_VOICEVOX_ENDPOINT,
+} from "../core/shared/localEndpoints.js";
+import {
   EMPTY_STATS,
   DEFAULT_ONBOARDING,
   DEFAULT_SYSTEM_CONFIG,
@@ -32,6 +38,7 @@ import {
   type PopupDisplayConfig,
   type UiConfig,
 } from "../core/shared/types.js";
+import { logError } from "./log.js";
 
 // electron-store に持たせる最小スキーマ。
 interface PersistedSchema {
@@ -175,7 +182,7 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
       const merged = mergeWithDefaults(moved as Partial<TriggerConfig>);
       // S0071_09 値域の外は外の値だけを直してログに出す(起動は止めない)
       const { config: base, errors } = applyTriggerConfigRepair(merged);
-      for (const message of errors) console.error(`[keycheer] triggers: ${message}`);
+      for (const message of errors) logError(`triggers: ${message}`);
 
       // 移行は 1 回だけ。以降 regular=100 はユーザーの明示設定として尊重する。
       const meta = (store.get("meta") as AppMeta | undefined) ?? {};
@@ -237,15 +244,15 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
       // S0032_28 上限を超える件数を読み込んでも切り詰めない
       // 削ると手で足したキャラクターの生成物が一覧から見えないまま残る。新規保存だけを止める(S0032_03)。
       if (characters.length > MAX_CHARACTER_COUNT) {
-        console.error(
-          `[keycheer] characters が上限 ${MAX_CHARACTER_COUNT} 件を超えています(${characters.length} 件)`,
+        logError(
+          `characters が上限 ${MAX_CHARACTER_COUNT} 件を超えています(${characters.length} 件)`,
         );
       }
       for (const character of characters) {
         if (character.generatedBy === undefined) continue;
         const errors = validateGeneratedBy(character.generatedBy);
         if (errors.length > 0) {
-          console.error(`[keycheer] ${character.id} の generatedBy に不正な値があります`, errors);
+          logError(`${character.id} の generatedBy に不正な値があります`, errors);
         }
       }
       return characters;
@@ -333,10 +340,7 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
       const stored = store.get("generation")?.shouldActivateOnComplete;
       if (stored === undefined) return DEFAULT_GENERATION_CONFIG;
       if (typeof stored !== "boolean") {
-        console.error(
-          "[keycheer] generation.shouldActivateOnComplete が真偽値ではありません",
-          stored,
-        );
+        logError("generation.shouldActivateOnComplete が真偽値ではありません", stored);
         return DEFAULT_GENERATION_CONFIG;
       }
       return { shouldActivateOnComplete: stored };
@@ -346,12 +350,19 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     loadSystem() {
       const raw = (store.get("system") as Partial<SystemConfig> | undefined) ?? {};
       let stored = raw;
+      // 保存し直すのは保存されていた項目だけ。既定値で補完した値まで書き込むと、
+      // 以後の既定値の変更が効かなくなる(S0028_05 / S0078_04 は他の項目を変えないことを縛る)
       if (raw.ollamaModel === LEGACY_DEFAULT_OLLAMA_MODEL) {
-        // 保存し直すのは保存されていた項目だけ。既定値で補完した値まで書き込むと、
-        // 以後の既定値の変更が効かなくなる(S0028_05 は他の項目を変えないことを縛る)
-        stored = { ...raw, ollamaModel: DEFAULT_SYSTEM_CONFIG.ollamaModel };
-        store.set("system", stored);
+        stored = { ...stored, ollamaModel: DEFAULT_SYSTEM_CONFIG.ollamaModel };
       }
+      // S0078_02 旧既定値の接続先(localhost)だけを 127.0.0.1 に移す / S0078_03 利用者が変えた値は移さない
+      if (raw.ollamaEndpoint === LEGACY_DEFAULT_OLLAMA_ENDPOINT) {
+        stored = { ...stored, ollamaEndpoint: DEFAULT_OLLAMA_ENDPOINT };
+      }
+      if (raw.voicevoxEndpoint === LEGACY_DEFAULT_VOICEVOX_ENDPOINT) {
+        stored = { ...stored, voicevoxEndpoint: DEFAULT_VOICEVOX_ENDPOINT };
+      }
+      if (stored !== raw) store.set("system", stored);
       return {
         ...DEFAULT_SYSTEM_CONFIG,
         ...stored,
@@ -376,7 +387,7 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
         const stored = popup?.[key];
         if (stored === undefined) return DEFAULT_POPUP_DISPLAY_CONFIG[key];
         if (typeof stored !== "boolean") {
-          console.error(`[keycheer] popup.${key} が真偽値ではありません`, stored);
+          logError(`popup.${key} が真偽値ではありません`, stored);
           return DEFAULT_POPUP_DISPLAY_CONFIG[key];
         }
         return stored;
@@ -393,7 +404,7 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
       const stored = (store.get("ui") as Record<string, unknown> | undefined)?.theme;
       if (stored === undefined) return DEFAULT_UI_CONFIG;
       if (!isThemeSetting(stored)) {
-        console.error("[keycheer] ui.theme が system / light / dark ではありません", stored);
+        logError("ui.theme が system / light / dark ではありません", stored);
         return DEFAULT_UI_CONFIG;
       }
       return { theme: stored };

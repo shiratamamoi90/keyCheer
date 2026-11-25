@@ -1,82 +1,33 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; media-src keycheer-audio:; img-src keycheer-audio:"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; media-src keycheer-audio:; img-src keycheer-audio:"
     />
-    <title>KeyCheer</title>
-    <style>
-      /* 見た目は仕様外(デザイン判断)。ここでは「読める・入力を邪魔しない」だけを満たす。 */
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        background: transparent;
-        overflow: hidden;
-        /* main.html と同じフォールバック(Windows 優先 + CJK を持つ一般的なフォント)。
-           CSP が font-src を許可していないため Web フォントは使わない。 */
-        font-family: "Yu Gothic UI", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans",
-          "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
-      }
-      body {
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 150ms ease-out;
-      }
-      body.visible {
-        opacity: 1;
-      }
-      /* 絵とセリフの置き場(位置と大きさ)は popup.ts が core/shared/popupLayout から当てる(論点 0052) */
-      #character {
-        position: relative;
-        width: 100%;
-        height: 100%;
-      }
-      #character-image {
-        position: absolute;
-        object-fit: contain;
-        cursor: grab;
-        user-select: none;
-        -webkit-user-drag: none;
-      }
-      #character-image:active {
-        cursor: grabbing;
-      }
-      #character-image[hidden],
-      #cheer-message:empty {
-        display: none;
-      }
-      /* セリフの領域。吹き出しを上端に寄せて、絵のすぐ下に出す(S0053_01)。クリックは通す */
-      #message-area {
-        position: absolute;
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        pointer-events: none;
-      }
-      #cheer-message {
-        box-sizing: border-box;
-        max-width: 100%;
-        max-height: 100%;
-        overflow: hidden;
-        padding: 4px 8px;
-        border-radius: 8px;
-        background: rgba(24, 24, 32, 0.92);
-        color: #fff;
-        line-height: 1.3;
-        text-align: center;
-        word-break: break-word;
-      }
-    </style>
+    <title></title>
+    <link rel="stylesheet" href="./popup.css" />
   </head>
-  <body>
-    <div id="character">
-      <div id="message-area"><div id="cheer-message"></div></div>
-      <img id="character-image" alt="" hidden />
+  <!-- 絵とセリフの置き場(位置と大きさ)は popup.ts が core/shared/popupLayout から当てる(論点 0052)。
+       body の visible は popup.ts が付け外しする(出すときだけ不透明にする) -->
+  <body
+    class="m-0 flex h-full items-end justify-center overflow-hidden bg-transparent font-ui opacity-0 transition-opacity duration-150 ease-out [&.visible]:opacity-100"
+  >
+    <div id="character" class="relative h-full w-full">
+      <!-- セリフの領域。吹き出しを上端に寄せて、絵のすぐ下に出す(S0053_01)。クリックは通す -->
+      <div id="message-area" class="pointer-events-none absolute flex items-start justify-center">
+        <div
+          id="cheer-message"
+          class="box-border max-h-full max-w-full overflow-hidden break-words rounded-lg bg-[rgb(24_24_32/0.92)] px-2 py-1 text-center leading-[1.3] text-white empty:hidden"
+        ></div>
+      </div>
+      <img
+        id="character-image"
+        alt=""
+        hidden
+        class="absolute cursor-grab select-none object-contain [-webkit-user-drag:none] active:cursor-grabbing"
+      />
     </div>
     <script type="module" src="./popup.js"></script>
   </body>

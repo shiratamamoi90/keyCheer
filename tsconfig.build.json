@@ -10,7 +10,7 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   // 計測(src/eval)は配布物に入れない(論点 0056)。npm run eval は tsx で src/eval を直に動かす
   "exclude": ["node_modules", "dist", "tests", "src/eval"]
 }

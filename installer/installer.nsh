@@ -34,7 +34,7 @@
   ${EndIf}
 !macroend
 
-; 論点 0075 / 0076 インストーラから削除を選べる。入っているときだけ、最初(同意の画面より前)に自作のページを出し、
+; 論点 0075 / 0076 インストーラから削除を選べる。名前は ${PRODUCT_NAME}(package.json の productName。論点 0077)。入っているときだけ、最初(同意の画面より前)に自作のページを出し、
 ; 「更新する」「削除する」のボタンと、下の「キャンセル」(インストーラ標準。何も変えずに終わる)で選ばせる。
 ; NSIS の確認の画面(MessageBox)はボタンの名前を「はい / いいえ」から変えられないので使わない(論点 0076)。
 ; 入っているかは、electron-builder が書く登録情報の InstallLocation と、そこにあるアンインストーラで見る。
@@ -57,7 +57,7 @@
       Abort
     ${EndIf}
 
-    !insertmacro MUI_HEADER_TEXT "KeyCheer はすでに入っています" "更新するか、削除するかを選んでください。"
+    !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME} はすでに入っています" "更新するか、削除するかを選んでください。"
     nsDialogs::Create 1018
     Pop $0
     ${NSD_CreateLabel} 0 0 100% 40u "更新する … 新しい版に入れ替えます。作ったキャラクターと設定は残ります。$\r$\n$\r$\n削除する … アプリと、重み・キャラクター・設定・統計をすべて消します。"
@@ -87,20 +87,20 @@
   ; 削除する:確かめてから消す。取りやめたらこのページに戻る(S0075_03)
   Function keycheerRemoveClicked
     Pop $0
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "KeyCheer を削除します。アプリと、重み・キャラクター・設定・統計がすべて消えます。よろしいですか?" IDOK keycheerRemoveConfirmed
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "${PRODUCT_NAME} を削除します。アプリと、重み・キャラクター・設定・統計がすべて消えます。よろしいですか?" IDOK keycheerRemoveConfirmed
     Return
     keycheerRemoveConfirmed:
     InitPluginsDir
     CopyFiles /SILENT "$keycheerInstalled\${UNINSTALL_FILENAME}" "$PLUGINSDIR\keycheer-uninstaller.exe"
     ExecWait '"$PLUGINSDIR\keycheer-uninstaller.exe" /S /currentuser --delete-app-data _?=$keycheerInstalled' $0
     ${If} $0 != 0
-      MessageBox MB_ICONSTOP|MB_OK "削除できませんでした(終了コード $0)。KeyCheer を終了してから、もう一度実行してください。"
+      MessageBox MB_ICONSTOP|MB_OK "削除できませんでした(終了コード $0)。${PRODUCT_NAME} を終了してから、もう一度実行してください。"
       Quit
     ${EndIf}
     ; `_?=` で動かしたアンインストーラは自分のファイルとフォルダを残すので、ここで消す
     Delete "$keycheerInstalled\${UNINSTALL_FILENAME}"
     RMDir "$keycheerInstalled"
-    MessageBox MB_ICONINFORMATION|MB_OK "KeyCheer を削除しました。"
+    MessageBox MB_ICONINFORMATION|MB_OK "${PRODUCT_NAME} を削除しました。"
     Quit
   FunctionEnd
 !macroend

@@ -4,7 +4,6 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  buildComparisonPage,
   buildSdcppExtraArgs,
   computeImageSummary,
   type ImageRecord,
@@ -86,38 +85,5 @@ describe("buildSdcppExtraArgs", () => {
       "--cfg-scale",
       "1",
     ]);
-  });
-});
-
-describe("buildComparisonPage", () => {
-  it("puts the same case of each variant side by side in one row", () => {
-    const html = buildComparisonPage(
-      ["counterfeit-v3", "meinamix-v10"],
-      [
-        makeRecord(),
-        makeRecord({ variant: "meinamix-v10", file: "meinamix-v10/チア-idle-t0.png" }),
-      ],
-    );
-    expect(html.match(/<tr class="case">/g)).toHaveLength(1);
-    expect(html).toContain('src="counterfeit-v3/%E3%83%81%E3%82%A2-idle-t0.png"');
-    expect(html).toContain('src="meinamix-v10/%E3%83%81%E3%82%A2-idle-t0.png"');
-  });
-
-  it("shows a failure mark instead of an image when the image failed", () => {
-    const html = buildComparisonPage(
-      ["counterfeit-v3"],
-      [makeRecord({ failed: true, file: null, error: "sd.cpp exited with code 1" })],
-    );
-    expect(html).not.toContain("<img");
-    expect(html).toContain("失敗");
-  });
-
-  it("escapes the prompt so that tags from the model cannot inject markup", () => {
-    const html = buildComparisonPage(
-      ["counterfeit-v3"],
-      [makeRecord({ prompt: '<script>alert("x")</script>' })],
-    );
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
   });
 });

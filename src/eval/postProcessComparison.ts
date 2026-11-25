@@ -13,7 +13,6 @@ import {
   computeImagePalette,
   type ImageColor,
 } from "../core/characterImage.js";
-import { escapeHtml } from "./imageModelComparison.js";
 import { computeTransparentRatioPct } from "./imageProcessComparison.js";
 import { decodePng, encodePng, type RgbaImage } from "./png.js";
 
@@ -21,7 +20,12 @@ const RGBA_BYTES = 4;
 const OPAQUE = 255;
 const MIN_OPAQUE_ALPHA = 128;
 
-export const BACKGROUND_VARIANTS = ["single", "two-pass", "wide-tolerance", "segment-u2netp"] as const;
+export const BACKGROUND_VARIANTS = [
+  "single",
+  "two-pass",
+  "wide-tolerance",
+  "segment-u2netp",
+] as const;
 export type BackgroundVariant = (typeof BACKGROUND_VARIANTS)[number];
 
 export function isBackgroundVariant(value: string): value is BackgroundVariant {
@@ -230,33 +234,6 @@ export interface PostProcessPageInput {
   rows: readonly { label: string; files: Readonly<Record<string, readonly string[]>> }[];
 }
 
-export function buildPostProcessPage(input: PostProcessPageInput): string {
-  const head = input.variants.map((v) => `<th>${escapeHtml(v)}</th>`).join("");
-  const body = input.rows
-    .map((row) => {
-      const cells = input.variants
-        .map(
-          (v) =>
-            `<td>${(row.files[v] ?? [])
-              .map((file) => `<img src="${escapeHtml(file)}" width="128">`)
-              .join("")}</td>`,
-        )
-        .join("");
-      return `<tr><th>${escapeHtml(row.label)}</th>${cells}</tr>`;
-    })
-    .join("\n");
-  return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(input.title)}</title>
-<style>
-body{font-family:sans-serif;background:#fff;color:#222}
-img{background:repeating-conic-gradient(#ccc 0 25%,#eee 0 50%) 0 0/16px 16px;image-rendering:pixelated;margin:1px}
-td,th{padding:4px;vertical-align:top;border-bottom:1px solid #ddd}
-</style>
-<h1>${escapeHtml(input.title)}</h1>
-<table><tr><th></th>${head}</tr>
-${body}
-</table>`;
-}
-
 // --- 計測の実行(論点 0063 / 0064)---
 
 const KINDS = ["idle", "regular", "milestone"] as const;
@@ -368,9 +345,5 @@ export async function runPostProcessComparison(
     });
   }
 
-  writeFileSync(
-    join(input.outDir, "index.html"),
-    buildPostProcessPage({ title: input.title, variants: input.variants, rows }),
-  );
   return summaries;
 }

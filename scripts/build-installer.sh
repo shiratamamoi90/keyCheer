@@ -4,7 +4,7 @@
 # イメージは electron-builder 公式の wine つき(タグ + digest で固定。論点 0031 決定 4)。ホストの node_modules と
 # dist/・vendor/・installer/license.txt をそのまま使う(先に npm run build・fetch:runtimes・build-installer-license.mjs)。
 # Electron と NSIS の取得物はホストのキャッシュを共有して、毎回取り直さない。
-# 出力は release/keycheer-setup-<版>.exe。配布するときは、これと release/weights/ の重みの別ファイルを同じフォルダに並べる(論点 0055)。
+# 出力は release/TypeYell-Setup-<版>.exe。配布するときは、これと release/weights/ の重みの別ファイルを同じフォルダに並べる(論点 0055)。
 #
 # 使い方: npm run package:installer
 
@@ -29,4 +29,4 @@ docker run --rm \
   -w /project \
   "$IMAGE" \
   npx electron-builder --win nsis
-ls -la "$ROOT"/release/keycheer-setup-*.exe
+ls -la "$ROOT"/release/TypeYell-Setup-*.exe

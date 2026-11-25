@@ -7,9 +7,10 @@
 // 未起動・異常応答・想定外の形はすべて unavailable に畳んで throw しない
 // (フォームは開けたまま、案内を出して保存だけを止めるため)。
 
+import { DEFAULT_VOICEVOX_ENDPOINT } from "../core/shared/localEndpoints.js";
 import { isSelectableSpeaker } from "../core/shared/selectableSpeaker.js";
 
-export const DEFAULT_VOICEVOX_ENDPOINT = "http://127.0.0.1:50021";
+export { DEFAULT_VOICEVOX_ENDPOINT };
 
 const DEFAULT_TIMEOUT_MS = 3_000;
 

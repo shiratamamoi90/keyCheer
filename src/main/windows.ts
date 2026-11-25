@@ -8,6 +8,7 @@ import { POPUP_WINDOW_SIZE, type Point, type WorkArea } from "../core/shared/pop
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PRELOAD_PATH } from "./preloadPath.js";
+import { logError } from "./log.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -45,7 +46,7 @@ export function createPopupWindow(position: Point): BrowserWindow {
     // ログのみ残し、ユーザーへは通知しない(docs/popup.md)。表示だけが失われ、
     // キーカウント・統計の記録は続く。`void` で捨てると未処理 rejection で
     // プロセスごと落ち、記録の継続という要件を破る。
-    console.error("[keycheer] ポップアップの読み込みに失敗しました", err);
+    logError("ポップアップの読み込みに失敗しました", err);
   });
   return win;
 }

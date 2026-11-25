@@ -6,7 +6,7 @@
 import type { VoiceSynthesizer, VoiceSynthesisRequest } from "../../core/providers/types.js";
 
 export interface VoicevoxConfig {
-  endpoint: string; // 例: "http://localhost:50021"(system.voicevoxEndpoint)
+  endpoint: string; // 例: "http://127.0.0.1:50021"(system.voicevoxEndpoint)
   fetchFn?: typeof fetch;
 }
 

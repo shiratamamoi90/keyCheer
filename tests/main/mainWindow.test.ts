@@ -24,6 +24,8 @@ const { created, state, dialogCalls } = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
+  // アイコンの画像が無いとき(Electron の既定のアイコンのまま)
+  nativeImage: { createFromPath: () => ({ isEmpty: () => true }) },
   BrowserWindow: class {
     visible = false;
     shows = 0;

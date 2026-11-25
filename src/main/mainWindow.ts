@@ -17,8 +17,10 @@ import {
   type MainWindowHandle,
 } from "./mainWindowController.js";
 import { PRELOAD_PATH } from "./preloadPath.js";
+import { loadAppIcon } from "./appIcon.js";
 import { IpcChannel } from "../core/shared/ipc.js";
 import type { Character, Onboarding } from "../core/shared/types.js";
+import { logError } from "./log.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAIN_INDEX = join(__dirname, "../renderer/main.html");
@@ -44,7 +46,10 @@ export interface MainWindow {
 // showIfNeeded / toggle はいずれもこの同じ win を操作するだけなので、二重生成は起きない
 // (シナリオ: 重複表示の防止)。
 export function createMainWindow(deps: MainWindowDeps): MainWindow {
+  // 論点 0077 アプリのアイコン(画像が届くまでは Electron の既定のまま)
+  const icon = loadAppIcon();
   const win = new BrowserWindow({
+    ...(icon.isEmpty() ? {} : { icon }),
     // 切り替え画面で一覧の横に 3 枚を並べる(論点 0050 S0050_01)ので、一覧と 3 枚が横に収まる幅にする(論点 0058)
     width: 820,
     height: 700,
@@ -89,7 +94,7 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
         win.hide();
       })
       .catch((err: unknown) => {
-        console.error("[keycheer] メインウィンドウの終了確認に失敗しました", err);
+        logError("メインウィンドウの終了確認に失敗しました", err);
         win.hide();
       });
   });
@@ -104,7 +109,7 @@ export function createMainWindow(deps: MainWindowDeps): MainWindow {
   win.loadFile(MAIN_INDEX).catch((err: unknown) => {
     // シナリオ: メインウィンドウの読み込みに失敗した場合 [異常系]
     // 発動経路(キー押下 → ポップアップ)には影響させない。ログのみ残す。
-    console.error("[keycheer] メインウィンドウの読み込みに失敗しました", err);
+    logError("メインウィンドウの読み込みに失敗しました", err);
   });
 
   const handle: MainWindowHandle = {

@@ -498,15 +498,15 @@ describe("store / system 設定の読み込みと既定値補完", () => {
   it("fills defaults when system is absent", () => {
     const store = createAppStore(fakeStore());
     const system = store.loadSystem();
-    expect(system.ollamaEndpoint).toBe("http://localhost:11434");
-    expect(system.voicevoxEndpoint).toBe("http://localhost:50021");
+    expect(system.ollamaEndpoint).toBe("http://127.0.0.1:11434");
+    expect(system.voicevoxEndpoint).toBe("http://127.0.0.1:50021");
   });
 
   it("keeps values already present and fills only the missing ones", () => {
     const store = createAppStore(fakeStore({ system: { ollamaModel: "llama3" } }));
     const system = store.loadSystem();
     expect(system.ollamaModel).toBe("llama3");
-    expect(system.voicevoxEndpoint).toBe("http://localhost:50021");
+    expect(system.voicevoxEndpoint).toBe("http://127.0.0.1:50021");
   });
 
   it("only ever points at localhost by default [不変条件]", () => {
@@ -871,5 +871,57 @@ describe("store / テーマの変更は他の設定と保存データを変え�
     expect(fake.raw.triggers).toEqual(initial.triggers);
     expect(fake.raw.popup).toEqual(initial.popup);
     expect(fake.raw.stats).toEqual(initial.stats);
+  });
+});
+
+// 接続先を 127.0.0.1 にそろえる(論点 0078)。docs/data-model.md
+describe("store / 接続先の既定値は 127.0.0.1 [境界]", () => {
+  it("S0078_01 fills the endpoints with 127.0.0.1 when they are not saved", () => {
+    const system = createAppStore(fakeStore({ system: {} })).loadSystem();
+    expect(system.ollamaEndpoint).toBe("http://127.0.0.1:11434");
+    expect(system.voicevoxEndpoint).toBe("http://127.0.0.1:50021");
+  });
+});
+
+describe("store / 旧既定値の接続先を移す", () => {
+  it("S0078_02 moves the former localhost defaults and saves them again", () => {
+    const fake = fakeStore({
+      system: {
+        ollamaEndpoint: "http://localhost:11434",
+        voicevoxEndpoint: "http://localhost:50021",
+      },
+    });
+    const system = createAppStore(fake).loadSystem();
+    expect(system.ollamaEndpoint).toBe("http://127.0.0.1:11434");
+    expect(system.voicevoxEndpoint).toBe("http://127.0.0.1:50021");
+    expect(fake.raw.system).toEqual({
+      ollamaEndpoint: "http://127.0.0.1:11434",
+      voicevoxEndpoint: "http://127.0.0.1:50021",
+    });
+  });
+});
+
+describe("store / 利用者が変えた接続先は移さない [否定]", () => {
+  it("S0078_03 keeps a user-set endpoint and does not save again", () => {
+    const { fake, setKeys } = countingStore({
+      system: { ollamaEndpoint: "http://192.168.0.5:11434" },
+    });
+    expect(createAppStore(fake).loadSystem().ollamaEndpoint).toBe("http://192.168.0.5:11434");
+    expect(setKeys).not.toContain("system");
+  });
+});
+
+describe("store / 接続先の移行は他の設定項目に波及しない [否定]", () => {
+  it("S0078_04 leaves the other system values unchanged", () => {
+    const fake = fakeStore({
+      system: {
+        ollamaEndpoint: "http://localhost:11434",
+        ollamaModel: "my-model",
+        excludedKeys: ["F1"],
+      },
+    });
+    const system = createAppStore(fake).loadSystem();
+    expect(system.ollamaModel).toBe("my-model");
+    expect(system.excludedKeys).toEqual(["F1"]);
   });
 });

@@ -5,6 +5,7 @@
 // 消すのはこの 2 つだけ(S0054_04)。ディレクトリごとの掃除にしないのは、置き場に利用者のキャラクターと重みがあるため。
 
 import { join } from "node:path";
+import { logWarn } from "./log.js";
 
 const RETIRED_FILE_NAMES = ["secrets.json", "audit.log.json"] as const;
 
@@ -21,7 +22,7 @@ export function removeRetiredFiles(deps: RetiredFilesDeps): void {
       deps.removeFile(path);
     } catch (error) {
       // S0054_03 消せなくても起動は続ける。次の起動で消し直す
-      console.warn(`[keycheer] could not remove ${path}:`, error);
+      logWarn(`could not remove ${path}:`, error);
     }
   }
 }

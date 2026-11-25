@@ -12,7 +12,7 @@
 //   - 固定のタグ(人物・背景・塗り)を足す(buildProcessPrompt)
 //   - 下絵と強さを sd.cpp に渡す、背景を抜く、減色する
 //
-// 絵の良し悪しは指標にしない。並べて見る頁(buildProcessPage)を作り、人間が判断する。
+// 絵の良し悪しは指標にしない。出力フォルダの画像を人間が見て判断する(並べて見る頁は論点 0079 でやめた)。
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +29,6 @@ import {
   buildContainerOutputPath,
   computeImageSummary,
   createContainerSdRunner,
-  escapeHtml,
   type ImageRecord,
   type ImageSummary,
   type ImageTagSettings,
@@ -513,83 +512,6 @@ export function hasPersonTag(appearanceTags: string): boolean {
   return PERSON_TAG_PATTERN.test(appearanceTags);
 }
 
-// --- 並べて見る頁 ---
-
-export interface ProcessPageInput {
-  models: readonly string[];
-  records: readonly ProcessRecord[];
-  // 今の作り方の画像。キーは `<モデル>/<キャラ>/<画像の種類>/<試行>`、値は頁からの相対パス
-  baselineFiles: Readonly<Record<string, string>>;
-}
-
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-function buildImageCell(records: readonly ProcessRecord[], isRaw: boolean): string {
-  if (records.length === 0) return "<td>未計測</td>";
-  const parts = records.map((record) => {
-    const file = isRaw ? record.rawFile : record.file;
-    const strength = record.strength === null ? "" : `強さ ${record.strength} / `;
-    if (record.failed || file === null) {
-      return `<figure>失敗<figcaption>${strength}${escapeHtml(record.error ?? "")}</figcaption></figure>`;
-    }
-    const detail = isRaw
-      ? `${(record.latencyMs / 1000).toFixed(1)} 秒` +
-        (record.changedFromIdlePct === null ? "" : ` / 変化 ${record.changedFromIdlePct}%`)
-      : `透明 ${record.transparentRatioPct ?? "—"}% / ${record.colorCount ?? "—"} 色` +
-        (record.backgroundMatchPct === null ? "" : ` / 縁の背景色 ${record.backgroundMatchPct}%`);
-    return `<figure><img src="${encodePath(file)}" width="256" alt=""><figcaption>${strength}${detail}</figcaption></figure>`;
-  });
-  return `<td>${parts.join("")}</td>`;
-}
-
-// 同じケース(キャラ・画像の種類・試行)を 1 行にし、モデルごとに「今の作り方 / 後処理の前 / 後処理の後」を並べる。
-// 透明になった所が分かるよう、画像の下に市松模様を敷く。
-// プロンプトはモデルが出した画像タグを含むので、頁に埋める前に必ずエスケープする。
-export function buildProcessPage(input: ProcessPageInput): string {
-  const byCase = new Map<string, ProcessRecord[]>();
-  for (const record of input.records) {
-    const key = `${record.character}/${record.kind}/${record.trial}`;
-    byCase.set(key, [...(byCase.get(key) ?? []), record]);
-  }
-
-  const rows = [...byCase.entries()].map(([key, group]) => {
-    const first = group[0]!;
-    const cells = input.models.map((model) => {
-      const records = group.filter((r) => r.variant === model);
-      const baseline = input.baselineFiles[`${model}/${key}`];
-      const baselineCell =
-        baseline === undefined
-          ? "<td>—</td>"
-          : `<td><figure><img src="${encodePath(baseline)}" width="256" alt=""></figure></td>`;
-      return baselineCell + buildImageCell(records, true) + buildImageCell(records, false);
-    });
-    const label = `${escapeHtml(first.character)} / ${escapeHtml(first.kind)} / 試行 ${first.trial}(seed ${first.seed})`;
-    return `<tr class="case"><th>${label}<br><small>${escapeHtml(first.prompt)}</small></th>${cells.join("")}</tr>`;
-  });
-
-  const modelHead = input.models
-    .map((model) => `<th colspan="3">${escapeHtml(model)}</th>`)
-    .join("");
-  const columnHead = input.models
-    .map(
-      () =>
-        "<th>今の作り方(論点 0041)</th><th>新しい作り方・後処理の前</th><th>新しい作り方・後処理の後</th>",
-    )
-    .join("");
-  return [
-    "<!doctype html>",
-    '<html lang="ja"><head><meta charset="utf-8"><title>画像の作り方の比較</title>',
-    "<style>body{font-family:sans-serif}table{border-collapse:collapse}th,td{border:1px solid #999;padding:8px;vertical-align:top}th{max-width:320px;text-align:left;font-weight:normal}figure{display:inline-block;margin:0 8px 0 0}figcaption{font-size:small}img{background:repeating-conic-gradient(#bbb 0% 25%,#eee 0% 50%) 0 0/24px 24px}</style>",
-    "</head><body><table>",
-    `<tr><th rowspan="2">ケース</th>${modelHead}</tr>`,
-    `<tr>${columnHead}</tr>`,
-    ...rows,
-    "</table></body></html>",
-  ].join("\n");
-}
-
 // --- 計測の実行(ここから下は I/O) ---
 
 export interface ProcessCase {
@@ -791,11 +713,7 @@ export async function runProcessTrials(
     );
     maskArgs = ["--mask", buildContainerOutputPath(BAND_MASK_NAME)];
   }
-  const idleExtraArgs = [
-    ...buildIdleExtraArgs(settings, canvasPath),
-    ...negativeArgs,
-    ...maskArgs,
-  ];
+  const idleExtraArgs = [...buildIdleExtraArgs(settings, canvasPath), ...negativeArgs, ...maskArgs];
 
   // 1 枚作って後処理まで行う。palette を渡さなければ、この画像から決める(待機画像)
   const runOne = async (

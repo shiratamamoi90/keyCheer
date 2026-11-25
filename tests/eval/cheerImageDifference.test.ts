@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  buildCheerDifferencePage,
   buildCheerPoseTags,
   buildExpressionTagPrompt,
   buildVariantCases,
@@ -12,7 +11,6 @@ import {
   isCheerImageVariant,
   type CheerTagCase,
 } from "../../src/eval/cheerImageDifference.js";
-import type { ProcessRecord } from "../../src/eval/imageProcessComparison.js";
 import type { RgbaImage } from "../../src/eval/png.js";
 import { ALL_BUCKET_KEYS, computeCheerType, type MessagePool } from "../../src/core/messagePool.js";
 
@@ -165,35 +163,5 @@ describe("cheerImageDifference / 外形の重なりと集計", () => {
       meanChangedPct: 25,
       meanMaskOverlapPct: 80,
     });
-  });
-});
-
-describe("cheerImageDifference / 並べて見る頁", () => {
-  it("escapes the prompts that contain the model's tags", () => {
-    const record: ProcessRecord = {
-      variant: "fixed-pose",
-      character: "チア",
-      kind: "regular",
-      trial: 0,
-      seed: 42,
-      prompt: '<script>alert("x")</script>',
-      latencyMs: 1,
-      peakMemoryMb: null,
-      failed: false,
-      strength: 0.65,
-      rawFile: "fixed-pose/a.raw.png",
-      file: "fixed-pose/a.png",
-      transparentRatioPct: 50,
-      colorCount: 7,
-      changedFromIdlePct: 10,
-      backgroundMatchPct: null,
-    };
-    const page = buildCheerDifferencePage({
-      variants: ["fixed-pose"],
-      records: [record],
-      differences: [],
-    });
-    expect(page).not.toContain("<script>");
-    expect(page).toContain("&lt;script&gt;");
   });
 });

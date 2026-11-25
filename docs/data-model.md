@@ -51,8 +51,8 @@
   },
   "system": {
     "ollamaModel": "sarashina2.2-3b-instruct", // 既定値(論点 0028)。旧既定値 "gemma2:2b" は読み込み時に移行する
-    "ollamaEndpoint": "http://localhost:11434",
-    "voicevoxEndpoint": "http://localhost:50021",
+    "ollamaEndpoint": "http://127.0.0.1:11434", // 論点 0078 で localhost から変えた(同梱ランタイムの待ち受けと同じ宛先)
+    "voicevoxEndpoint": "http://127.0.0.1:50021",
     // 生成の大きさ。GPU は使わない(論点 0040)ので GPU の項目は無い。ステップ数は作り方で決まる定数で、設定に持たない(論点 0046)
     "imageGen": { "width": 512, "height": 768 },
     "startWithWindows": true,
@@ -326,6 +326,30 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 - WHEN プール生成を要求する
 - THEN S0016_18 と同じく、エラーを表示してキャラ作成を完了させない(クラッシュしない)。
   **`gemma2:2b` へ自動で戻さない**、別プロバイダーへも切り替えない
+
+### S0078_01 接続先の既定値は 127.0.0.1 [境界]
+
+- GIVEN `system.ollamaEndpoint` と `system.voicevoxEndpoint` が保存されていない設定 JSON
+- WHEN 起動時に読み込む
+- THEN `system.ollamaEndpoint = "http://127.0.0.1:11434"`・`system.voicevoxEndpoint = "http://127.0.0.1:50021"` になる(S0015_01 の既定値補完)
+
+### S0078_02 旧既定値の接続先を移す
+
+- GIVEN 保存値 `system.ollamaEndpoint = "http://localhost:11434"`・`system.voicevoxEndpoint = "http://localhost:50021"`
+- WHEN 起動時に読み込む
+- THEN それぞれ `http://127.0.0.1:11434`・`http://127.0.0.1:50021` になり、保存し直される。通知は出さない
+
+### S0078_03 利用者が変えた接続先は移さない [否定]
+
+- GIVEN 保存値 `system.ollamaEndpoint = "http://192.168.0.5:11434"`(旧既定値でも新しい既定値でもない)
+- WHEN 起動時に読み込む
+- THEN 値は**変化せず**、設定も保存し直さない
+
+### S0078_04 接続先の移行は他の設定項目に波及しない [否定]
+
+- GIVEN 保存値 `system.ollamaEndpoint = "http://localhost:11434"` と、既定値と異なる `system.ollamaModel` / `system.excludedKeys`
+- WHEN 起動時に読み込んで移行する
+- THEN 接続先以外の値は**変化しない**
 
 > S0069_01〜05(節目の一覧の既定値と移行)は論点 0071 で廃止し、欠番(S0071_06・S0071_10〜14 が置き換え)。
 

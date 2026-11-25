@@ -1,5 +1,6 @@
 {
   "name": "keycheer",
+  "productName": "TypeYell",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +9,8 @@
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs && npm run build:css",
-    "build:css": "tailwindcss -c tailwind.config.js -i src/renderer/styles/main.css -o dist/renderer/main.css --minify",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node scripts/postbuild.mjs && npm run build:css",
+    "build:css": "tailwindcss -c tailwind.config.js -i src/renderer/styles/main.css -o dist/renderer/main.css --minify && tailwindcss -c tailwind.config.js --content \"./src/renderer/popup*.{ts,html}\" -i src/renderer/styles/popup.css -o dist/renderer/popup.css --minify",
     "dev": "npm run build && electron dist/main/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
@@ -38,6 +39,7 @@
     "files": [
       "dist/**/*",
       "assets/licenses/**/*",
+      "assets/icon.png",
       "package.json",
       "!node_modules/onnxruntime-node/bin/napi-v*/{linux,darwin}/**",
       "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",
@@ -112,7 +114,7 @@
         "ja_JP"
       ],
       "language": "1041",
-      "artifactName": "keycheer-setup-${version}.${ext}"
+      "artifactName": "TypeYell-Setup-${version}.${ext}"
     }
   },
   "dependencies": {

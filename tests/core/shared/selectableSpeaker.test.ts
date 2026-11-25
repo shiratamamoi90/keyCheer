@@ -50,7 +50,11 @@ describe("selectableSpeaker / 話者を選ぶ画面に、その話者のクレ�
 
 describe("selectableSpeaker / 表示は通信しない [否定]", () => {
   it("S0043_04 builds the credit from bundled text without any network access", () => {
-    for (const file of ["src/core/shared/selectableSpeaker.ts", "src/renderer/mainEntry.ts"]) {
+    for (const file of [
+      "src/core/shared/selectableSpeaker.ts",
+      "src/renderer/characterScreen.tsx",
+      "src/renderer/mainEntry.tsx",
+    ]) {
       const source = readFileSync(file, "utf8");
       expect(source, file).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|https?:\/\//);
     }
