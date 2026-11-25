@@ -1,5 +1,5 @@
 // main/textModelImport: インストール中に、置いた GGUF を Ollama に取り込む(論点 0073)。
-// 要件: docs/model-weights.md S0073_01〜05
+// 要件: docs/model-weights.md「インストール」の取り込み(論点 0073)
 // Ollama の HTTP API は偽物の fetch、同梱の Ollama の起動は偽物の子プロセスで置き換える。
 
 import { createHash } from "node:crypto";

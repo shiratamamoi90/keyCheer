@@ -87,7 +87,7 @@ Windows で `ドキュメント\keyCheer\keycheer.exe` を実行する。
 
 ```bash
 npm test                                   # 全テスト。変更を閉じる前に必ず通す
-npx vitest run tests/core tests/agent tests/main tests/preload tests/renderer tests/eval  # 単体だけ
+npx vitest run tests/core tests/agent tests/main tests/preload tests/renderer tests/eval tests/installer  # 単体だけ
 npx vitest run tests/integration           # 総合だけ
 npm run typecheck                          # tsc --noEmit
 npm run lint                               # ESLint(依存方向・発動経路の分離を検出)
@@ -134,10 +134,12 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
 │   ├── main/                       #   app: Electron メイン(キーフック・IPC・store・窓・トレイ)
 │   ├── preload/  renderer/         #   app: レンダラに公開する最小 API と UI
 │   │   └── renderer/styles/main.css #   メインウィンドウの色の変数(ライト / ダーク)と Tailwind の入口(論点 0058)
-│   └── eval/                       #   app: 計測(応援メッセージの品質・レイテンシ、画像のモデルと作り方)
+│   ├── eval/                       #   app: 計測(応援メッセージの品質・レイテンシ、画像のモデルと作り方)
+│   └── installer/                  #   app: インストーラの同意の文書の組み立て(ビルドのときだけ使う。論点 0060)
+├── installer/                      # インストーラ(NSIS)に足す手順 installer.nsh。license.txt はビルドのたびに作る(追跡外)
 ├── tests/                          # 単体 + 総合の両方を書く(Core)
 │   ├── core/                       #   単体:docs の全シナリオ
-│   ├── agent/ main/ preload/ renderer/ eval/  # 単体:app 側(実装ディレクトリと 1 対 1)
+│   ├── agent/ main/ preload/ renderer/ eval/ installer/  # 単体:app 側(実装ディレクトリと 1 対 1)
 │   └── integration/                #   総合:繋いだ経路を最初から最後まで通す(発動の縦 1 本 / 設定更新)
 └── scripts/
     ├── validate.sh                 # 機械検査(項目の正本は impl-rules.md N-8)。/validate が呼ぶ(Core)
@@ -147,7 +149,11 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
     ├── fetch-seg-eval.sh           # 切り抜きの計測用:u2netp と onnxruntime-node をリポジトリの外に取得(論点 0063)
     ├── fetch-sdcpp.sh              # 同梱する sd.cpp(Windows 向け CPU 版)を vendor/sdcpp/ に取得する(論点 0040)
     ├── fetch-u2netp.sh             # 同梱する u2netp(人物の切り抜き)を sha256 で照合して vendor/u2netp/ に取得する(論点 0063 / 0066)
-    └── extract-text-model.sh       # 配布するテキストモデルの GGUF を開発機の Ollama から取り出して release/weights/ に置く(論点 0074)
+    ├── fetch-ollama.sh / fetch-voicevox.sh  # 同梱する Ollama・VOICEVOX ENGINE(Windows 向け CPU 版。ENGINE は音声モデル 2 つだけ)を vendor/ に取得(論点 0034 / 0044)
+    ├── extract-text-model.sh       # 配布するテキストモデルの GGUF を開発機の Ollama から取り出して release/weights/ に置く(論点 0074)
+    ├── fetch-image-weights.sh      # 配布する画像の重み 2 つを release/weights/ に取得する(論点 0041 / 0055)
+    ├── build-installer-license.mjs # インストーラの同意の文書 installer/license.txt を作る(論点 0043 / 0047 / 0060)
+    └── build-installer.sh          # ビルド専用コンテナ(electron-builder の wine つき)で NSIS のインストーラを作る(論点 0031)
 ```
 
 ## 依存方向

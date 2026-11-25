@@ -64,3 +64,6 @@ Thumbs.db
 # --- 4. 手元の作業管理 ------------------------------------------------------
 # 反映作業の単位。要件はここには無い(正本は docs/、経緯は decisions/)ので共有しない。
 /work/
+
+# インストーラの同意の文書(scripts/build-installer-license.mjs がビルドのたびに作る)
+/installer/license.txt

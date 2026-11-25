@@ -22,12 +22,18 @@
     "fetch:sdcpp": "bash scripts/fetch-sdcpp.sh",
     "fetch:u2netp": "bash scripts/fetch-u2netp.sh",
     "weights:text": "bash scripts/extract-text-model.sh",
-    "package:win": "npm run fetch:sdcpp && npm run fetch:u2netp && npm run build && electron-builder --win --dir",
-    "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh"
+    "package:win": "npm run fetch:runtimes && npm run build && electron-builder --win --dir",
+    "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh",
+    "fetch:ollama": "bash scripts/fetch-ollama.sh",
+    "fetch:voicevox": "bash scripts/fetch-voicevox.sh",
+    "fetch:runtimes": "npm run fetch:sdcpp && npm run fetch:u2netp && npm run fetch:ollama && npm run fetch:voicevox",
+    "package:installer": "npm run fetch:runtimes && npm run build && node scripts/build-installer-license.mjs && bash scripts/build-installer.sh",
+    "weights:image": "bash scripts/fetch-image-weights.sh"
   },
   "build": {
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "installer"
     },
     "files": [
       "dist/**/*",
@@ -73,11 +79,40 @@
         "filter": [
           "u2netp.onnx"
         ]
+      },
+      {
+        "from": "vendor/ollama",
+        "to": "ollama",
+        "filter": [
+          "**/*",
+          "!.tag"
+        ]
+      },
+      {
+        "from": "vendor/voicevox",
+        "to": "voicevox",
+        "filter": [
+          "**/*",
+          "!.tag"
+        ]
       }
     ],
     "npmRebuild": false,
     "win": {
       "target": "dir"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "license": "installer/license.txt",
+      "include": "installer/installer.nsh",
+      "deleteAppDataOnUninstall": true,
+      "installerLanguages": [
+        "ja_JP"
+      ],
+      "language": "1041",
+      "artifactName": "keycheer-setup-${version}.${ext}"
     }
   },
   "dependencies": {

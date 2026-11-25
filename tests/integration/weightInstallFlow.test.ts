@@ -81,7 +81,7 @@ describe("総合: 補助モードが重みを置き、テキストモデルを�
     const ollama = await fakeOllama();
 
     const { exitCode, report } = await runWeightInstallMode({
-      args: { sourceDir, resultFile },
+      args: { sourceDir, resultFile, messageFile: null },
       install: (dir) =>
         installWeights({
           sourceDir: dir,
@@ -124,7 +124,7 @@ describe("総合: 補助モードが重みを置き、テキストモデルを�
     const resultFile = join(sourceDir, "result.json");
     const ollama = await fakeOllama();
     const { exitCode } = await runWeightInstallMode({
-      args: { sourceDir, resultFile },
+      args: { sourceDir, resultFile, messageFile: null },
       install: (dir) =>
         installWeights({
           sourceDir: dir,
