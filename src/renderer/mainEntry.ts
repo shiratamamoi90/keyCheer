@@ -11,7 +11,10 @@
 // I/O グルーでユニットテスト対象外 — 検証は typecheck / lint / 実機確認。
 // core 実装 / providers / agent は import しない(renderer は「使う側」に留める)。
 
-import { resolveEditableSpeakerId } from "../core/shared/selectableSpeaker.js";
+import {
+  buildSpeakerCreditNotice,
+  resolveEditableSpeakerId,
+} from "../core/shared/selectableSpeaker.js";
 import type * as ReactNS from "react";
 import type * as ReactDOMClientNS from "react-dom/client";
 import {
@@ -786,6 +789,17 @@ function App(): ReactNS.ReactElement {
               ),
             ),
       ),
+      // S0043_03 選んだ話者のクレジット表記(論点 0043 / 0060。アプリの中に残す表記はここだけ)
+      (() => {
+        const credit = speakersUnavailable ? null : buildSpeakerCreditNotice(speakerId);
+        return credit === null
+          ? null
+          : React.createElement(
+              "p",
+              { key: "speaker-credit", className: "m-0 text-sm text-muted" },
+              credit,
+            );
+      })(),
       ...errors.map((e) => message("error", errorText(e), `${e.field}:${e.reason}`)),
       editingItem?.hasProfileChanged === true
         ? message(

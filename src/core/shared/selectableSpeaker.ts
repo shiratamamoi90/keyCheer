@@ -18,3 +18,21 @@ export function isSelectableSpeaker(speakerId: number): boolean {
 export function resolveEditableSpeakerId(speakerId: number | null): number | null {
   return speakerId !== null && isSelectableSpeaker(speakerId) ? speakerId : null;
 }
+
+// 選べる話者のクレジット表記(docs/licenses.md。論点 0043)。スタイルの ID は SELECTABLE_SPEAKER_IDS と同じ
+const SPEAKER_CREDITS: Readonly<Record<number, string>> = {
+  2: "VOICEVOX:四国めたん",
+  8: "VOICEVOX:春日部つむぎ",
+  10: "VOICEVOX:雨晴はう",
+  11: "VOICEVOX:玄野武宏(CV:ガロ)",
+};
+
+// S0043_03 選んだ話者のクレジット表記と、アプリの外で使うときの注意を示す
+// 規約の URL はここに置かない — 確かめていないページがあり(論点 0043 決定 9)、示すのはインストーラ(S0060_01)。
+// S0043_04 文面は同梱したものだけで組み立て、通信しない
+export function buildSpeakerCreditNotice(speakerId: number | null): string | null {
+  if (speakerId === null) return null;
+  const credit = SPEAKER_CREDITS[speakerId];
+  if (credit === undefined) return null;
+  return `クレジット表記:${credit}。生成した音声をアプリの外で使うときは、この表記を載せ、話者の利用規約に従ってください。`;
+}
