@@ -19,10 +19,14 @@ npm run dev       # build 後に electron dist/main/index.js を起動
 ```bash
 npm run services:up      # CPU で Ollama(:11434)と VOICEVOX(:50021)を起動
 npm run services:model   # sarashina2.2-3b-instruct を取り込む(初回のみ。約 6.7 GB を取得し、取り込み後に削除。論点 0029)
+npm run weights:text -- ~/.config/keycheer/weights/text   # 取り込んだ GGUF をアプリの置き場へ(論点 0059 / 0074)
 npm run services:status  # 稼働確認
 npm run services:down    # 停止
 ```
 
+- **アプリは生成を始めるたびに、置き場のテキストモデル(GGUF)を sha256 で照合する**(論点 0059)。置き場に無ければ
+  生成を始めない。開発機では上の `weights:text` で置く。Windows 実機では取り出した GGUF を
+  `%APPDATA%\keyCheer\weights\text\` にコピーする(インストーラができるまで)。
 - **既定は CPU。** 製品ターゲットが iGPU/CPU なので、開発機の GPU で速さに慣れないようにする。
   GPU で回したいときだけ `docker compose --profile gpu up -d`。
   **cpu と gpu を同時に起動しない**(同じポートを公開するので衝突する。先に `services:down`)。
@@ -142,7 +146,8 @@ bash scripts/validate.sh                   # 要件 ↔ テストの整合(機�
     ├── fetch-image-eval.sh / image-eval.Dockerfile  # 画像の計測用:sd.cpp と重みの取得、計測用コンテナ(論点 0041 / 0045)
     ├── fetch-seg-eval.sh           # 切り抜きの計測用:u2netp と onnxruntime-node をリポジトリの外に取得(論点 0063)
     ├── fetch-sdcpp.sh              # 同梱する sd.cpp(Windows 向け CPU 版)を vendor/sdcpp/ に取得する(論点 0040)
-    └── fetch-u2netp.sh             # 同梱する u2netp(人物の切り抜き)を sha256 で照合して vendor/u2netp/ に取得する(論点 0063 / 0066)
+    ├── fetch-u2netp.sh             # 同梱する u2netp(人物の切り抜き)を sha256 で照合して vendor/u2netp/ に取得する(論点 0063 / 0066)
+    └── extract-text-model.sh       # 配布するテキストモデルの GGUF を開発機の Ollama から取り出して release/weights/ に置く(論点 0074)
 ```
 
 ## 依存方向

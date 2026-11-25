@@ -34,6 +34,8 @@ import {
   isRuntimeResponding,
   resolveBundledRuntimes,
 } from "./bundledRuntime.js";
+import { computeFileSha256, isTextModelIntact, resolveTextModelPath } from "./textModelCheck.js";
+import { TEXT_MODEL_FILE } from "../core/shared/textModel.js";
 
 // 単一インスタンス化(キーフックの多重登録・トレイ重複を防ぐ)。
 // ロックを取れなかった側は quit を要求し、以降の初期化(キーフック登録)へは進まない。
@@ -229,6 +231,13 @@ function bootstrap(): void {
       tempDir: `${app.getPath("temp")}/keycheer-sdcpp`,
     },
     runtimes: bundledRuntimes,
+    // 論点 0059 配布物のテキストモデル(インストーラが置く)を、生成を始めるたびに照合する
+    isTextModelIntact: () =>
+      isTextModelIntact({
+        path: resolveTextModelPath(app.getPath("userData")),
+        expectedSha256: TEXT_MODEL_FILE.sha256,
+        computeSha256: computeFileSha256,
+      }),
   });
 
   // S0057_02 OS の設定が変わったら、開いているメインウィンドウへ知らせる(見た目は renderer が決める)。

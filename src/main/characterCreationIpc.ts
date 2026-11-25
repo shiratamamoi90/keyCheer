@@ -64,6 +64,8 @@ export interface CharacterCreationDeps {
   sdcpp?: { resourcesDir: string; tempDir: string };
   // 同梱ランタイム(論点 0034)。生成の間は止めさせない(S0034_04)。生成の開始で応答の無いものを起動する(S0034_08)
   runtimes?: { beforeGeneration(): Promise<void>; onGenerationFinished(): void };
+  // テキストモデルの照合(論点 0059)。渡さなければ照合しない(テスト用の配線)
+  isTextModelIntact?: () => Promise<boolean>;
 }
 
 export interface CharacterCreationHandle {
@@ -193,6 +195,12 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       // renderer から届いた id は一覧にあるものだけを受け付ける(S0033_09 を main 側でも守る)
       if (character === undefined) {
         return { ok: false, reason: "no-character" };
+      }
+
+      // S0055_08 / S0059_01 生成を始めるたびにテキストモデルを照合する。通らなければ何も組み立てず・消さずに返す
+      // (作り直しの確認より前に見る — 確認しても生成できないため)
+      if (deps.isTextModelIntact !== undefined && !(await deps.isTextModelIntact())) {
+        return { ok: false, reason: "text-model-missing" };
       }
 
       // 再開か作り直しか(論点 0038)。作り直しで確認がまだなら、何も組み立てず・何も消さずに返す。

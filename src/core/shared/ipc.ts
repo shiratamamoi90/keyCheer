@@ -203,6 +203,8 @@ export interface StartGenerationOptions {
 export type StartGenerationResult =
   | { ok: true }
   | { ok: false; reason: "already-running" | "no-character" }
+  // S0055_08 テキストモデルが無い・壊れている。生成を始めず、インストーラでの入れ直しを案内する
+  | { ok: false; reason: "text-model-missing" }
   // 作り直しになるので確認が要る(論点 0038)。確認後に isRebuildConfirmed で呼び直す
   | { ok: false; reason: "rebuild-confirmation-required" };
 

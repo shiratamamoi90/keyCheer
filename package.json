@@ -21,6 +21,7 @@
     "services:status": "docker compose --profile cpu --profile gpu ps",
     "fetch:sdcpp": "bash scripts/fetch-sdcpp.sh",
     "fetch:u2netp": "bash scripts/fetch-u2netp.sh",
+    "weights:text": "bash scripts/extract-text-model.sh",
     "package:win": "npm run fetch:sdcpp && npm run fetch:u2netp && npm run build && electron-builder --win --dir",
     "deploy:win": "npm run package:win && bash scripts/deploy-windows.sh"
   },

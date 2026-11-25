@@ -5,4 +5,6 @@ text_model:
   source: sbintuitions/sarashina2.2-3b-instruct-v0.1 # 論点 0029 の取り込みと同じ取得元・コミット
   revision: 4f3626fb1b64b3e97c908e67f27b2d627ba2a999
   quantization: q4_K_M
-  sha256: null # 未固定。GGUF を作った時に記す
+  # 論点 0074:開発機の取り込み(論点 0029)が 2 回とも出した q4_K_M の層をそのまま取り出す
+  sha256: 60e33bab403b69d923fef2bbbaf798adf1ba47cd897dfdf815bf85f433b6b959
+  byte_size: 2066389248

@@ -25,6 +25,9 @@ sha256 は `decisions/decided/0059-text-model-bundle-form/config.yaml`)。案内
 | ベースモデル | `gsdf/Counterfeit-V3.0` | `d8ce63b3eb8e9102e54b3fcc07f9cb7a28ef30fc` | `Counterfeit-V3.0_fix_fp16.safetensors` | 2034 MB |
 | LCM LoRA | `latent-consistency/lcm-lora-sdv1-5` | `cf2fced511dbe7e26c8d1d397e728fbab875db4b` | `pytorch_lora_weights.safetensors` | 128 MB |
 
+音声モデルは VOICEVOX ENGINE の配布物の中にあり、ENGINE と一緒にインストーラ本体に入る(重みの別ファイルにしない。論点 0072)。
+重みの別ファイルは、テキストモデルの GGUF と画像の重み 2 つ。S0055_01〜06 の照合とコピーはこの 3 ファイルが対象。
+
 インストーラは重みを置く前に、画像の重みのライセンスへの同意を取る(`docs/licenses.md` S0047_02 / S0047_03)。
 
 ## インストール
@@ -65,6 +68,37 @@ sha256 は `decisions/decided/0059-text-model-bundle-form/config.yaml`)。案内
 - GIVEN 置き場に、sha256 が決められた値と一致する重みがある機械
 - WHEN 新しい版のインストーラを実行する
 - THEN その重みはコピーし直さず、そのまま残す。一致しない・無い重みだけを別ファイルから置く
+
+### S0073_01 重みを置いたあと、テキストモデルを Ollama に取り込む
+
+- GIVEN 重みの照合とコピーが済み、:11434 に応答が無い
+- WHEN インストールを進める
+- THEN 同梱の Ollama を起動し(モデルの置き場は `{userData}/ollama-models`。`docs/integrations.md` S0034_12)、置き場の GGUF を
+  `sarashina2.2-3b-instruct` として取り込む(チャットテンプレートと stop は開発機の取り込みと同じ)。取り込んだら起動した Ollama を止め、インストールが完了する
+
+### S0073_02 既に応答のある Ollama があればそれに取り込み、止めない [境界]
+
+- GIVEN 重みの照合とコピーが済み、:11434 に既に応答がある
+- WHEN インストールを進める
+- THEN 同梱の Ollama を起動せず、応答のある Ollama に取り込む。その Ollama は止めない
+
+### S0073_03 同じモデルが既にあれば取り込み直さない [境界]
+
+- GIVEN Ollama に `sarashina2.2-3b-instruct` があり、その層が置き場の GGUF と同じ sha256
+- WHEN 更新のインストールを進める
+- THEN 取り込み直さない(Ollama のモデルを変えない)
+
+### S0073_04 取り込みに失敗したらインストールを完了しない [異常系]
+
+- GIVEN Ollama が時間内に応答しない、または取り込みがエラーを返す
+- WHEN インストールを進める
+- THEN 取り込めなかった旨を示し、インストールを完了しない。起動した Ollama は止める
+
+### S0073_05 取り込みで外部へ通信しない [否定]
+
+- GIVEN 取り込み
+- WHEN Ollama にモデルを渡す
+- THEN 通信は `127.0.0.1` の Ollama だけで、GGUF は置き場のファイルから渡す(取得の通信をしない。S0055_05)
 
 ## アプリの中
 

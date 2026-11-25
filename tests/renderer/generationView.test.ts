@@ -217,3 +217,15 @@ describe("generationView / キャラクター画面の生成ボタン", () => {
     ).toBe(false);
   });
 });
+
+describe("generationView / テキストモデルが欠けていれば入れ直しを案内する", () => {
+  it("asks to reinstall with the installer when the text model is missing or broken", () => {
+    const state = applyGenerationEvent(initialGenerationState(), {
+      type: "failed",
+      reason: "text-model-missing",
+    });
+    expect(progressLabel(state)).toBe(
+      "テキストモデルが見つからないか、壊れています。インストーラで入れ直してください",
+    );
+  });
+});
