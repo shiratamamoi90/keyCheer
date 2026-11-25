@@ -6,7 +6,7 @@
 // テスト対象外(electron/uiohook を import する I/O グルー)。検証は typecheck / lint。
 
 import { app, nativeTheme } from "electron";
-import { existsSync as fsExistsSync, rmSync } from "node:fs";
+import { existsSync as fsExistsSync, mkdirSync, rmSync, statfsSync } from "node:fs";
 import { createStore, createAppStore } from "./store.js";
 import { removeRetiredFiles } from "./retiredFiles.js";
 import { createKeyHook } from "./keyHook.js";
@@ -30,17 +30,30 @@ import { registerCharacterCreation } from "./characterCreationIpc.js";
 import { IpcChannel } from "../core/shared/ipc.js";
 import {
   createBundledRuntimeController,
+  BUNDLED_OLLAMA_URL,
   createNodeRuntimeSpawn,
   isRuntimeResponding,
   resolveBundledRuntimes,
 } from "./bundledRuntime.js";
 import { computeFileSha256, isTextModelIntact, resolveTextModelPath } from "./textModelCheck.js";
 import { TEXT_MODEL_FILE } from "../core/shared/textModel.js";
+import { BUNDLED_WEIGHT_FILES } from "../core/shared/bundledWeights.js";
+import { installWeights } from "./weightInstall.js";
+import { importTextModel } from "./textModelImport.js";
+import {
+  resolveWeightInstallArgs,
+  runWeightInstallMode,
+  type WeightInstallArgs,
+} from "./weightInstallMode.js";
+
+// インストーラが重みを置くために起動したとき(論点 0072)。窓・トレイ・キーフックを出さずに終わるので、
+// 単一インスタンスのロックも取らない(取ると、置き終わるまで利用者がアプリを起動できなくなる)
+const weightInstallArgs = resolveWeightInstallArgs(process.argv);
 
 // 単一インスタンス化(キーフックの多重登録・トレイ重複を防ぐ)。
 // ロックを取れなかった側は quit を要求し、以降の初期化(キーフック登録)へは進まない。
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
-if (!hasSingleInstanceLock) {
+const hasSingleInstanceLock = weightInstallArgs === null && app.requestSingleInstanceLock();
+if (weightInstallArgs === null && !hasSingleInstanceLock) {
   app.quit();
 }
 
@@ -278,6 +291,59 @@ function bootstrap(): void {
   });
 }
 
-if (hasSingleInstanceLock) {
+// 補助モード:重みの照合とコピー → テキストモデルの取り込み → 終了コードを返して終わる(論点 0072 / 0073)
+async function runWeightInstall(args: WeightInstallArgs): Promise<void> {
+  const userDataDir = app.getPath("userData");
+  mkdirSync(userDataDir, { recursive: true });
+  const ollamaRuntimes = resolveBundledRuntimes({
+    resourcesDir: app.isPackaged ? process.resourcesPath : `${app.getAppPath()}/vendor`,
+    userDataDir,
+    platform: process.platform,
+  }).filter((runtime) => runtime.id === "ollama");
+  const ollama = createBundledRuntimeController({
+    runtimes: ollamaRuntimes,
+    exists: fsExistsSync,
+    spawn: createNodeRuntimeSpawn(),
+    isResponding: (url) => isRuntimeResponding(url, RUNTIME_HEALTH_TIMEOUT_MS),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    startTimeoutMs: RUNTIME_START_TIMEOUT_MS,
+    pollIntervalMs: RUNTIME_POLL_INTERVAL_MS,
+  });
+  try {
+    const { exitCode } = await runWeightInstallMode({
+      args,
+      install: (sourceDir) =>
+        installWeights({
+          sourceDir,
+          userDataDir,
+          files: BUNDLED_WEIGHT_FILES,
+          computeSha256: computeFileSha256,
+          getFreeBytes: (dir) => {
+            const stats = statfsSync(dir);
+            return stats.bavail * stats.bsize;
+          },
+        }),
+      importTextModel: () =>
+        importTextModel({
+          baseUrl: BUNDLED_OLLAMA_URL,
+          modelPath: resolveTextModelPath(userDataDir),
+          sha256: TEXT_MODEL_FILE.sha256,
+          fetchFn: fetch,
+          start: () => ollama.beforeGeneration(),
+          stop: () => ollama.stopAll(),
+        }),
+    });
+    app.exit(exitCode);
+  } catch (error) {
+    // 想定外の失敗(コピー中の I/O エラーなど)。インストールは完了させない
+    console.error("[keycheer] 重みを置けませんでした", error);
+    ollama.stopAll();
+    app.exit(1);
+  }
+}
+
+if (weightInstallArgs !== null) {
+  void app.whenReady().then(() => runWeightInstall(weightInstallArgs));
+} else if (hasSingleInstanceLock) {
   void app.whenReady().then(bootstrap);
 }

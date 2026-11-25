@@ -23,6 +23,8 @@ export interface BundledRuntime {
 const LISTEN_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const VOICEVOX_PORT = 50021;
+// Ollama の HTTP API の宛先(補助モードの取り込み。論点 0073)
+export const BUNDLED_OLLAMA_URL = `http://${LISTEN_HOST}:${OLLAMA_PORT}`;
 // 同梱物の中の置き場(公式の Windows 向け CPU 版の配布物の中身。論点 0034)
 const OLLAMA_DIR_NAME = "ollama";
 const VOICEVOX_DIR_NAME = "voicevox";
@@ -45,7 +47,7 @@ export function resolveBundledRuntimes(input: {
         OLLAMA_HOST: `${LISTEN_HOST}:${OLLAMA_PORT}`,
         OLLAMA_MODELS: `${input.userDataDir}/${OLLAMA_MODELS_DIR_NAME}`,
       },
-      healthUrl: `http://${LISTEN_HOST}:${OLLAMA_PORT}/api/version`,
+      healthUrl: `${BUNDLED_OLLAMA_URL}/api/version`,
     },
     {
       id: "voicevox",

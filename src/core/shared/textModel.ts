@@ -13,3 +13,12 @@ export const TEXT_MODEL_FILE = {
   sha256: "60e33bab403b69d923fef2bbbaf798adf1ba47cd897dfdf815bf85f433b6b959",
   byteSize: 2_066_389_248,
 } as const;
+
+// Ollama に取り込むときの名前・チャットテンプレート・stop(論点 0073)。開発機の取り込み(scripts/import-sarashina.sh)と同じ値。
+// 取り込みだけではテンプレートが当たらない(`{{ .Prompt }}` になる)ので、公式の tokenizer_config.json の形式を渡す(論点 0027)
+export const TEXT_MODEL_OLLAMA = {
+  name: "sarashina2.2-3b-instruct",
+  template:
+    "{{ if .System }}<|system|>{{ .System }}</s>{{ end }}<|user|>{{ .Prompt }}</s><|assistant|>",
+  stop: ["</s>", "<|user|>"],
+} as const;
