@@ -28,6 +28,12 @@ import { loadPool } from "./characterStore.js";
 import { loadActiveCharacterPool } from "./characterSelection.js";
 import { registerCharacterCreation } from "./characterCreationIpc.js";
 import { IpcChannel } from "../core/shared/ipc.js";
+import {
+  createBundledRuntimeController,
+  createNodeRuntimeSpawn,
+  isRuntimeResponding,
+  resolveBundledRuntimes,
+} from "./bundledRuntime.js";
 
 // 単一インスタンス化(キーフックの多重登録・トレイ重複を防ぐ)。
 // ロックを取れなかった側は quit を要求し、以降の初期化(キーフック登録)へは進まない。
@@ -41,6 +47,12 @@ registerAudioSchemePrivileges();
 
 // 統計をディスクへ書き戻す間隔。キー 1 打ごとに書かない(docs/key-counter.md 不変条件)。
 const STATS_FLUSH_INTERVAL_MS = 10_000;
+// 同梱ランタイムの起動待ちの時間上限(論点 0034 決定 5)。**仮の値** — CPU で応答し始めるまでを Windows 実機で測って直す。
+// VOICEVOX ENGINE は CPU で音声モデルを読み込むのに数十秒かかるので、短いと遅い機械で起動に失敗する
+const RUNTIME_START_TIMEOUT_MS = 120_000;
+const RUNTIME_POLL_INTERVAL_MS = 500;
+// 応答の確認 1 回の時間上限。応答しないポートで待ち続けないため
+const RUNTIME_HEALTH_TIMEOUT_MS = 2_000;
 
 function bootstrap(): void {
   const characterFs = createNodeCharacterFs();
@@ -179,6 +191,27 @@ function bootstrap(): void {
     onPopupPointer: (raw) => popupPointer.handle(raw),
   });
 
+  // 同梱ランタイム(Ollama / VOICEVOX ENGINE。論点 0034)。メインウィンドウの表示中だけ起動する。
+  // 配布物では resources/ にあり、開発起動(vendor/ に無い)では起動を試みず既存の接続先を使う(S0034_13)
+  const bundledRuntimes = createBundledRuntimeController({
+    runtimes: resolveBundledRuntimes({
+      resourcesDir: app.isPackaged ? process.resourcesPath : `${app.getAppPath()}/vendor`,
+      userDataDir: app.getPath("userData"),
+      platform: process.platform,
+    }),
+    exists: fsExistsSync,
+    spawn: createNodeRuntimeSpawn(),
+    isResponding: (url) => isRuntimeResponding(url, RUNTIME_HEALTH_TIMEOUT_MS),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    startTimeoutMs: RUNTIME_START_TIMEOUT_MS,
+    pollIntervalMs: RUNTIME_POLL_INTERVAL_MS,
+  });
+  const mainWin = mainWindow.win;
+  mainWin.on("show", () => void bundledRuntimes.onMainWindowShown());
+  mainWin.on("hide", () => bundledRuntimes.onMainWindowHidden());
+  // 起動時に自動で表示した場合は show が登録より先に出ているので、ここで追いつく
+  if (mainWin.isVisible()) void bundledRuntimes.onMainWindowShown();
+
   // キャラ作成(プール・wav 生成)の配線。プロバイダー実装を使うのはこのモジュールの中だけで、
   // 発動経路(上の cheerRuntime 配線)には混ざらない。
   const characterCreation = registerCharacterCreation({
@@ -195,6 +228,7 @@ function bootstrap(): void {
       resourcesDir: app.isPackaged ? process.resourcesPath : `${app.getAppPath()}/vendor`,
       tempDir: `${app.getPath("temp")}/keycheer-sdcpp`,
     },
+    runtimes: bundledRuntimes,
   });
 
   // S0057_02 OS の設定が変わったら、開いているメインウィンドウへ知らせる(見た目は renderer が決める)。
@@ -230,6 +264,8 @@ function bootstrap(): void {
     cheerRuntime.flushStats();
     // S0040_05 アプリ終了時に、実行中の sd.cpp を止める
     characterCreation.stopSdcpp();
+    // S0034_09 アプリ終了時に、起動した同梱ランタイムを必ず止める
+    bundledRuntimes.stopAll();
   });
 }
 

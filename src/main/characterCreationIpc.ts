@@ -62,6 +62,8 @@ export interface CharacterCreationDeps {
   // 同梱した sd.cpp の置き場(論点 0040)。resourcesDir の下の sdcpp/ に実行ファイルがある。
   // 渡さなければ local-sdcpp は組み立てない(画像なしで生成を完了する)
   sdcpp?: { resourcesDir: string; tempDir: string };
+  // 同梱ランタイム(論点 0034)。生成の間は止めさせない(S0034_04)。生成の開始で応答の無いものを起動する(S0034_08)
+  runtimes?: { beforeGeneration(): Promise<void>; onGenerationFinished(): void };
 }
 
 export interface CharacterCreationHandle {
@@ -246,6 +248,10 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       // 再開なら未完了バケットだけを続行する。作り直しでは渡さない(古い画像も消してから作る。S0036_13)
       const resumeFrom = start.resumeFrom;
 
+      // S0034_08 生成の開始で、応答の無い同梱ランタイムを起動して応答を待つ。重ねた生成(already-running)では数えない
+      const isNewGeneration = !runner.isRunning();
+      if (isNewGeneration) await deps.runtimes?.beforeGeneration();
+
       if (!runner.isRunning()) generatingCharacterId = character.id;
       const started = runner.start({
         characterId: character.id,
@@ -264,6 +270,8 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
         // 実行中に完了を待たず応答を返す。進捗と結果は GenerationProgress で流す。
         void started.then((result) => {
           generatingCharacterId = null;
+          // S0034_04 生成が終わった時点でメインウィンドウが隠れていれば、ここで止める
+          deps.runtimes?.onGenerationFinished();
           // 生成元の記録と、完了時の使用中の更新(論点 0022 / 0032)
           saveGenerationResult(
             {
@@ -289,6 +297,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       }
 
       // start が即座に返った = already-running
+      if (isNewGeneration) deps.runtimes?.onGenerationFinished();
       const result = await started;
       if (!result.ok && result.reason === "already-running") {
         return { ok: false, reason: "already-running" };
@@ -351,6 +360,10 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
       if (!imageBuilt.ok) return { ok: false, reason: imageBuilt.reason };
 
       generatingCharacterId = character.id;
+      // S0034_04 / S0034_08 生成の間は同梱ランタイムを止めさせず、応答の無いものを起動する。
+      // この操作はメインウィンドウの表示中にしか押せず、表示で既に起動を始めているので、ここでは応答を待たない
+      // (待つと、待つ間に runner が空いて重ねた作り直しを受け付けてしまう。S0050_14)
+      void deps.runtimes?.beforeGeneration();
       void runner
         .startImagesOnly({
           characterId: character.id,
@@ -382,6 +395,7 @@ export function registerCharacterCreation(deps: CharacterCreationDeps): Characte
         })
         .then((result) => {
           generatingCharacterId = null;
+          deps.runtimes?.onGenerationFinished();
           if (result.ok) {
             deps.store.recordGeneratedBy(character.id, result.completed, []);
             emitImages({ type: "done", characterId: character.id });
