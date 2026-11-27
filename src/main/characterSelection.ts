@@ -22,8 +22,8 @@ export interface CharacterSelectionDeps extends ActiveCharacterPoolDeps {
   onActiveCharacterChanged: (characterId: string, pool: MessagePool) => void;
 }
 
-// S0032_15 使用中のキャラクターが無ければ定型文で応援する [境界]
-// 未設定・指す先が一覧に無い・プールが無いはどれも null(= baseline 定型文)。保存値は直さない —
+// S0032_15 使用中のキャラクターが無ければ応援しない [境界]
+// 未設定・指す先が一覧に無い・プールが無いはどれも null(= 応援を出さない。論点 0082)。保存値は直さない —
 // 一時的に読めないだけのプール(書き込み中など)で使用中を消すと、利用者の選択が理由なく消える。
 export function loadActiveCharacterPool(
   deps: ActiveCharacterPoolDeps,

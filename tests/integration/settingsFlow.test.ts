@@ -10,6 +10,7 @@
 // 最小の偽物に置き換える(実物を呼べない外部は fake にする。@.claude/rules/test-rules.md)。
 
 import { describe, it, expect, vi } from "vitest";
+import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/core/messagePool.js";
 
 type IpcHandler = (event: unknown, arg: unknown) => unknown;
 
@@ -49,6 +50,14 @@ function fakeStore(initial: Record<string, unknown> = {}): StoreLike & {
   };
 }
 
+// 応援はプールがあるときだけ出る(論点 0082)。ここでは文言を問わないので全バケットに 1 文ずつ入れる
+function anyPool(): MessagePool {
+  const buckets = Object.fromEntries(
+    ALL_BUCKET_KEYS.map((k) => [k, [{ id: `${k}-000`, text: "文" }]]),
+  ) as MessagePool["buckets"];
+  return { characterId: "char-1", version: 1, buckets };
+}
+
 /** 起動時の配線をそのまま組む(main/index.ts と同じ順序・同じ結線)。 */
 function bootstrap(initial: Record<string, unknown> = {}) {
   handlers.clear();
@@ -71,6 +80,7 @@ function bootstrap(initial: Record<string, unknown> = {}) {
     },
     config,
   );
+  runtime.setActiveCharacter("char-1", anyPool());
 
   registerIpcHandlers({
     store,

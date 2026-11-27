@@ -28,7 +28,7 @@
 | 時間帯 | `timeOfDay` | — | `dayPart`, `tod`, `timeofday` | 時刻を丸めた4値(`morning` / `afternoon` / `evening` / `night`) |
 | メッセージプール | `messagePool` | — | `msgPool`, `poolData` | キャラ作成時に一括生成した応援文の集合 |
 | バケット | `bucket` | — | `bkt`, `slot` | プールの区画。`(speedZone × cheerType × timeOfDay)` で1つ決まる |
-| 定型文 | `baseline` | — | `cannedText` | 同梱の固定文。プール未生成・バケット欠損時に使う比較基準 |
+| 定型文 | `baseline` | — | `cannedText` | 同梱の固定文。プールのバケット欠損時に補う。比較基準にも使う(プールが無いときは応援を出さない。論点 0082) |
 | マイルストーン | `milestone` | — | `milestoneList` | 節目の回数。累計がその倍数に達するたびに `milestone` 種別の応援が出る(論点 0071) |
 | キャラクター | `character` | — | `chara`, `charName` | 利用者が作る応援役。名前・性格・話者・生成物を持つ |
 | 使用中のキャラクター | `activeCharacter` | — | `currentCharacter`, `selectedCharacter` | 保存済みのキャラクターのうち応援に使う 1 件。`activeCharacterId` で指す(論点 0032) |

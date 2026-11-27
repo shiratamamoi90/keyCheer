@@ -169,7 +169,7 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
     expect(store.loadStats()).toEqual({ totalKeyCount: config.regular });
   });
 
-  it("キャラ未作成でも発動し、baseline 定型文をテキストのみで出す", () => {
+  it("キャラ未作成なら応援を出さず、キーは数えて累計カウントに保存する(論点 0082)", () => {
     const store = createAppStore(fakeStore());
     const { config } = store.loadTriggerConfig();
     const emitted: CheerFiredPayload[] = [];
@@ -179,6 +179,7 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
         popupDurationMs: POPUP_DURATION_MS,
         emitCheer: (payload) => emitted.push(payload),
         wavExists: () => false,
+        recordKeyCount: (keys) => store.recordKeyCount(keys),
         random: seeded(42),
       },
       config,
@@ -187,10 +188,9 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
 
     for (let i = 1; i <= config.regular; i++) runtime.handleKeyPress(T0 + i);
 
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0]?.message).not.toBe("");
-    expect(emitted[0]?.wavPath).toBeNull(); // baseline は wav を事前合成していない
-    expect(showCheer(initialPopupState, emitted[0]!, T0).playWavPath).toBeNull();
+    expect(emitted).toEqual([]);
+    runtime.flushStats();
+    expect(store.loadStats()).toEqual({ totalKeyCount: config.regular });
   });
 });
 

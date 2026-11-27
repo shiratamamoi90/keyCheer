@@ -137,15 +137,22 @@ describe("runtime / 連続回避(sourceBucketKey で記録)", () => {
   });
 });
 
-describe("runtime / キャラ未作成(baseline)発動", () => {
-  it("fires from baseline when pool is null", () => {
-    const now = 1_000_000;
+describe("runtime / プールが無い間もキー押下数は数える [否定]", () => {
+  it("S0082_01 counts the key but fires no cheer and keeps the repeat-avoidance record when there is no pool", () => {
+    // GIVEN プールが無く、累計 49(regular=50)。連続回避の記録が 1 件ある
     const state: RuntimeState = {
       ...initialRuntimeState,
       counter: { count: 49 },
+      lastMessageIdByBucket: { normal_regular_evening: "x" },
     };
-    const result = onKeyPress({ ...baseInput(), now, pool: null, state });
-    expect(result.cheer!.message).toBe("BASE");
+
+    // WHEN 累計が regular の倍数になる押下
+    const result = onKeyPress({ ...baseInput(), pool: null, state });
+
+    // THEN 応援は出ないが累計は 1 増え、連続回避の記録は変わらない
+    expect(result.cheer).toBeNull();
+    expect(result.state.counter.count).toBe(50);
+    expect(result.state.lastMessageIdByBucket).toEqual({ normal_regular_evening: "x" });
   });
 });
 
@@ -156,7 +163,8 @@ describe("runtime / 選択元の由来(source)を発動イベントに載せる"
       ...initialRuntimeState,
       counter: { count: 49 },
     };
-    const result = onKeyPress({ ...baseInput(), now, pool: null, state });
+    // プールはあるがバケットがすべて空(バケット欠損の退避で baseline 定型文になる)
+    const result = onKeyPress({ ...baseInput(), now, pool: makePool(() => []), state });
     expect(result.cheer!.source).toBe("baseline");
   });
 

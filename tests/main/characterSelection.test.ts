@@ -112,7 +112,7 @@ describe("characterSelection / 生成中でも他のキャラクターに切り�
   });
 });
 
-describe("characterSelection / 使用中のキャラクターが無ければ定型文で応援する [境界]", () => {
+describe("characterSelection / 使用中のキャラクターが無ければ応援しない [境界]", () => {
   it("S0032_15 resolves no pool when the active character is unset, missing or has no pool", () => {
     const unset = setup();
     const missing = setup({ activeCharacterId: "char-gone" });

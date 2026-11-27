@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import { createAppStore, type StoreLike } from "../../src/main/store.js";
 import { createCheerRuntime } from "../../src/main/cheerRuntime.js";
 import type { CheerFiredPayload } from "../../src/core/shared/ipc.js";
+import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/core/messagePool.js";
 
 const T0 = new Date(2026, 10, 27, 10, 0, 0).getTime();
 
@@ -24,6 +25,14 @@ function fakeStore(initial: Record<string, unknown>): StoreLike & { raw: Record<
       delete raw[key];
     }) as StoreLike["delete"],
   };
+}
+
+// 応援はプールがあるときだけ出る(論点 0082)。ここでは文言を問わないので全バケットに 1 文ずつ入れる
+function anyPool(): MessagePool {
+  const buckets = Object.fromEntries(
+    ALL_BUCKET_KEYS.map((k) => [k, [{ id: `${k}-000`, text: "文" }]]),
+  ) as MessagePool["buckets"];
+  return { characterId: "char-1", version: 1, buckets };
 }
 
 describe("総合: 前の版の統計を持つ設定で起動しても、累計カウントだけを残して応援が続く", () => {
@@ -82,6 +91,7 @@ describe("総合: 前の版の統計を持つ設定で起動しても、累計�
       config,
       { initialCount: stats.totalKeyCount },
     );
+    runtime.setActiveCharacter("char-1", anyPool());
 
     // 累計 249 の続きから 51 回打つ:250 で節目、300 で通常の応援
     for (let i = 1; i <= 51; i++) runtime.handleKeyPress(T0 + i * 100);

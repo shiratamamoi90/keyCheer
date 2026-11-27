@@ -184,7 +184,7 @@ function bootstrap(): void {
   );
 
   // 起動時に使用中のキャラクターのプールを読み込んで発動経路へ紐付ける(論点 0020 / 0032)。
-  // 使用中が無い・指す先が一覧に無い・プールが無い / 壊れている場合は null = baseline 定型文で応援する。
+  // 使用中が無い・指す先が一覧に無い・プールが無い / 壊れている場合は null = 応援を出さない(論点 0082)。
   const active = loadActiveCharacterPool({
     store,
     loadPool: (characterId) => loadPool(characterFs, app.getPath("userData"), characterId),

@@ -82,14 +82,14 @@ describe("characterDeletion / キャラクターを削除する", () => {
   });
 });
 
-describe("characterDeletion / 使用中のキャラクターを削除すると定型文に戻る", () => {
+describe("characterDeletion / 使用中のキャラクターを削除すると応援が止まる", () => {
   it("S0032_07 clears activeCharacterId and does not activate another character", () => {
     const { store, onActiveCharacterRemoved, deps } = setup({ activeCharacterId: "char-c" });
 
     deleteCharacter(deps, "char-c");
 
     expect(store.loadActiveCharacterId()).toBeUndefined();
-    // 発動経路へ「使用中が無くなった」と伝える(再起動なしで baseline 定型文になる)
+    // 発動経路へ「使用中が無くなった」と伝える(再起動なしで次の押下から応援が出なくなる)
     expect(onActiveCharacterRemoved).toHaveBeenCalledTimes(1);
   });
 });

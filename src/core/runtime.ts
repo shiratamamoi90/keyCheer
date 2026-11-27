@@ -1,5 +1,5 @@
 // runtime: 1 キー押下ごとの決定的処理を 1 関数に合成する発動経路の中核。
-// カウント → KPM → 速度ゾーン → トリガー判定 → 応援選択 → 連続回避の記録。
+// カウント → KPM → 速度ゾーン → トリガー判定 →(プールがあれば)応援選択 → 連続回避の記録。
 // 要件: docs/key-counter.md / speed-zone.md / cheer-trigger.md(各シナリオの合成)
 // 純粋関数。外部依存ゼロ(providers・fetch・fs・electron に触れない)。時刻・乱数・プールは引数で受ける。
 
@@ -69,7 +69,13 @@ export function onKeyPress(input: OnKeyPressInput): OnKeyPressResult {
   };
 
   const type = shouldFire(counter.count, config);
-  if (type === null) {
+  // S0082_01 プールが無い間もキー押下数は数える(応援は出さない)
+  //
+  // なぜ baseline 定型文で出さないか:プールが無い = 使用中のキャラクターが無い、または生成前・失敗で、
+  // 定型文を出すとキャラクターの絵も声も無い文字だけの応援になる(論点 0082)。数えるのは止めないので、
+  // プールのあるキャラクターを使用中にすれば続きの回数から出る。連続回避の記録も変えない。
+  // baseline 定型文は、プールがあってバケットが欠けたときの補い(S0013_09)としてだけ使う。
+  if (type === null || pool === null) {
     return { state: nextState, cheer: null };
   }
 

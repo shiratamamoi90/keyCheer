@@ -39,6 +39,7 @@ describe("cheerRuntime / 通常応援を N 回ごとに発動", () => {
   it("fires at a multiple of triggers.regular and emits a popup payload", () => {
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG);
+    runtime.setActiveCharacter("char-1", poolWith("文"));
     for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.count).toBe(50);
@@ -47,12 +48,16 @@ describe("cheerRuntime / 通常応援を N 回ごとに発動", () => {
     expect(emitted[0]?.popupDurationMs).toBe(5000);
   });
 
-  it("S0013_11 キャラ未作成時の発動: baseline selections carry no wav path", () => {
+  it("S0013_11 キャラ未作成時は応援を出さない: emits nothing when no pool was ever given", () => {
+    // GIVEN プールが未生成のまま(setActiveCharacter を一度も呼ばない = 起動直後)
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG);
+
+    // WHEN 累計が regular の倍数になるまで打つ
     for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
-    expect(emitted[0]?.messageId.startsWith("baseline:")).toBe(true);
-    expect(emitted[0]?.wavPath).toBeNull();
+
+    // THEN ポップアップへ何も送らない
+    expect(emitted).toEqual([]);
   });
 });
 
@@ -61,6 +66,7 @@ describe("cheerRuntime / 累計カウントは再起動をまたいで続く", (
     // GIVEN 前回終了時までの累計 999(docs/cheer-trigger.md は「累計カウント」で判定する)
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 999 });
+    runtime.setActiveCharacter("char-1", poolWith("文"));
 
     // WHEN 再起動後に 1 打
     runtime.handleKeyPress(T0);
@@ -92,6 +98,7 @@ describe("cheerRuntime / 応援が出ても応援履歴を記録しない [否�
       random: () => 0,
     };
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 149 });
+    runtime.setActiveCharacter("char-1", poolWith("文"));
 
     // WHEN 応援が出て、まとめ書きする
     runtime.handleKeyPress(T0);
@@ -173,6 +180,7 @@ describe("cheerRuntime / 設定変更の即時反映", () => {
   it("uses the new interval from the next key press (再起動不要)", () => {
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 9 });
+    runtime.setActiveCharacter("char-1", poolWith("文"));
     runtime.setConfig({ ...CONFIG, regular: 10 });
     runtime.handleKeyPress(T0);
     expect(emitted).toHaveLength(1);
@@ -181,10 +189,10 @@ describe("cheerRuntime / 設定変更の即時反映", () => {
 });
 
 // 要件: docs/pool-generation.md
-//   「起動時にプールを読み込んで応援に使う」「キャラ未作成なら baseline で応援する」
+//   「起動時にプールを読み込んで応援に使う」「キャラ未作成なら応援しない」
 //   「生成直後は再起動なしで応援に反映される」
 // setActiveCharacter に渡す実データが揃ったのが 論点 0020。ここでは
-// 「プールを渡すと発動内容が baseline から切り替わる」ことを固定する。
+// 「プールを渡したときだけ応援が出る」ことを固定する(論点 0082)。
 import { ALL_BUCKET_KEYS, type MessagePool } from "../../src/core/messagePool.js";
 
 function poolWith(text: string): MessagePool {
@@ -202,18 +210,35 @@ function fireOnce(runtime: ReturnType<typeof createCheerRuntime>): void {
   }
 }
 
-describe("cheerRuntime / キャラ未作成なら baseline で応援する", () => {
-  it("S0020_09 emits a baseline message with no wav", () => {
+describe("cheerRuntime / キャラ未作成なら応援しない", () => {
+  it("S0020_09 emits nothing when there is no active character or the active one has no pool", () => {
     const h = harness();
     const runtime = createCheerRuntime(h.deps, CONFIG);
-    runtime.setActiveCharacter(null, null);
 
+    // 使用中が無い
+    runtime.setActiveCharacter(null, null);
+    fireOnce(runtime);
+    // 使用中はあるがプールが無い(生成前・失敗)
+    runtime.setActiveCharacter("char-1", null);
     fireOnce(runtime);
 
-    expect(h.emitted).toHaveLength(1);
-    expect(h.emitted[0]!.wavPath).toBeNull();
-    // baseline 定型文の ID は "baseline:" 接頭辞を持つ(docs/data-model.md)
-    expect(h.emitted[0]!.messageId).toMatch(/^baseline:/);
+    expect(h.emitted).toEqual([]);
+  });
+});
+
+describe("cheerRuntime / プールのあるキャラクターを使用中にすると、続きの回数から応援が出る", () => {
+  it("S0082_02 fires from the next trigger count and does not replay the cheer skipped without a pool", () => {
+    // GIVEN プールが無いまま累計 60 まで打った(累計 50 では出なかった)
+    const h = harness();
+    const runtime = createCheerRuntime(h.deps, CONFIG);
+    for (let i = 1; i <= 60; i++) runtime.handleKeyPress(T0 + i * 100);
+
+    // WHEN プールのあるキャラクターを使用中にして累計 100 まで打つ
+    runtime.setActiveCharacter("char-1", poolWith("プールの文言"));
+    for (let i = 61; i <= 100; i++) runtime.handleKeyPress(T0 + i * 100);
+
+    // THEN 累計 100 の 1 回だけ、プールの文言で出る
+    expect(h.emitted.map((p) => [p.count, p.message])).toEqual([[100, "プールの文言"]]);
   });
 });
 
@@ -243,12 +268,11 @@ describe("cheerRuntime / 起動時にプールを読み込んで応援に使う"
 });
 
 describe("cheerRuntime / 生成直後は再起動なしで応援に反映される", () => {
-  it("S0020_10 switches from baseline to the pool without recreating the runtime", () => {
+  it("S0020_10 uses the new pool without recreating the runtime", () => {
     const h = harness();
     const runtime = createCheerRuntime(h.deps, CONFIG);
-    runtime.setActiveCharacter(null, null);
+    runtime.setActiveCharacter("char-1", poolWith("前の文言"));
     fireOnce(runtime);
-    const baselineMessage = h.emitted[0]!.message;
 
     // 生成完了 → onPoolReady 相当
     runtime.setActiveCharacter("char-1", poolWith("生成された文言"));
@@ -256,7 +280,6 @@ describe("cheerRuntime / 生成直後は再起動なしで応援に反映され�
 
     expect(h.emitted).toHaveLength(2);
     expect(h.emitted[1]!.message).toBe("生成された文言");
-    expect(h.emitted[1]!.message).not.toBe(baselineMessage);
     expect(h.emitted[1]!.wavPath).not.toBeNull();
   });
 });
@@ -289,14 +312,17 @@ describe("cheerRuntime / 応援種別の画像を渡す", () => {
 
 describe("cheerRuntime / 定型文の応援では待機画像を出す [境界]", () => {
   it("S0036_22 sends no cheer-type image for a baseline cheer so the window keeps the idle image", () => {
-    // GIVEN 使用中のキャラクターに画像はあるがプールが無い(baseline 定型文で応援する)
+    // GIVEN 使用中のキャラクターに画像とプールはあるが、regular のバケットがすべて空
+    //       (バケット欠損の退避で baseline 定型文で応援する)
     const displays: { idleImagePath: string | null }[] = [];
     const { deps, emitted } = harness({
       imageExists: () => true,
       emitCharacterDisplay: (d) => displays.push(d),
     });
     const runtime = createCheerRuntime(deps, CONFIG);
-    runtime.setActiveCharacter("c", null);
+    const pool = fullPool("c");
+    for (const key of ALL_BUCKET_KEYS) if (key.includes("_regular_")) pool.buckets[key] = [];
+    runtime.setActiveCharacter("c", pool);
 
     // WHEN 応援が発動する
     for (let i = 1; i <= 50; i++) runtime.handleKeyPress(T0 + i);
