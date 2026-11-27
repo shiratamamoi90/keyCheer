@@ -101,7 +101,8 @@
     ],
     "npmRebuild": false,
     "win": {
-      "target": "dir"
+      "target": "dir",
+      "icon": "assets/icon.png"
     },
     "nsis": {
       "oneClick": false,
