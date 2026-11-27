@@ -19,6 +19,7 @@ import {
   progressLabel,
   REBUILD_CONFIRMATION_TEXT,
   resolveGenerateButton,
+  buildStartRefusalText,
   shouldConfirmRebuild,
   START_GENERATION_LABEL,
 } from "./generationView.js";
@@ -106,6 +107,7 @@ export function useCharacterEditor(deps: {
     setSpeakerId(resolveEditableSpeakerId(editing?.voicevoxSpeakerId ?? null));
     setErrors([]);
     setStatus(null);
+    setBlocked(null); // 始められなかった理由は、そのとき選んでいたキャラクターのもの
   };
 
   const edit = (characterId: string | null): void => {
@@ -127,7 +129,8 @@ export function useCharacterEditor(deps: {
         setRebuildConfirmId(characterId);
         return;
       }
-      dispatch({ type: "generation", payload: { type: "failed", reason: result.reason } });
+      // 始められなかった理由は入力の枠の下に出す(生成の進捗と結果の欄は変えない。buildStartRefusalText)
+      setBlocked(buildStartRefusalText(result));
     });
   };
 

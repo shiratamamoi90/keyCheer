@@ -157,5 +157,22 @@ export function shouldConfirmRebuild(
   return !result.ok && result.reason === "rebuild-confirmation-required";
 }
 
+// 生成を始められなかった理由(S0055_08 入れ直しの案内 / S0020_07 実行中である旨)。
+//
+// なぜ進捗と結果の欄(applyGenerationEvent の failed)に入れないか:その欄は生成を始めたキャラクターの
+// 名前つきでしか出ない(S0061_06)。始まっていないので出す先が無く、押しても何も起きないように見えた。
+// また failed で上書きすると、前に生成した別のキャラクターの結果が「失敗」に見える。
+// 作り直しの確認は確認の画面で扱うので文言を返さない(null)。
+const START_REFUSAL_TEXT: Record<string, string> = {
+  "text-model-missing": FAILURE_TEXT["text-model-missing"]!,
+  "already-running": FAILURE_TEXT["already-running"]!,
+  "no-character": "キャラクターが見つかりません。一覧から選び直してください",
+};
+
+export function buildStartRefusalText(result: StartGenerationResult): string | null {
+  if (result.ok || shouldConfirmRebuild(result)) return null;
+  return START_REFUSAL_TEXT[result.reason] ?? "生成を始められませんでした";
+}
+
 export const REBUILD_CONFIRMATION_TEXT =
   "応援メッセージ・音声・画像を最初から作り直します。今のものは消えます。作り直しますか?";

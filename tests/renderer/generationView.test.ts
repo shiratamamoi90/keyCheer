@@ -10,6 +10,7 @@ import {
   resolveGenerateButton,
   progressLabel,
   shouldConfirmRebuild,
+  buildStartRefusalText,
   REBUILD_CONFIRMATION_TEXT,
   START_GENERATION_LABEL,
   type GenerationViewState,
@@ -227,5 +228,34 @@ describe("generationView / テキストモデルが欠けていれば入れ直�
     expect(progressLabel(state)).toBe(
       "テキストモデルが見つからないか、壊れています。インストーラで入れ直してください",
     );
+  });
+});
+
+describe("generationView / 生成を始められなかった理由を出す", () => {
+  // 断られたときは生成が始まっていないので、進捗と結果の欄(生成しているキャラクターの名前つき)には出せない。
+  // 入力の枠の下にそのまま出す文言を返す。作り直しの確認は文言ではなく確認の画面で扱う(null)
+  it("asks to reinstall with the installer when the text model is missing or broken", () => {
+    expect(buildStartRefusalText({ ok: false, reason: "text-model-missing" })).toBe(
+      "テキストモデルが見つからないか、壊れています。インストーラで入れ直してください",
+    );
+  });
+
+  it("tells that a generation is already running", () => {
+    expect(buildStartRefusalText({ ok: false, reason: "already-running" })).toBe(
+      "すでに生成中です",
+    );
+  });
+
+  it("tells that the character was not found", () => {
+    expect(buildStartRefusalText({ ok: false, reason: "no-character" })).toBe(
+      "キャラクターが見つかりません。一覧から選び直してください",
+    );
+  });
+
+  it("returns no text for a started generation or a rebuild confirmation", () => {
+    expect(buildStartRefusalText({ ok: true })).toBeNull();
+    expect(
+      buildStartRefusalText({ ok: false, reason: "rebuild-confirmation-required" }),
+    ).toBeNull();
   });
 });
