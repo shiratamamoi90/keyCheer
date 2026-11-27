@@ -202,7 +202,7 @@ export function savePool(
 }
 
 // シナリオ: 壊れた pool.json を読んだ場合 [異常系] / pool.json が存在しない場合
-// どちらも throw せず null を返す。呼び出し側は baseline 定型文へ落ちる。
+// どちらも throw せず null を返す。プールが無いので応援は出ない(論点 0082)。
 export function loadPool(
   fs: CharacterFs,
   userDataDir: string,
@@ -225,7 +225,7 @@ export function loadPool(
   // シナリオ: 中身が空のプールは無効として扱う [境界]
   // 生成失敗時も部分結果は再開のために保存するため、24 バケットすべてが空の
   // pool.json が残りうる。構造は妥当でも 1 文も無いプールは使えないので null にし、
-  // 応援は baseline 定型文へ落とす(1 文でもあれば中断の途中経過として活かす)。
+  // プールが無いものとして扱う — 応援は出ない(論点 0082。1 文でもあれば中断の途中経過として活かす)。
   if (countMessages(pool) === 0) return null;
   return pool;
 }

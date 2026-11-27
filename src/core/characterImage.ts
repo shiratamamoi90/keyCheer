@@ -437,8 +437,8 @@ export function computeImagePalette(
 
 // S0046_13 応援種別の画像は待機画像の色だけで塗る — 不透明の画素を、渡した色のうちいちばん近い色に置き換える
 //
-// 渡した色が 1 つも無いとき(待機画像が全部透明だった)は色を変えない。このときの扱いは要件で決まっていない
-// (docs/integrations.md の [要確認])。決まるまでは、絵を壊さないほうに倒している。
+// S0089_01 渡した色が 1 つも無いとき(待機画像が全部透明だった)は色を変えない。7 色の上限も当てない —
+// 合わせる相手の色が無いので、絵を壊さずそのまま出す(論点 0089。応援種別の画像だけ 7 色に減らす案は採らなかった)。
 export function applyImagePalette(image: RgbaImage, palette: readonly ImageColor[]): RgbaImage {
   const pixels = Uint8Array.from(image.pixels);
   if (palette.length === 0) return { width: image.width, height: image.height, pixels };

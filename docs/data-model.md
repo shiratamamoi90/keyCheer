@@ -531,17 +531,11 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 - THEN 表示には `imagePaths` の値を使わない(画像は「画像ファイル」の規則でだけ解決する)。
   `imagePaths` を消したり書き換えたりせず、設定も保存し直さない
 
-## 検討事項 [要確認](β 以降に確定)
-
-- **累計カウントをディスクへ書き戻す間隔**。「メモリ上で加算し定期的に保存」(key-counter.md 不変条件)の
-  「定期的」を現状 **10 秒 + 終了前 flush** で実装。
-- **`pool.json` の `completion` の保存形式**。core の `MessagePool` 型は `buckets` のみを持ち、
-  `completion` は生成オーケストレーション側(agent)の状態。本 spec の「同一ファイルに併記」を採るか、
-  別ファイルに分けるかは永続化を実装する change で確定する。
-- sd.cpp バイナリ/モデル/LoRA のパスは同梱物配置で決まる内部定数とし、設定 JSON に持たない。
-- プールの version 互換戦略(将来スキーマ変更時の自動移行)。
-
 ## 確定済み(本 spec で固定)
 
+- 累計カウントをディスクへ書き戻す間隔は 10 秒ごと + 終了前(論点 0085。`docs/key-counter.md`)。
+- `pool.json` の `completion` は `buckets` と同じファイルに置く。1 回の書き込みでそろうため。応援の読み込みは `buckets` だけを使う(論点 0086)。
+- sd.cpp・画像の重みのパスは配布物の配置で決まる内部の値とし、設定 JSON に持たない(論点 0087)。
+- `pool.json` の `version` は今は読み込みで見ない。版を上げる変更をするときは、その論点で前の版からの移し方を必ず決める(論点 0088)。
 - 生成画像・プール・wav の保存先ルート = `app.getPath('userData')` 直下の `characters/{characterId}/`。
 - baseline 定型文は `src/core/baseline/messages.ts` にコード同梱。

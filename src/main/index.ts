@@ -67,9 +67,9 @@ if (weightInstallArgs === null && !hasSingleInstanceLock) {
 // 音声スキームの特権登録は ready より前にしか効かないので、bootstrap ではなくここで行う。
 registerAudioSchemePrivileges();
 
-// 統計をディスクへ書き戻す間隔。キー 1 打ごとに書かない(docs/key-counter.md 不変条件)。
+// 累計カウントをディスクへ書き戻す間隔(論点 0085。docs/key-counter.md)。キー 1 打ごとに書かない。
 const STATS_FLUSH_INTERVAL_MS = 10_000;
-// 同梱ランタイムの起動待ちの時間上限(論点 0034 決定 5)。**仮の値** — CPU で応答し始めるまでを Windows 実機で測って直す。
+// 同梱ランタイムの起動待ちの時間上限(論点 0034 決定 5)。測らずに 120 秒で確定した(論点 0091)。
 // VOICEVOX ENGINE は CPU で音声モデルを読み込むのに数十秒かかるので、短いと遅い機械で起動に失敗する
 const RUNTIME_START_TIMEOUT_MS = 120_000;
 const RUNTIME_POLL_INTERVAL_MS = 500;

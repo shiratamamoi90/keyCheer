@@ -315,6 +315,25 @@ describe("characterImage / 応援種別の画像は待機画像の色だけで�
   });
 });
 
+describe("characterImage / 待機画像がすべて透明なら、応援種別の画像の色を置き換えない [境界]", () => {
+  it("S0089_01 keeps every opaque color of the cheer-type image when the idle image has no opaque pixel", () => {
+    // GIVEN 待機画像がすべて透明(不透明の色が 1 つも無い)。応援種別の画像は 9 色
+    const idle = makeImage(["rr"], { r: RED });
+    idle.pixels[3] = 0;
+    idle.pixels[7] = 0;
+    const derived = makeImage(["abcdefghi"], NINE_COLORS);
+    const before = Uint8Array.from(derived.pixels);
+
+    // WHEN 応援種別の画像を待機画像の色で塗る
+    const painted = applyImagePalette(derived, computeImagePalette(idle));
+
+    // THEN 色は置き換えず、9 色のまま(7 色の上限を当てない)。渡した絵も変えない
+    expect([...painted.pixels]).toEqual([...before]);
+    expect(opaqueColorsOf(painted)).toHaveLength(9);
+    expect([...derived.pixels]).toEqual([...before]);
+  });
+});
+
 describe("characterImage / 同じ絵からは同じ絵が保存される", () => {
   it("S0046_14 gives the same pixels when the same image is processed twice", () => {
     // GIVEN 同じ絵

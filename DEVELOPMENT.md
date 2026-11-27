@@ -250,9 +250,9 @@ src/core          ←          src/{agent,main,preload,renderer,eval}
 
 ## このプロジェクト固有の注意
 
-- **生成ランタイムは現状「各自で用意」**。キャラ作成には Ollama(:11434)と
-  VOICEVOX ENGINE(:50021)が要る。論点 0010 でランタイム同梱、論点 0055 でモデル重みの同梱を決めたが、
-  その仕組みは未実装。エンドポイントは `system` 設定で上書きできる。
+- **生成ランタイムは、開発機では各自で用意する**(`compose.yaml`)。キャラ作成には Ollama(:11434)と
+  VOICEVOX ENGINE(:50021)が要る。配布物では、ランタイム(論点 0010 / 0034)と重み(論点 0055)をインストーラが入れる
+  (`npm run package:installer`)。エンドポイントは `system` 設定で上書きできる。
   未起動でもアプリはクラッシュしない(プールが無ければ応援は出ない。論点 0082)。
 - **バンドラを使わない**。`tsc` の出力を `scripts/postbuild.mjs` が Electron 向けに整える
   (renderer の HTML コピー、preload を `.mjs` へ、React の UMD を `dist/renderer/vendor` へ)。
