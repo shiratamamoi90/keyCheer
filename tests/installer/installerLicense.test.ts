@@ -59,6 +59,15 @@ describe("installerLicense / インストーラはライセンスとクレジッ
       texts["sarashina2.2-mit"].trim(),
       "ONNX Runtime",
       texts["u2-net-apache-2.0"].trim(),
+      // 同梱ランタイムの中のライブラリ(論点 0092)
+      texts["ggml-mit"].trim(),
+      texts["libwebp-bsd-3"].trim(),
+      texts["libwebm-bsd-3"].trim(),
+      texts["llama-cpp-mit"].trim(),
+      texts["llvm-libcxx-apache-2.0-llvm-exception"].trim(),
+      texts["llvm-libunwind-apache-2.0-llvm-exception"].trim(),
+      texts["llvm-openmp-apache-2.0-llvm-exception"].trim(),
+      texts["winpthreads"].trim(),
       "react 18.3.1 (MIT)",
       "electron-store 10.0.1 (MIT)",
     ]) {

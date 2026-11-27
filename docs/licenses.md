@@ -15,6 +15,7 @@
 | Ollama / stable-diffusion.cpp / テキストモデル | 著作権表示とライセンス文(MIT) |
 | 画像の重み(Counterfeit V3.0 / LCM LoRA。論点 0041) | それぞれの名前・配布元・ライセンス名、ライセンスの全文(CreativeML Open RAIL-M / Open RAIL++-M)、利用の制限(論点 0047) |
 | ONNX Runtime(`onnxruntime-node`)/ 人物を切り抜くモデル(u2netp。論点 0066) | 著作権表示とライセンス文(MIT / U-2-Net の Apache-2.0) |
+| 同梱ランタイムの中のライブラリ(sd.cpp の ggml・libwebp・libwebm、Ollama の llama.cpp・ggml・LLVM の libc++ / libunwind / OpenMP・winpthreads。論点 0092) | 著作権表示とライセンス文 |
 | npm の依存 | ライセンスの一覧 |
 
 選べる話者のクレジット表記(論点 0044 の 4 つ):

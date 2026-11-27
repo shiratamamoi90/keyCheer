@@ -17,6 +17,15 @@ export const LICENSE_TEXT_FILES = {
   "sarashina2.2-mit": "sarashina2.2-mit.txt",
   "onnxruntime-mit": "onnxruntime-mit.txt",
   "u2-net-apache-2.0": "u2-net-apache-2.0.txt",
+  // 同梱ランタイムの中のライブラリ(論点 0092。出所と版は論点の決定の表)
+  "ggml-mit": "ggml-mit.txt",
+  "libwebp-bsd-3": "libwebp-bsd-3.txt",
+  "libwebm-bsd-3": "libwebm-bsd-3.txt",
+  "llama-cpp-mit": "llama-cpp-mit.txt",
+  "llvm-libcxx-apache-2.0-llvm-exception": "llvm-libcxx-apache-2.0-llvm-exception.txt",
+  "llvm-libunwind-apache-2.0-llvm-exception": "llvm-libunwind-apache-2.0-llvm-exception.txt",
+  "llvm-openmp-apache-2.0-llvm-exception": "llvm-openmp-apache-2.0-llvm-exception.txt",
+  winpthreads: "winpthreads.txt",
 } as const;
 
 export type LicenseTextId = keyof typeof LICENSE_TEXT_FILES;
@@ -115,10 +124,48 @@ export function buildInstallerLicenseText(input: {
     "",
     full("u2-net-apache-2.0"),
   );
+  // 論点 0092 同梱した公式の配布物に DLL として入っている、別のライセンスのライブラリ。
+  // 配布物そのものには著作権表示が付いていない(Ollama は 1 つも無い)ので、ここで示す。
+  const innerLibraries = section(
+    "6. 同梱ランタイムの中のライブラリ",
+    "stable-diffusion.cpp と Ollama の配布物には、次のライブラリが入っています。",
+    "",
+    "--- ggml(stable-diffusion.cpp の ggml*.dll)---",
+    "",
+    full("ggml-mit"),
+    "",
+    "--- libwebp(stable-diffusion.cpp の libwebp.dll / libwebpmux.dll / libsharpyuv.dll)---",
+    "",
+    full("libwebp-bsd-3"),
+    "",
+    "--- libwebm(stable-diffusion.cpp の webm.dll)---",
+    "",
+    full("libwebm-bsd-3"),
+    "",
+    "--- llama.cpp / ggml(Ollama の libllama*.dll / libmtmd.dll / ggml*.dll)---",
+    "",
+    full("llama-cpp-mit"),
+    "",
+    "--- LLVM libc++(Ollama の libc++.dll)---",
+    "",
+    full("llvm-libcxx-apache-2.0-llvm-exception"),
+    "",
+    "--- LLVM libunwind(Ollama の libunwind.dll)---",
+    "",
+    full("llvm-libunwind-apache-2.0-llvm-exception"),
+    "",
+    "--- LLVM OpenMP(Ollama の libomp.dll)---",
+    "",
+    full("llvm-openmp-apache-2.0-llvm-exception"),
+    "",
+    "--- MinGW-w64 winpthreads(Ollama の libwinpthread-1.dll)---",
+    "",
+    full("winpthreads"),
+  );
   const npm = section(
-    "6. アプリが使う npm のパッケージ",
+    "7. アプリが使う npm のパッケージ",
     ...input.npmPackages.map((pkg) => `${pkg.name} ${pkg.version} (${pkg.license})`),
   );
 
-  return [imageWeights, voicevox, voices, runtimes, segmentation, npm].join("\n");
+  return [imageWeights, voicevox, voices, runtimes, segmentation, innerLibraries, npm].join("\n");
 }
