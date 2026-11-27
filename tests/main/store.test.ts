@@ -1017,3 +1017,23 @@ describe("store / 累計カウントとほかの設定には触らない [否定
     expect(fake.raw.activeCharacterId).toBe("char-1");
   });
 });
+
+describe("store / 読み込みで定義域外の生成元を見つけても値を変えない [否定]", () => {
+  it("S0084_01 logs an error but keeps the out-of-domain generatedBy and the character", () => {
+    // GIVEN 論点 0054 で消した外部プロバイダーの識別子が生成元に残っている
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const backing = fakeStore({
+      characters: [{ ...SAVED_CHARACTER, generatedBy: { text: "openai" } }],
+    });
+    const before = structuredClone(backing.raw.characters);
+
+    // WHEN キャラクターを読み込む
+    const characters = createAppStore(backing).loadCharacters();
+
+    // THEN エラーを記録し、値は書き換えず、キャラクターは一覧に残る
+    expect(error).toHaveBeenCalled();
+    expect(characters.map((c) => [c.id, c.generatedBy])).toEqual([["char-1", { text: "openai" }]]);
+    expect(backing.raw.characters).toEqual(before);
+    error.mockRestore();
+  });
+});

@@ -42,6 +42,8 @@
 | テーマ | `theme` | — | `colorScheme` | メインウィンドウの配色の選び方。`system`(OS に合わせる)/ `light` / `dark`(論点 0057) |
 | ポップアップ | `popup` | — | `toast` | 応援を表示する小さなウィンドウ |
 | 音声ファイル | `wav` | — | `wavFile`, `voicePath` | 事前合成した応援音声。プールの各文に対応する |
+| テキスト応答 | `textResponse` | — | `textReply`, `llmResponse` | テキストプロバイダーが応答スキーマ `{ messages }` で返した、パース前の応答。記号を落として N 文・30 文字以内に整えてからプールへ入れる(論点 0024 / 0083) |
+| 生成元 | `generatedBy` | — | `createdBy`, `sourceProvider` | そのキャラクターの生成物を実際に作ったプロバイダーを、種別ごとに記録したもの。作っていない種別は記録しない(論点 0022 / 0083) |
 | プール生成 | `poolGeneration` | — | `genPool` | キャラ作成時にプールと `wav` をまとめて作る処理 |
 | キャラ画像 | `characterImage` | — | `charImage`, `standingImage` | キャラ作成時に生成するキャラの絵。1 キャラ 3 枚(待機画像・`regular`・`milestone`。論点 0036) |
 | 待機画像 | `idleImage` | — | `normalImage`, `defaultImage` | 応援が出ていないときに表示するキャラ画像(画像の種類 `idle`) |
