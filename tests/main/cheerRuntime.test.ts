@@ -1,43 +1,35 @@
-// main/cheerRuntime: 発動経路のグルー(core の合成 + wav 解決 + 履歴記録)。
-// 要件: docs/cheer-trigger.md(通常/マイルストーン発動・履歴の記録・wav 欠損フォールバック)
-//       docs/key-counter.md(累計カウント・アクティブ秒数の累積)
+// main/cheerRuntime: 発動経路のグルー(core の合成 + wav 解決 + 累計カウントのまとめ書き)。
+// 要件: docs/cheer-trigger.md(通常/マイルストーン発動・応援履歴を記録しない・wav 欠損フォールバック)
+//       docs/key-counter.md(累計カウント)
 // 依存(時刻・乱数・fs・IPC・store)はすべて注入されるため決定的にテストできる。
 
 import { describe, it, expect } from "vitest";
-import {
-  createCheerRuntime,
-  type CheerRuntimeDeps,
-  type StatsDelta,
-} from "../../src/main/cheerRuntime.js";
+import { createCheerRuntime, type CheerRuntimeDeps } from "../../src/main/cheerRuntime.js";
 import type { CheerFiredPayload } from "../../src/core/shared/ipc.js";
-import type { CheerHistoryEntry, TriggerConfig } from "../../src/core/shared/types.js";
+import type { TriggerConfig } from "../../src/core/shared/types.js";
 
 const CONFIG: TriggerConfig = {
   regular: 50,
   milestoneInterval: 1000,
   isMilestoneEnabled: true,
-  activeThresholdSec: 60,
 };
 
 interface Harness {
   deps: CheerRuntimeDeps;
   emitted: CheerFiredPayload[];
-  history: CheerHistoryEntry[];
 }
 
 function harness(overrides: Partial<CheerRuntimeDeps> = {}): Harness {
   const emitted: CheerFiredPayload[] = [];
-  const history: CheerHistoryEntry[] = [];
   const deps: CheerRuntimeDeps = {
     userDataDir: "/userData",
     popupDurationMs: 5000,
     emitCheer: (payload) => emitted.push(payload),
-    recordHistory: (entry) => history.push(entry),
     wavExists: () => true,
     random: () => 0,
     ...overrides,
   };
-  return { deps, emitted, history };
+  return { deps, emitted };
 }
 
 // 2026-07-25 10:00:00 ローカル時刻(morning)
@@ -64,8 +56,8 @@ describe("cheerRuntime / 通常応援を N 回ごとに発動", () => {
   });
 });
 
-describe("cheerRuntime / 累計カウントからの再開", () => {
-  it("累計カウントが triggers.regular の倍数: seeds the counter from persisted totalKeyCount", () => {
+describe("cheerRuntime / 累計カウントは再起動をまたいで続く", () => {
+  it("S0081_01 continues from the saved totalKeyCount after a restart", () => {
     // GIVEN 前回終了時までの累計 999(docs/cheer-trigger.md は「累計カウント」で判定する)
     const { deps, emitted } = harness();
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 999 });
@@ -78,79 +70,71 @@ describe("cheerRuntime / 累計カウントからの再開", () => {
     expect(emitted[0]?.count).toBe(1000);
     expect(emitted[0]?.type).toBe("milestone");
   });
+});
 
-  it("S0013_12 履歴の記録: cheerHistory entries carry the cumulative count", () => {
-    const { deps, history } = harness();
+describe("cheerRuntime / 応援が出ても応援履歴を記録しない [否定]", () => {
+  it("S0080_01 saves nothing per cheer; only the key count is handed over on flush", () => {
+    // GIVEN どの依存が呼ばれたかを数える
+    const called = new Set<string>();
+    const keyCounts: number[] = [];
+    const deps: CheerRuntimeDeps = {
+      userDataDir: "/userData",
+      popupDurationMs: 5000,
+      emitCheer: () => called.add("emitCheer"),
+      wavExists: () => {
+        called.add("wavExists");
+        return true;
+      },
+      recordKeyCount: (keys) => {
+        called.add("recordKeyCount");
+        keyCounts.push(keys);
+      },
+      random: () => 0,
+    };
     const runtime = createCheerRuntime(deps, CONFIG, { initialCount: 149 });
+
+    // WHEN 応援が出て、まとめ書きする
     runtime.handleKeyPress(T0);
-    expect(history).toHaveLength(1);
-    expect(history[0]?.count).toBe(150);
-    expect(history[0]?.type).toBe("regular");
-    expect(history[0]?.timestamp).toBe(new Date(T0).toISOString());
+    runtime.flushStats();
+
+    // THEN ポップアップへは渡すが、保存に回るのはキー数だけ(応援ごとの記録の口は無い)
+    expect(called.has("emitCheer")).toBe(true);
+    expect(
+      [...called].every((name) => ["emitCheer", "wavExists", "recordKeyCount"].includes(name)),
+    ).toBe(true);
+    expect(keyCounts).toEqual([1]);
+    expect(Object.keys(deps)).not.toContain("recordHistory");
   });
 });
 
-describe("cheerRuntime / 統計の書き込みはバッファして定期的に flush する", () => {
-  function statsHarness() {
-    const writes: StatsDelta[] = [];
-    const { deps } = harness({ recordStats: (s) => writes.push(s) });
+describe("cheerRuntime / 累計カウントの書き込みはバッファして定期的に flush する", () => {
+  function countHarness() {
+    const writes: number[] = [];
+    const { deps } = harness({ recordKeyCount: (keys) => writes.push(keys) });
     return { writes, runtime: createCheerRuntime(deps, CONFIG) };
   }
 
   it("カウンタはメモリ上で加算する: does not write to the store on every key press", () => {
-    const { writes, runtime } = statsHarness();
+    const { writes, runtime } = countHarness();
     for (let i = 1; i <= 30; i++) runtime.handleKeyPress(T0 + i * 100);
     expect(writes).toHaveLength(0);
   });
 
-  it("アクティブ秒数の累積: flush writes the buffered key count and whole active seconds", () => {
-    const { writes, runtime } = statsHarness();
+  it("flush writes the buffered key count", () => {
+    const { writes, runtime } = countHarness();
     runtime.handleKeyPress(T0);
     runtime.handleKeyPress(T0 + 500);
     runtime.handleKeyPress(T0 + 1_500);
     runtime.flushStats();
-
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.keys).toBe(3);
-    // 初回は加算なし + 500ms + 1000ms = 1500ms → 1 秒(端数 500ms は次回へ繰り越す)
-    expect(writes[0]?.activeSeconds).toBe(1);
-  });
-
-  it("端数を切り捨てず次の flush へ繰り越す(累計がずれない)", () => {
-    const { writes, runtime } = statsHarness();
-    runtime.handleKeyPress(T0);
-    runtime.handleKeyPress(T0 + 1_500); // +1500ms
-    runtime.flushStats(); // 1 秒(繰り越し 500ms)
-    runtime.handleKeyPress(T0 + 2_000); // +500ms → 繰り越しと合わせて 1000ms
-    runtime.flushStats(); // 1 秒
-
-    expect(writes.map((w) => w.activeSeconds)).toEqual([1, 1]);
-  });
-
-  it("当日キーはローカル日付: buckets stats by local calendar day, not UTC", () => {
-    const { writes, runtime } = statsHarness();
-    // ローカル 2026-07-25 23:30(UTC 基準だと翌日に落ちる時刻帯)
-    runtime.handleKeyPress(new Date(2026, 6, 25, 23, 30, 0).getTime());
-    runtime.flushStats();
-    expect(writes[0]?.day).toBe("2026-07-25");
+    expect(writes).toEqual([3]);
   });
 
   it("flush 後はバッファが空になる(二重計上しない)", () => {
-    const { writes, runtime } = statsHarness();
+    const { writes, runtime } = countHarness();
     runtime.handleKeyPress(T0);
     runtime.flushStats();
     runtime.flushStats();
-    expect(writes).toHaveLength(1);
-  });
-
-  it("日付をまたいだら日ごとに分けて flush する [境界]", () => {
-    const { writes, runtime } = statsHarness();
-    runtime.handleKeyPress(new Date(2026, 6, 25, 23, 59, 59).getTime());
-    runtime.handleKeyPress(new Date(2026, 6, 26, 0, 0, 1).getTime());
-    runtime.flushStats();
-
-    const byDay = Object.fromEntries(writes.map((w) => [w.day, w.keys]));
-    expect(byDay).toEqual({ "2026-07-25": 1, "2026-07-26": 1 });
+    expect(writes).toEqual([1]);
   });
 });
 
@@ -229,7 +213,7 @@ describe("cheerRuntime / キャラ未作成なら baseline で応援する", () 
     expect(h.emitted).toHaveLength(1);
     expect(h.emitted[0]!.wavPath).toBeNull();
     // baseline 定型文の ID は "baseline:" 接頭辞を持つ(docs/data-model.md)
-    expect(h.history[0]!.messageId).toMatch(/^baseline:/);
+    expect(h.emitted[0]!.messageId).toMatch(/^baseline:/);
   });
 });
 
@@ -243,7 +227,7 @@ describe("cheerRuntime / 起動時にプールを読み込んで応援に使う"
 
     expect(h.emitted[0]!.message).toBe("プールの文言");
     expect(h.emitted[0]!.wavPath).toContain("/userData/characters/char-1/voices/");
-    expect(h.history[0]!.messageId).not.toMatch(/^baseline:/);
+    expect(h.emitted[0]!.messageId).not.toMatch(/^baseline:/);
   });
 
   it("falls back to text only when the wav is missing", () => {

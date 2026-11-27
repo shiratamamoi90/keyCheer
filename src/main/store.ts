@@ -29,7 +29,6 @@ import {
   MAX_CHARACTER_COUNT,
   type TriggerConfig,
   type Stats,
-  type CheerHistoryEntry,
   type Character,
   type GeneratedBy,
   type Onboarding,
@@ -69,10 +68,9 @@ interface AppMeta {
 export interface AppStore {
   loadTriggerConfig(): { config: TriggerConfig; migrated: boolean };
   saveTriggerConfig(config: TriggerConfig): void;
+  // 起動時に呼ぶ。前の版が残した応援に要らない記録を消す(S0080_02 / S0081_03)
   loadStats(): Stats;
-  appendCheerHistory(entry: CheerHistoryEntry): void;
-  recordKeyCount(day: string, delta: number): void;
-  addActiveSeconds(day: string, seconds: number): void;
+  recordKeyCount(delta: number): void;
   // 論点 0032: 旧形式の単数 character は初回の読み込みで characters へ移す。
   loadCharacters(): Character[];
   loadActiveCharacterId(): string | undefined;
@@ -139,6 +137,14 @@ function normalizeStringList(value: unknown): string[] {
 // Gemma は使わない方針なので、この値は利用者が意図して選んだかどうかを区別せずに移す。
 // 一致したときだけ移すのは、利用者が自分で入れた別のモデルを壊さないため(S0028_03)。
 const LEGACY_DEFAULT_OLLAMA_MODEL = "gemma2:2b";
+
+// 前の版が統計に保存していた、応援に要らない記録(論点 0080 / 0081)。記録はやめたので起動時に消す
+const RETIRED_STATS_KEYS = [
+  "cheerHistory",
+  "dailyCounts",
+  "totalActiveSeconds",
+  "dailyActiveSeconds",
+] as const;
 
 export function newCharacterId(): string {
   const random = Math.random().toString(36).slice(2, 10);
@@ -207,33 +213,26 @@ export function createAppStore(store: StoreLike, deps: AppStoreDeps = {}): AppSt
     },
 
     loadStats() {
-      return (store.get("stats") as Stats | undefined) ?? EMPTY_STATS;
+      const raw = store.get("stats") as unknown as Record<string, unknown> | undefined;
+      if (raw === undefined) return EMPTY_STATS;
+      // S0080_02 / S0081_03 前の版の記録を消す。S0080_04 / S0081_06 ほかのキー(累計カウント)はそのまま。
+      // S0080_03 / S0081_05 消すものが無ければ保存し直さない
+      if (RETIRED_STATS_KEYS.some((key) => key in raw)) {
+        const kept = Object.fromEntries(
+          Object.entries(raw).filter(
+            ([key]) => !(RETIRED_STATS_KEYS as readonly string[]).includes(key),
+          ),
+        );
+        store.set("stats", kept as unknown as Stats);
+        return kept as unknown as Stats;
+      }
+      return raw as unknown as Stats;
     },
 
-    appendCheerHistory(entry) {
+    // S0081_02 累計カウントだけを保存する
+    recordKeyCount(delta) {
       const stats = this.loadStats();
-      store.set("stats", { ...stats, cheerHistory: [...stats.cheerHistory, entry] });
-    },
-
-    recordKeyCount(day, delta) {
-      const stats = this.loadStats();
-      store.set("stats", {
-        ...stats,
-        totalKeyCount: stats.totalKeyCount + delta,
-        dailyCounts: { ...stats.dailyCounts, [day]: (stats.dailyCounts[day] ?? 0) + delta },
-      });
-    },
-
-    addActiveSeconds(day, seconds) {
-      const stats = this.loadStats();
-      store.set("stats", {
-        ...stats,
-        totalActiveSeconds: stats.totalActiveSeconds + seconds,
-        dailyActiveSeconds: {
-          ...stats.dailyActiveSeconds,
-          [day]: (stats.dailyActiveSeconds[day] ?? 0) + seconds,
-        },
-      });
+      store.set("stats", { ...stats, totalKeyCount: stats.totalKeyCount + delta });
     },
 
     // S0022_09 generatedBy は既定値で補完しない — 欠けた種別は未設定のまま返す。

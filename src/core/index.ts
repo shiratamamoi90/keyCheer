@@ -1,12 +1,7 @@
 // core: 決定的コア。純粋関数のみ。Electron API・I/O・fetch・child_process を import しない。
 // 詳細は .claude/rules/architecture.md / impl-rules.md
 
-export {
-  isActive,
-  recordKeyPress,
-  initialKeyCounterState,
-  type KeyCounterState,
-} from "./keyCounter.js";
+export { recordKeyPress, initialKeyCounterState, type KeyCounterState } from "./keyCounter.js";
 
 export {
   computeKpm,

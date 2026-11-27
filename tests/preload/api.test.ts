@@ -48,7 +48,6 @@ describe("preload / preload が公開する API は最小 [不変条件]", () =>
       "getGenerationConfig",
       "getPopupDisplay",
       "getSpeakers",
-      "getStats",
       "getTheme",
       "getTriggerConfig",
       "listCharacters",
@@ -94,9 +93,6 @@ describe("preload / IPC の橋渡し", () => {
 
     await api.updateTriggerConfig(DEFAULT_TRIGGER_CONFIG);
     expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.UpdateTriggerConfig, DEFAULT_TRIGGER_CONFIG);
-
-    await api.getStats();
-    expect(ipc.invoke).toHaveBeenCalledWith(IpcChannel.GetStats);
   });
 
   it("S0017_09 入力内容は renderer に渡らない: hands the listener the payload only (not the Electron event)", () => {

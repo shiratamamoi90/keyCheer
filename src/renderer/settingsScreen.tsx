@@ -195,18 +195,13 @@ export function SettingsScreen(props: { settings: Settings }): ReactNS.ReactElem
           </SettingRow>
         </SettingRows>
       </Card>
-      {/* S0070_01 応援の回数・秒数・節目 */}
+      {/* S0070_01 応援の回数・節目(止まったとみなす秒数の欄は論点 0081 で外した) */}
       <Card heading="応援">
         <SettingRows>
           <TriggerRow
             settings={settings}
             field="regular"
             label="通常の応援を出す回数(キーを押した回数ごと)"
-          />
-          <TriggerRow
-            settings={settings}
-            field="activeThresholdSec"
-            label="打つのが止まったとみなすまでの秒数"
           />
           <SettingRow label="節目の応援を出す">
             <ToggleSwitch

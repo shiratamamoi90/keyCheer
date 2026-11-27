@@ -1,40 +1,19 @@
-// key-counter: キー押下のカウント・最終押下時刻・累計アクティブ時間。
+// key-counter: キー押下のカウント(累計カウント)。
 // 要件: docs/key-counter.md(全シナリオに対応)
 // 純粋関数のみ。電源・I/O・electron-store を持たない。
+//
+// 最後の押下時刻とアクティブ時間は持たない(論点 0081)。応援の発動に要るのは累計カウントだけで、
+// KPM は runtime の 60 秒窓のタイムスタンプで数える(speed-zone.md)。
 
 export interface KeyCounterState {
   count: number;
-  lastKeyTimestamp: number | null; // ms since epoch
-  activeMs: number; // 累計アクティブ時間(ms)
 }
 
 export const initialKeyCounterState: KeyCounterState = {
   count: 0,
-  lastKeyTimestamp: null,
-  activeMs: 0,
 };
 
-// シナリオ: アクティブ判定 / 閾値ちょうどは非アクティブ / 閾値変更後の判定
-export function isActive(
-  lastKeyTimestamp: number | null,
-  now: number,
-  thresholdSec: number,
-): boolean {
-  if (lastKeyTimestamp === null) return false;
-  return now - lastKeyTimestamp < thresholdSec * 1000;
-}
-
-// シナリオ: キー押下でカウント加算 / 同時押し / リピート生イベント / アクティブ秒数の累積
-export function recordKeyPress(
-  state: KeyCounterState,
-  now: number,
-  thresholdSec: number,
-): KeyCounterState {
-  const wasActive = isActive(state.lastKeyTimestamp, now, thresholdSec);
-  const gapMs = wasActive && state.lastKeyTimestamp !== null ? now - state.lastKeyTimestamp : 0;
-  return {
-    count: state.count + 1,
-    lastKeyTimestamp: now,
-    activeMs: state.activeMs + gapMs,
-  };
+// シナリオ: キー押下でカウント加算 / 同時押し / リピート生イベント
+export function recordKeyPress(state: KeyCounterState): KeyCounterState {
+  return { count: state.count + 1 };
 }

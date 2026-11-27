@@ -47,8 +47,6 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return { ok: true as const, config: validated.value };
   });
 
-  ipcMain.handle(IpcChannel.GetStats, () => deps.store.loadStats());
-
   // 論点 0019: キャラ作成フォームの保存。生成は行わない(別の論点)。
   // 論点 0032: id 付きなら編集(S0032_04 / S0032_05)、無ければ新規保存(S0032_01 / S0032_03)。
   ipcMain.handle(IpcChannel.SaveCharacter, (_event, raw: unknown): SaveCharacterResult => {

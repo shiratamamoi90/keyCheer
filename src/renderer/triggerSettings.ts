@@ -1,4 +1,4 @@
-// triggerSettings: 設定画面の「応援」の欄(回数・秒数・節目の回数・節目の応援を出すか)。
+// triggerSettings: 設定画面の「応援」の欄(回数・節目の回数・節目の応援を出すか)。
 // 要件: docs/main-window.md S0070_01〜08(論点 0070)
 //
 // 値域の外の値は画面の操作で作れないようにする(論点 0070 案X)。打つたびに値域で弾くと、
@@ -7,7 +7,7 @@
 
 import { TRIGGER_RANGES, type TriggerConfig } from "../core/shared/types.js";
 
-export type TriggerField = "regular" | "activeThresholdSec" | "milestoneInterval";
+export type TriggerField = "regular" | "milestoneInterval";
 
 export interface TriggerSettingsController {
   getConfig(): TriggerConfig;
@@ -30,8 +30,6 @@ function computeFieldRange(
         min: TRIGGER_RANGES.regular.min,
         max: Math.min(TRIGGER_RANGES.regular.max, config.milestoneInterval - 1),
       };
-    case "activeThresholdSec":
-      return TRIGGER_RANGES.activeThresholdSec;
     case "milestoneInterval":
       return { min: config.regular + 1, max: TRIGGER_RANGES.milestoneInterval.max };
   }

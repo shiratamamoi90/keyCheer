@@ -1,10 +1,10 @@
 // speed-zone: 直近 60 秒の押下数 = KPM、3 段階ゾーン分類。
-// 要件: docs/speed-zone.md(KPM 窓は 60 秒固定、`activeThresholdSec` とは独立)
+// 要件: docs/speed-zone.md(KPM 窓は 60 秒固定)
 // 純粋関数のみ。
 
 import type { SpeedZone } from "./shared/types.js";
 
-// 不変条件: KPM 算出窓は 60 秒固定(設定対象外、`activeThresholdSec` と独立)
+// 不変条件: KPM 算出窓は 60 秒固定(設定対象外)
 export const KPM_WINDOW_MS = 60_000;
 
 // ゾーン境界(下限を含む)。仮置き値 — β で実測して調整する(docs/speed-zone.md [要確認])

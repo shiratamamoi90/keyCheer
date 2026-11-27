@@ -32,7 +32,7 @@
 - GIVEN `popupDurationMs = 5000` のペイロードを表示開始した
 - WHEN 表示開始からの経過時間が 5000ms に達する
 - THEN 非表示になる(表示中の条件は `経過 < popupDurationMs` の strict less-than。
-  `key-counter.md` の「閾値ちょうどは非アクティブ」と同じ向きに揃える)
+  ちょうどに達したら消える)
 
 ### S0017_03 表示中に次の発動が来たら上書きする
 
@@ -63,7 +63,7 @@
 
 - GIVEN renderer から公開 API を列挙する
 - WHEN その形を検査する
-- THEN 発動イベントの購読・設定取得/更新・統計取得だけが存在し、Node / Electron のオブジェクト
+- THEN 発動イベントの購読・設定取得/更新だけが存在し(統計取得は論点 0081 で外した)、Node / Electron のオブジェクト
   (`require` / `ipcRenderer` / `fs` 等)は一切露出しない(`contextIsolation: true`, `nodeIntegration: false`)
 
 ### S0017_08 renderer は core / providers を import しない [不変条件]
@@ -83,7 +83,7 @@
 
 - GIVEN ポップアップ用 HTML の読み込みに失敗する
 - WHEN 発動が起きる
-- THEN アプリは落ちず、キーカウント・統計の記録は継続する(表示だけが失われる)。
+- THEN アプリは落ちず、キーカウントと累計カウントの保存は継続する(表示だけが失われる)。
   main 側にエラーログを残すのみで、ユーザーへの通知は行わない
 
 ## 要件: キャラ画像の常時表示と切り替え(論点 0036)

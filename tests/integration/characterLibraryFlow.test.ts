@@ -91,7 +91,6 @@ function buildRuntime(
       userDataDir: USER_DATA,
       popupDurationMs: 5000,
       emitCheer: (payload) => emitted.push(payload),
-      recordHistory: (entry) => store.appendCheerHistory(entry),
       wavExists: (path) => fs.exists(path),
       random: seeded(42),
     },

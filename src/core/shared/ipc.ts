@@ -2,20 +2,12 @@
 // core の共有型のみ参照し、providers・agent 実装には触れない(発動経路の境界を型レベルでも保つ)。
 // チャンネル名は文字列定数で一元管理し、main/preload/renderer が同じ値を参照する。
 
-import type {
-  SpeedZone,
-  CheerType,
-  TimeOfDay,
-  TriggerConfig,
-  Stats,
-  ThemeSetting,
-} from "./types.js";
+import type { SpeedZone, CheerType, TimeOfDay, TriggerConfig, ThemeSetting } from "./types.js";
 
 export const IpcChannel = {
   // renderer → main(invoke:双方向)
   GetTriggerConfig: "keycheer:get-trigger-config",
   UpdateTriggerConfig: "keycheer:update-trigger-config",
-  GetStats: "keycheer:get-stats",
   // キャラ作成フォーム(論点 0019)。生成は含まず、プロフィールの保存と話者一覧のみ。
   // id 付きなら編集、無ければ新規保存(論点 0032)
   SaveCharacter: "keycheer:save-character",
@@ -113,9 +105,6 @@ export interface ConfigMigratedPayload {
 
 // renderer → main への設定更新リクエスト(バリデーションは main 側 core で行う)
 export type UpdateTriggerConfigRequest = TriggerConfig;
-
-// renderer ← main の統計スナップショット(表示用)
-export type StatsSnapshot = Stats;
 
 // renderer → main: キャラ作成フォームが保存するプロフィール(論点 0019)。
 // プール・wav・画像は含まない(生成は別の論点)。

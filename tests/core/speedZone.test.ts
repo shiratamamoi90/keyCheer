@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeKpm, classifyZone, KPM_WINDOW_MS } from "../../src/core/speedZone.js";
-
-describe("speed-zone / KPM 算出窓は activeThresholdSec とは独立 [不変条件]", () => {
-  it("S0012_08 activeThresholdSec を変えても KPM 窓は不変: KPM_WINDOW_MS = 60_000(設定対象外、computeKpm は閾値を受け取らない)", () => {
-    expect(KPM_WINDOW_MS).toBe(60_000);
-  });
-});
+import { computeKpm, classifyZone } from "../../src/core/speedZone.js";
 
 describe("speed-zone / computeKpm", () => {
   it("S0012_01 直近1分のキー数で KPM 算出: 直近 60 秒内の押下数を返す", () => {

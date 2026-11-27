@@ -1,6 +1,7 @@
 // cheerRuntime: 発動経路の main 側グルー。1 押下 = core.onKeyPress を回し、
-// 発動時に wav パスを解決してポップアップへ IPC 送信し、cheerHistory を記録する。
-// キー数・アクティブ時間はメモリ上に貯め、flushStats() でまとめて永続化する。
+// 発動時に wav パスを解決してポップアップへ IPC 送信する。
+// 保存するのは応援の発動に要る累計カウントだけ(論点 0080 / 0081)。応援ごとの記録・日ごとの記録・
+// アクティブ時間は持たない。キー数はメモリ上に貯め、flushStats() でまとめて永続化する。
 //
 // ★ 発動経路の不変条件(cheer-trigger.md / CLAUDE.md):
 //   ここはプロバイダー実装・生成系(poolGenerator/voiceSynth)を import しない。
@@ -18,27 +19,19 @@ import {
 } from "../core/index.js";
 import { planCheerPlayback, resolveImagePath } from "../agent/cheerPlayer.js";
 import { baselineMessages } from "../core/baseline/messages.js";
-import type { TriggerConfig, CheerHistoryEntry } from "../core/shared/types.js";
+import type { TriggerConfig } from "../core/shared/types.js";
 import type { CheerFiredPayload } from "../core/shared/ipc.js";
-
-// 1 回の flush で永続化する単位(docs/key-counter.md「メモリ上で加算し、定期的にディスクへ保存する」)
-export interface StatsDelta {
-  day: string; // ローカル日付 "YYYY-MM-DD"
-  keys: number;
-  activeSeconds: number; // 秒未満の端数は次の flush へ繰り越す(累計がずれないように)
-}
 
 export interface CheerRuntimeDeps {
   userDataDir: string;
   popupDurationMs: number;
   // 発動時にポップアップへ渡す(renderer が wav 再生・表示を担う)
   emitCheer: (payload: CheerFiredPayload) => void;
-  // cheerHistory への追記(store 経由)
-  recordHistory: (entry: CheerHistoryEntry) => void;
   // wav 実在チェック(fs は main 側で注入。core/発動経路は fs に触れない)
   wavExists: (path: string) => boolean;
-  // 統計のまとめ書き(flushStats から日付ごとに 1 回ずつ呼ばれる)
-  recordStats?: (delta: StatsDelta) => void;
+  // 累計カウントのまとめ書き(docs/key-counter.md「メモリ上で加算し、定期的にディスクへ保存する」)。
+  // flushStats が前回からのキー数を渡す。0 なら呼ばない
+  recordKeyCount?: (keys: number) => void;
   random?: () => number; // 既定 Math.random(テスト時に固定シード注入可)
   // キャラ画像の実在チェック(論点 0036)。省略時は画像を渡さない
   imageExists?: (path: string) => boolean;
@@ -56,17 +49,8 @@ export interface CheerRuntime {
   handleKeyPress(now: number): void;
   setConfig(config: TriggerConfig): void;
   setActiveCharacter(characterId: string | null, pool: MessagePool | null): void;
-  // 貯めたキー数・アクティブ時間を永続化する(定期実行 + 終了前に呼ぶ)
+  // 貯めたキー数を永続化する(定期実行 + 終了前に呼ぶ)
   flushStats(): void;
-}
-
-// ローカル暦日のキー("YYYY-MM-DD")。UTC で切ると JST では 09:00 に「当日」が変わり、
-// timeOfDay(ローカル時)と基準が食い違うためローカル日付で揃える。
-function localDayKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 export function createCheerRuntime(
@@ -82,8 +66,8 @@ export function createCheerRuntime(
   let config: TriggerConfig = initialConfig;
   let characterId: string | null = null;
   let pool: MessagePool | null = null;
-  // 未永続化の統計。日付をまたぐ可能性があるのでローカル日付ごとに貯める。
-  const pending = new Map<string, { keys: number; activeMs: number }>();
+  // 未永続化のキー数
+  let pendingKeys = 0;
 
   // 保存済みのキャラ画像だけを渡す。発動で画像を作らない(S0036_26)— 無ければ null
   const existingImage = (kind: "idle" | "regular" | "milestone"): string | null => {
@@ -105,19 +89,12 @@ export function createCheerRuntime(
     },
 
     flushStats() {
-      for (const [day, buffered] of pending) {
-        const activeSeconds = Math.floor(buffered.activeMs / 1000);
-        if (buffered.keys > 0 || activeSeconds > 0) {
-          deps.recordStats?.({ day, keys: buffered.keys, activeSeconds });
-        }
-        // 秒未満の端数だけを残して繰り越す(切り捨て続けると累計が目減りする)
-        buffered.keys = 0;
-        buffered.activeMs -= activeSeconds * 1000;
-      }
+      if (pendingKeys === 0) return;
+      deps.recordKeyCount?.(pendingKeys);
+      pendingKeys = 0;
     },
 
     handleKeyPress(now) {
-      const before = state.counter.activeMs;
       const result = onKeyPress({
         state,
         now,
@@ -129,13 +106,9 @@ export function createCheerRuntime(
       });
       state = result.state;
 
-      // シナリオ: キー押下でカウント加算 / アクティブ秒数の累積
+      // シナリオ: キー押下でカウント加算
       // ディスクには書かずメモリに貯める(docs/key-counter.md 不変条件)。
-      const day = localDayKey(new Date(now));
-      const bucket = pending.get(day) ?? { keys: 0, activeMs: 0 };
-      bucket.keys += 1;
-      bucket.activeMs += state.counter.activeMs - before;
-      pending.set(day, bucket);
+      pendingKeys += 1;
 
       const cheer = result.cheer;
       if (cheer === null) return;
@@ -162,18 +135,6 @@ export function createCheerRuntime(
         popupDurationMs: deps.popupDurationMs,
         // S0036_19 その応援種別の画像。S0036_22 定型文の応援では渡さない(renderer は待機画像を出す)
         imagePath: cheer.source === "pool" ? existingImage(cheer.type) : null,
-      });
-
-      // シナリオ: 履歴の記録(cheer-trigger.md)。入力内容は含めない。
-      deps.recordHistory({
-        timestamp: new Date(now).toISOString(),
-        count: cheer.count,
-        kpm: cheer.kpm,
-        speedZone: cheer.speedZone,
-        type: cheer.type,
-        timeOfDay: cheer.timeOfDay,
-        messageId: cheer.messageId,
-        message: cheer.message,
       });
     },
   };

@@ -19,25 +19,12 @@ function isRegularValid(v: unknown): v is number {
   return isIntInRange(v, TRIGGER_RANGES.regular.min, TRIGGER_RANGES.regular.max);
 }
 
-function isActiveThresholdSecValid(v: unknown): v is number {
-  return isIntInRange(
-    v,
-    TRIGGER_RANGES.activeThresholdSec.min,
-    TRIGGER_RANGES.activeThresholdSec.max,
-  );
-}
-
 // S0071_08 節目は回数より大きい — 節目の応援を出さない設定でも同じ(ON に戻したときに不正にならないため)
 function isMilestoneIntervalValid(v: unknown, regular: number): v is number {
   return isIntInRange(v, regular + 1, TRIGGER_RANGES.milestoneInterval.max);
 }
 
-const REQUIRED_KEYS = [
-  "regular",
-  "activeThresholdSec",
-  "milestoneInterval",
-  "isMilestoneEnabled",
-] as const;
+const REQUIRED_KEYS = ["regular", "milestoneInterval", "isMilestoneEnabled"] as const;
 
 // S0071_07 値域の中の値だけを受け付ける
 export function validateTriggerConfig(input: unknown): ValidateResult {
@@ -49,12 +36,9 @@ export function validateTriggerConfig(input: unknown): ValidateResult {
     return { ok: false, errors: [`必須キーが欠落(${REQUIRED_KEYS.join(" / ")})`] };
   }
   const errors: string[] = [];
-  const { regular, activeThresholdSec, milestoneInterval, isMilestoneEnabled } = obj;
+  const { regular, milestoneInterval, isMilestoneEnabled } = obj;
   if (!isRegularValid(regular)) {
     errors.push(`regular は 1〜10000 の整数(received: ${String(regular)})`);
-  }
-  if (!isActiveThresholdSecValid(activeThresholdSec)) {
-    errors.push(`activeThresholdSec は 5〜600 の整数(received: ${String(activeThresholdSec)})`);
   }
   if (isRegularValid(regular) && !isMilestoneIntervalValid(milestoneInterval, regular)) {
     errors.push(
@@ -65,23 +49,22 @@ export function validateTriggerConfig(input: unknown): ValidateResult {
     errors.push(`isMilestoneEnabled は真偽値(received: ${String(isMilestoneEnabled)})`);
   }
   if (errors.length > 0) return { ok: false, errors };
-  // 余分なキー(前の版の milestones など)は値に持ち込まない
+  // 余分なキー(前の版の milestones・activeThresholdSec など)は値に持ち込まない(S0081_04)
   return {
     ok: true,
     value: {
       regular: regular as number,
-      activeThresholdSec: activeThresholdSec as number,
       milestoneInterval: milestoneInterval as number,
       isMilestoneEnabled: isMilestoneEnabled as boolean,
     },
   };
 }
 
-// S0015_01 / S0071_06 欠けたキーを既定値で補う
+// S0015_01 / S0071_06 欠けたキーを既定値で補う。
+// S0081_04 知らないキー(前の版の activeThresholdSec など)は写さない — 読み込みの書き戻しで設定から消える
 export function mergeWithDefaults(partial: Partial<TriggerConfig>): TriggerConfig {
   return {
     regular: partial.regular ?? DEFAULT_TRIGGER_CONFIG.regular,
-    activeThresholdSec: partial.activeThresholdSec ?? DEFAULT_TRIGGER_CONFIG.activeThresholdSec,
     milestoneInterval: partial.milestoneInterval ?? DEFAULT_TRIGGER_CONFIG.milestoneInterval,
     isMilestoneEnabled: partial.isMilestoneEnabled ?? DEFAULT_TRIGGER_CONFIG.isMilestoneEnabled,
   };
@@ -109,13 +92,6 @@ export function applyTriggerConfigRepair(config: TriggerConfig): {
   if (regular !== config.regular)
     errors.push(`regular を既定値に戻した(${String(config.regular)})`);
 
-  const activeThresholdSec = isActiveThresholdSecValid(config.activeThresholdSec)
-    ? config.activeThresholdSec
-    : DEFAULT_TRIGGER_CONFIG.activeThresholdSec;
-  if (activeThresholdSec !== config.activeThresholdSec) {
-    errors.push(`activeThresholdSec を既定値に戻した(${String(config.activeThresholdSec)})`);
-  }
-
   let milestoneInterval = config.milestoneInterval;
   if (!isMilestoneIntervalValid(milestoneInterval, regular)) {
     milestoneInterval = isMilestoneIntervalValid(DEFAULT_TRIGGER_CONFIG.milestoneInterval, regular)
@@ -134,7 +110,7 @@ export function applyTriggerConfigRepair(config: TriggerConfig): {
     errors.push(`isMilestoneEnabled を既定値に戻した(${String(config.isMilestoneEnabled)})`);
   }
 
-  return { config: { regular, activeThresholdSec, milestoneInterval, isMilestoneEnabled }, errors };
+  return { config: { regular, milestoneInterval, isMilestoneEnabled }, errors };
 }
 
 // S0015_02 既存 `triggers.regular = 100`(旧既定)→ 50 にリセット + 通知フラグ

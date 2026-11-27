@@ -34,7 +34,7 @@ describe("runtime / カウント加算・非発動", () => {
   it("increments count and does not fire on a non-trigger count", () => {
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 10, lastKeyTimestamp: 999_000, activeMs: 0 },
+      counter: { count: 10 },
     };
     const result = onKeyPress({ ...baseInput(), state });
     expect(result.state.counter.count).toBe(11); // regular=50 の倍数でない
@@ -44,7 +44,7 @@ describe("runtime / カウント加算・非発動", () => {
   it("does not mutate the input state (pure)", () => {
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 10, lastKeyTimestamp: 999_000, activeMs: 0 },
+      counter: { count: 10 },
       recentKeyTimestamps: [999_000],
     };
     const snapshot = JSON.parse(JSON.stringify(state));
@@ -59,7 +59,7 @@ describe("runtime / KPM 算出と剪定", () => {
     // 59s 前(窓内)、61s 前(窓外)、30s 前(窓内)
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 5, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 5 },
       recentKeyTimestamps: [now - 61_000, now - 59_000, now - 30_000],
     };
     const result = onKeyPress({ ...baseInput(), now, state });
@@ -77,7 +77,7 @@ describe("runtime / 通常応援の発動", () => {
     const recent = Array.from({ length: 300 }, (_, i) => now - i * 100);
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 49 },
       recentKeyTimestamps: recent,
     };
     const result = onKeyPress({ ...baseInput(), now, state });
@@ -100,7 +100,7 @@ describe("runtime / 節目の文の数値は達した累計にする", () => {
     );
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 749, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 749 },
     };
     // GIVEN milestoneInterval = 250(既定値には頼らない)
     const config = { ...DEFAULT_TRIGGER_CONFIG, milestoneInterval: 250, isMilestoneEnabled: true };
@@ -120,7 +120,7 @@ describe("runtime / 連続回避(sourceBucketKey で記録)", () => {
     // 1 回目: count 49→50 発動、a を選ぶ(random=0)
     const s1: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 49 },
     };
     const r1 = onKeyPress({ ...baseInput(), now, pool, state: s1 });
     expect(r1.cheer!.messageId).toBe("a");
@@ -130,7 +130,7 @@ describe("runtime / 連続回避(sourceBucketKey で記録)", () => {
     // 2 回目: 同じバケットで再発動(count 99→100)、a は除外され b
     const s2: RuntimeState = {
       ...r1.state,
-      counter: { count: 99, lastKeyTimestamp: now, activeMs: 0 },
+      counter: { count: 99 },
     };
     const r2 = onKeyPress({ ...baseInput(), now: now + 1, pool, state: s2 });
     expect(r2.cheer!.messageId).toBe("b");
@@ -142,7 +142,7 @@ describe("runtime / キャラ未作成(baseline)発動", () => {
     const now = 1_000_000;
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 49 },
     };
     const result = onKeyPress({ ...baseInput(), now, pool: null, state });
     expect(result.cheer!.message).toBe("BASE");
@@ -154,7 +154,7 @@ describe("runtime / 選択元の由来(source)を発動イベントに載せる"
     const now = 1_000_000;
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: now - 100, activeMs: 0 },
+      counter: { count: 49 },
     };
     const result = onKeyPress({ ...baseInput(), now, pool: null, state });
     expect(result.cheer!.source).toBe("baseline");
@@ -163,7 +163,7 @@ describe("runtime / 選択元の由来(source)を発動イベントに載せる"
   it("reports source=pool when the target bucket hits", () => {
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: 999_900, activeMs: 0 },
+      counter: { count: 49 },
     };
     const result = onKeyPress({ ...baseInput(), state });
     expect(result.cheer!.source).toBe("pool");
@@ -174,7 +174,7 @@ describe("runtime / 決定性 [不変条件]", () => {
   it("S0014_11 returns the same result for the same inputs", () => {
     const state: RuntimeState = {
       ...initialRuntimeState,
-      counter: { count: 49, lastKeyTimestamp: 999_900, activeMs: 0 },
+      counter: { count: 49 },
     };
     const r1 = onKeyPress({ ...baseInput(), state });
     const r2 = onKeyPress({ ...baseInput(), state });

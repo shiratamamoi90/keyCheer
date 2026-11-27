@@ -26,7 +26,6 @@
 | 打鍵速度 | `kpm` | — | `keysPerMin`, `kpmValue`, `spd` | 直近 60 秒のキー押下数。算出窓は固定(論点 0012) |
 | 速度ゾーン | `speedZone` | — | `velocityZone`, `zoneOf`, `speedzone` | `kpm` を丸めた3段階(`slow` / `normal` / `fast`) |
 | 時間帯 | `timeOfDay` | — | `dayPart`, `tod`, `timeofday` | 時刻を丸めた4値(`morning` / `afternoon` / `evening` / `night`) |
-| アクティブ時間 | `activeThresholdSec` | — | `idleThreshold` | 最後の押下からこの秒数以内を「入力中」とみなす設定値(既定 60) |
 | メッセージプール | `messagePool` | — | `msgPool`, `poolData` | キャラ作成時に一括生成した応援文の集合 |
 | バケット | `bucket` | — | `bkt`, `slot` | プールの区画。`(speedZone × cheerType × timeOfDay)` で1つ決まる |
 | 定型文 | `baseline` | — | `cannedText` | 同梱の固定文。プール未生成・バケット欠損時に使う比較基準 |

@@ -66,7 +66,6 @@ function bootstrap(initial: Record<string, unknown> = {}) {
         fired.push(payload.count);
         firedTypes.push(payload.type);
       },
-      recordHistory: () => {},
       wavExists: () => false,
       random: () => 0,
     },
@@ -118,7 +117,6 @@ describe("総合: 設定更新が永続化と発動間隔の両方に届く", ()
 
     const result = invoke(IpcChannel.UpdateTriggerConfig, {
       regular: -1,
-      activeThresholdSec: 0,
       milestoneInterval: "x",
       isMilestoneEnabled: true,
     }) as UpdateResult;
@@ -152,7 +150,6 @@ describe("総合: 設定画面の応援の欄で確定した値が、保存さ�
     expect(results.every((r) => r.ok)).toBe(true);
     expect(raw.raw["triggers"]).toEqual({
       regular: 20,
-      activeThresholdSec: 60,
       milestoneInterval: 100,
       isMilestoneEnabled: true,
     });
@@ -182,10 +179,9 @@ describe("総合: 前の版の節目の一覧を保存していた設定が、�
       },
     });
 
-    // 起動の読み込みで節目の回数に移り、一覧を消して保存し直されている
+    // 起動の読み込みで節目の回数に移り、一覧と止まったとみなす秒数(論点 0081)を消して保存し直されている
     expect(raw.raw["triggers"]).toEqual({
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 250,
       isMilestoneEnabled: true,
     });

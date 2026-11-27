@@ -1,6 +1,6 @@
 # 要件: 打鍵速度(KPM)と速度ゾーン
 
-**直近 60 秒間(コード固定)** のキー押下数を KPM(Keys Per Minute)として算出し、3段階の速度ゾーン(slow / normal / fast)に分類する。KPM 算出窓は `triggers.activeThresholdSec`(設定可能)とは**独立**で、ユーザー設定では変更できない(「分」表記の意味を保つため)。
+**直近 60 秒間(コード固定)** のキー押下数を KPM(Keys Per Minute)として算出し、3段階の速度ゾーン(slow / normal / fast)に分類する。KPM 算出窓はユーザー設定では変更できない(「分」表記の意味を保つため)。
 
 ゾーン閾値(仮置き、利用実態で調整):
 | ゾーン | KPM | 用途 |
@@ -51,11 +51,7 @@
 - WHEN KPM を求める
 - THEN KPM = 0、ゾーンは `slow`
 
-### S0012_08 activeThresholdSec を変えても KPM 窓は不変 [不変条件]
-
-- GIVEN `triggers.activeThresholdSec` を 60 → 120 に変更
-- WHEN KPM を求める
-- THEN KPM 窓は依然 60 秒(`activeThresholdSec` を参照しない)
+> S0012_08(`activeThresholdSec` を変えても KPM 窓は不変)は論点 0081 で廃止し、欠番(`triggers.activeThresholdSec` を消した)。
 
 ## 不変条件 / 要確認
 

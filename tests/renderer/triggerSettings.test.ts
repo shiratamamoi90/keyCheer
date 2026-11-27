@@ -1,4 +1,4 @@
-// renderer/triggerSettings: 設定画面の「応援」の欄(回数・秒数・節目)の入力を確定して保存する。
+// renderer/triggerSettings: 設定画面の「応援」の欄(回数・節目)の入力を確定して保存する。
 // 要件: docs/main-window.md(論点 0070)
 
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,6 @@ import type { TriggerConfig } from "../../src/core/shared/types.js";
 
 const BASE: TriggerConfig = {
   regular: 50,
-  activeThresholdSec: 60,
   milestoneInterval: 250,
   isMilestoneEnabled: true,
 };
@@ -21,20 +20,22 @@ function setup(config: TriggerConfig = BASE) {
   return { controller, saved };
 }
 
-describe("triggerSettings / 設定画面に応援の回数・秒数・節目を出す", () => {
-  it("S0070_01 shows the saved regular, seconds, milestone interval and the milestone switch", () => {
+describe("triggerSettings / 設定画面に応援の回数・節目を出す", () => {
+  it("S0070_01 shows the saved regular, milestone interval and the milestone switch, and no seconds", () => {
     const { controller } = setup({
       regular: 30,
-      activeThresholdSec: 90,
       milestoneInterval: 500,
       isMilestoneEnabled: true,
     });
     expect(controller.getConfig()).toEqual({
       regular: 30,
-      activeThresholdSec: 90,
       milestoneInterval: 500,
       isMilestoneEnabled: true,
     });
+    // 止まったとみなす秒数の欄は無い(値域を持つ欄は回数と節目だけ)
+    expect(controller.getFieldRange("regular")).toEqual({ min: 1, max: 499 });
+    expect(controller.getFieldRange("milestoneInterval")).toEqual({ min: 31, max: 100_000 });
+    expect(controller.getFieldRange("activeThresholdSec" as unknown as "regular")).toBeUndefined();
   });
 });
 
@@ -58,13 +59,10 @@ describe("triggerSettings / 確定する前の入力は保存しない [否定]"
 describe("triggerSettings / 範囲より小さい値・大きい値は端の値にする [境界]", () => {
   it("S0070_04 clamps each field to its range and saves the clamped value", () => {
     const { controller, saved } = setup();
-    expect(controller.commitField("activeThresholdSec", "1")).toBe(5);
-    expect(controller.commitField("activeThresholdSec", "9999")).toBe(600);
     expect(controller.commitField("regular", "0")).toBe(1);
     expect(controller.commitField("milestoneInterval", "999999")).toBe(100_000);
     expect(saved.at(-1)).toEqual({
       regular: 1,
-      activeThresholdSec: 600,
       milestoneInterval: 100_000,
       isMilestoneEnabled: true,
     });

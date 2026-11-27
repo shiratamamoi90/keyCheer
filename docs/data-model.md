@@ -35,7 +35,7 @@
     "regular": 50, // 既定 50、1 ≦ N ≦ 10000(設定可能)
     "milestoneInterval": 250, // 既定 250、regular + 1 ≦ M ≦ 100000(設定可能)。累計がこの倍数になるたびに節目の応援(論点 0071)
     "isMilestoneEnabled": true, // 既定 true。false = 節目の応援を出さない(milestoneInterval は覚えておく)
-    "activeThresholdSec": 60, // 既定 60、5 ≦ s ≦ 600(設定可能、KPM 窓とは独立)
+    // 止まったとみなす秒数(activeThresholdSec)は持たない(論点 0081)
   },
   "popup": {
     "position": "bottom-right",
@@ -202,25 +202,65 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 ```jsonc
 {
   "stats": {
+    // 累計カウント。応援の発動判定に使い、再起動をまたいで続きから数える(docs/key-counter.md S0081_01)
     "totalKeyCount": 0,
-    "totalActiveSeconds": 0,
-    "dailyCounts": { "2026-03-30": 4523 },
-    "dailyActiveSeconds": { "2026-03-30": 1820 },
-    "cheerHistory": [
-      {
-        "timestamp": "2026-03-30T14:30:00",
-        "count": 500,
-        "kpm": 240,
-        "speedZone": "fast",
-        "type": "regular",
-        "timeOfDay": "afternoon",
-        "messageId": "fast_regular_afternoon-017",
-        "message": "500回達成だよ!すごいすごい!",
-      },
-    ],
+    // 応援に要らない記録は持たない:応援 1 回ごとの記録 `cheerHistory`(論点 0080)、
+    // 日ごとの押下数 `dailyCounts`・アクティブ時間 `totalActiveSeconds` / `dailyActiveSeconds`(論点 0081)
   },
 }
 ```
+
+## 前の版が残した応援履歴(論点 0080)
+
+前の版は応援が出るたびに `stats.cheerHistory` へ 1 件足していた(消す仕組みも読む画面も無く、設定ファイルが大きくなり続ける)。
+記録をやめた(論点 0080)ので、保存済みの `stats.cheerHistory` を起動時に消す。
+
+### S0080_02 起動時に、保存済みの応援履歴を消す
+
+- GIVEN 保存された統計に `cheerHistory` がある(中身が何件でも)
+- WHEN アプリを起動する
+- THEN 統計から `cheerHistory` は消え、以後作られない
+
+### S0080_03 応援履歴が無くても起動は続く [境界]
+
+- GIVEN 保存された統計に `cheerHistory` が無い、または統計そのものが無い
+- WHEN アプリを起動する
+- THEN エラーを出さずに起動を続け、統計は**変化しない**(空の `cheerHistory` も作らない)
+
+### S0080_04 応援履歴のほかの統計と設定には触らない [否定]
+
+- GIVEN `totalKeyCount`・設定・キャラクターと、`cheerHistory` が保存されている
+- WHEN 起動時に `cheerHistory` を消す
+- THEN `cheerHistory` のほかは**変化しない**
+
+## 前の版が残した統計と設定(論点 0081)
+
+応援に要るものだけを記録する(論点 0081)。前の版が保存した日ごとの押下数・アクティブ時間と、それを数えるための設定
+`triggers.activeThresholdSec` を起動時に消す。
+
+### S0081_03 起動時に、保存済みの日ごとの押下数とアクティブ時間を消す
+
+- GIVEN 保存された統計に `dailyCounts`・`totalActiveSeconds`・`dailyActiveSeconds` がある
+- WHEN アプリを起動する
+- THEN 統計からその 3 つは消え、以後作られない
+
+### S0081_04 起動時に、止まったとみなす秒数の設定を消す
+
+- GIVEN 保存された設定に `triggers.activeThresholdSec` がある(値域の外の値でも)
+- WHEN アプリを起動する
+- THEN `triggers` から `activeThresholdSec` は消え、以後作られない(値域の外でもエラーにしない)
+
+### S0081_05 消すものが無ければ保存し直さない [境界]
+
+- GIVEN 統計に `dailyCounts`・`totalActiveSeconds`・`dailyActiveSeconds` が無く、`triggers` に `activeThresholdSec` が無い(または統計・設定そのものが無い)
+- WHEN アプリを起動する
+- THEN エラーを出さずに起動を続け、統計も設定も保存し直さない
+
+### S0081_06 累計カウントとほかの設定には触らない [否定]
+
+- GIVEN `totalKeyCount = 12345`・`triggers.regular`・`triggers.milestoneInterval`・`triggers.isMilestoneEnabled`・`popup`・キャラクターと、消す 4 つが保存されている
+- WHEN 起動時に消す 4 つを消す
+- THEN `totalKeyCount` は 12345 のままで、消す 4 つのほかは**変化しない**
 
 ## ランタイム状態(永続化しないが契約上重要)
 
@@ -242,9 +282,9 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 ### S0015_01 既存設定の読み込みと既定値補完
 
-- GIVEN 一部キーが欠けた設定 JSON(`triggers.activeThresholdSec` 等が無い旧バージョン含む)
+- GIVEN 一部キーが欠けた設定 JSON(`triggers.milestoneInterval` 等が無い旧バージョン含む)
 - WHEN 起動時に読み込む
-- THEN 欠損キーは既定値(`triggers.regular=50` / `activeThresholdSec=60` 等)で補完され、型に適合した設定オブジェクトになる(**例外: `character.generatedBy` は補完しない** → S0022_09)
+- THEN 欠損キーは既定値(`triggers.regular=50` / `milestoneInterval=250` 等)で補完され、型に適合した設定オブジェクトになる(**例外: `character.generatedBy` は補完しない** → S0022_09)
 
 ### S0015_02 `triggers.regular = 100` のマイグレーション [境界]
 
@@ -254,13 +294,13 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 ### S0015_03 speedZone は 3 値のみ [境界]
 
-- GIVEN cheerHistory に記録する speedZone
+- GIVEN プールバケットキー・ポップアップへの通知に使う speedZone
 - WHEN 値を書き込む
 - THEN `"slow" | "normal" | "fast"` のいずれか(他値は不正)
 
 ### S0015_04 timeOfDay は 4 値のみ [境界]
 
-- GIVEN cheerHistory・プールバケットキーに使う timeOfDay
+- GIVEN プールバケットキー・ポップアップへの通知に使う timeOfDay
 - WHEN 値を書き込む
 - THEN `"morning" | "afternoon" | "evening" | "night"` のいずれか
 - 注:時刻 → timeOfDay の分類関数(境界定数)は `docs/time-of-day.md` に確定。各呼び出し側は core の `classifyTimeOfDay` を使い、独自実装で if を書かない。
@@ -363,7 +403,7 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 - GIVEN 保存を求められた `triggers`
 - WHEN 値を保存する
-- THEN `1 ≦ regular ≦ 10000`・`5 ≦ activeThresholdSec ≦ 600`・`regular + 1 ≦ milestoneInterval ≦ 100000`(どれも整数)・
+- THEN `1 ≦ regular ≦ 10000`・`regular + 1 ≦ milestoneInterval ≦ 100000`(どれも整数)・
   `isMilestoneEnabled` が真偽値 を満たすときだけ保存する。満たさなければ拒否し、保存されている値を変えない
 
 ### S0071_08 節目が回数以下になる保存は拒否する [否定]
@@ -374,9 +414,9 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 ### S0071_09 読み込んだ値が値域の外なら直す [異常系]
 
-- GIVEN 手で書き換えた設定 JSON:`regular = 0`・`activeThresholdSec = 60`・`milestoneInterval = 250`(または `regular = 300`・`milestoneInterval = 200`)
+- GIVEN 手で書き換えた設定 JSON:`regular = 0`・`milestoneInterval = 250`(または `regular = 300`・`milestoneInterval = 200`)
 - WHEN 起動時に読み込む
-- THEN `regular` / `activeThresholdSec` は値域の外なら既定値(50 / 60)にする。そのうえで `milestoneInterval` が値域の外なら 250 にし、
+- THEN `regular` は値域の外なら既定値 50 にする。そのうえで `milestoneInterval` が値域の外なら 250 にし、
   それでも外(`regular` が 250 以上)なら `regular` の 5 倍にする(例:`regular = 300`・`milestoneInterval = 200` → 1500)。
   値域の中の値は変えない。直した値は保存し直し、エラーをログに出す
 
@@ -400,13 +440,13 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 ### S0071_13 節目の移行は他の設定項目に波及しない [否定]
 
-- GIVEN 保存値 `triggers.milestones = [1000, 5000]`・`triggers.regular = 30`・`triggers.activeThresholdSec = 90`
+- GIVEN 保存値 `triggers.milestones = [1000, 5000]`・`triggers.regular = 30`
 - WHEN 起動時に読み込んで移行する
-- THEN `regular = 30`・`activeThresholdSec = 90` は**変化しない**
+- THEN `regular = 30` は**変化しない**
 
 ### S0071_14 移行済みの値は保存し直さない [境界]
 
-- GIVEN 保存値 `triggers = { regular: 50, activeThresholdSec: 60, milestoneInterval: 500, isMilestoneEnabled: false }`
+- GIVEN 保存値 `triggers = { regular: 50, milestoneInterval: 500, isMilestoneEnabled: false }`
 - WHEN 起動時に読み込む
 - THEN 値は変化せず、設定も保存し直さない
 
@@ -487,14 +527,11 @@ API キーの暗号化済みの保存先 `{userData}/secrets.json` と、監査�
 
 ## 検討事項 [要確認](β 以降に確定)
 
-- **`dailyCounts` / `dailyActiveSeconds` の日付境界のタイムゾーン**。現状は **ローカル暦日**で実装
-  (`timeOfDay` がローカル時基準なので揃えた)。UTC 基準にすると JST では 09:00 に「当日」が変わる。
-- **統計をディスクへ書き戻す間隔**。「メモリ上で加算し定期的に保存」(key-counter.md 不変条件)の
-  「定期的」を現状 **10 秒 + 終了前 flush** で実装。秒未満の端数は次回へ繰り越す(累計が目減りしないため)。
+- **累計カウントをディスクへ書き戻す間隔**。「メモリ上で加算し定期的に保存」(key-counter.md 不変条件)の
+  「定期的」を現状 **10 秒 + 終了前 flush** で実装。
 - **`pool.json` の `completion` の保存形式**。core の `MessagePool` 型は `buckets` のみを持ち、
   `completion` は生成オーケストレーション側(agent)の状態。本 spec の「同一ファイルに併記」を採るか、
   別ファイルに分けるかは永続化を実装する change で確定する。
-- 統計肥大化時の保持期間・集約方針(未検討)。
 - sd.cpp バイナリ/モデル/LoRA のパスは同梱物配置で決まる内部定数とし、設定 JSON に持たない。
 - プールの version 互換戦略(将来スキーマ変更時の自動移行)。
 

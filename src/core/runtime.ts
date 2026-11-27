@@ -1,5 +1,5 @@
 // runtime: 1 キー押下ごとの決定的処理を 1 関数に合成する発動経路の中核。
-// カウント → アクティブ → KPM → 速度ゾーン → トリガー判定 → 応援選択 → 連続回避の記録。
+// カウント → KPM → 速度ゾーン → トリガー判定 → 応援選択 → 連続回避の記録。
 // 要件: docs/key-counter.md / speed-zone.md / cheer-trigger.md(各シナリオの合成)
 // 純粋関数。外部依存ゼロ(providers・fetch・fs・electron に触れない)。時刻・乱数・プールは引数で受ける。
 
@@ -24,7 +24,7 @@ export const initialRuntimeState: RuntimeState = {
   lastMessageIdByBucket: {},
 };
 
-// 発動時に確定する情報(main が stats.cheerHistory 記録・ポップアップ・wav 再生に使う)
+// 発動時に確定する情報(main がポップアップ・wav 再生に使う。応援ごとの記録はしない — 論点 0080)
 export interface CheerEvent {
   count: number;
   kpm: number;
@@ -57,7 +57,7 @@ export interface OnKeyPressResult {
 export function onKeyPress(input: OnKeyPressInput): OnKeyPressResult {
   const { state, now, hour, config, pool, baseline, random } = input;
 
-  const counter = recordKeyPress(state.counter, now, config.activeThresholdSec);
+  const counter = recordKeyPress(state.counter);
   const recentKeyTimestamps = pruneTimestamps([...state.recentKeyTimestamps, now], now);
   const kpm = computeKpm(recentKeyTimestamps, now);
   const speedZone = classifyZone(kpm);

@@ -114,11 +114,14 @@
 - WHEN トリガー条件を満たす
 - THEN 同梱 baseline 定型文で応援し、キャラ作成を促す通知を出す(クラッシュしない、外部送信は発生しない)
 
-### S0013_12 履歴の記録
+> S0013_12(履歴の記録)は論点 0080 で廃止し、欠番(応援履歴は記録しない。S0080_01 が置き換え)。
+
+### S0080_01 応援が出ても応援履歴を記録しない [否定]
 
 - GIVEN 応援が発動し、選択文 m と現在の `(kpm, speedZone, type, timeOfDay)` が確定
-- WHEN `cheerHistory` に記録する
-- THEN そのエントリの `count` / `kpm` / `speedZone` / `message` / `type` / `timeOfDay` / `messageId` が保存される(→ docs/data-model.md)
+- WHEN ポップアップへの通知と wav の再生を行う
+- THEN 統計に `cheerHistory` は**作られず**、応援 1 回ごとの記録はどこにも**保存されない**
+  (ポップアップ・wav の再生・連続回避(S0013_07)は今までどおり)
 
 ## 不変条件
 

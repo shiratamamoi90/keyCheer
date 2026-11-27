@@ -30,7 +30,6 @@ export const TIMES_OF_DAY = [
 
 export interface TriggerConfig {
   regular: number;
-  activeThresholdSec: number;
   // 累計がこの倍数になるたびに節目の応援(論点 0071)。regular より大きい
   milestoneInterval: number;
   isMilestoneEnabled: boolean;
@@ -40,46 +39,25 @@ export interface TriggerConfig {
 // (片方だけ変えると、画面で作れる値を main が拒否する)。節目の下限は regular + 1 で、値ではなく関係で決まる
 export const TRIGGER_RANGES = {
   regular: { min: 1, max: 10_000 },
-  activeThresholdSec: { min: 5, max: 600 },
   // 上限は旧既定の最大の節目(論点 0071)。regular の上限 10000 でも節目を選べる
   milestoneInterval: { max: 100_000 },
 } as const;
 
 export const DEFAULT_TRIGGER_CONFIG: TriggerConfig = {
   regular: 50,
-  activeThresholdSec: 60,
   // 論点 0071 節目を 1 つの回数にし、その倍数ごとに繰り返す(論点 0069 の最初の節目 250 を引き継ぐ)
   milestoneInterval: 250,
   isMilestoneEnabled: true,
 };
 
-// 統計データ契約(docs/data-model.md「統計データ」)。main が永続化、renderer が表示に使う。
-// キー入力の「内容」は一切含めない(プライバシー方針:種類のカウントと集計値のみ)。
-export interface CheerHistoryEntry {
-  timestamp: string; // ISO 8601
-  count: number;
-  kpm: number;
-  speedZone: SpeedZone;
-  type: CheerType;
-  timeOfDay: TimeOfDay;
-  messageId: string;
-  message: string; // {milestone} 補間後の表示テキスト
-}
-
+// 統計データ契約(docs/data-model.md「統計データ」)。応援の発動判定に使う累計カウントだけを持つ(論点 0080 / 0081)。
+// キー入力の「内容」は一切含めない(プライバシー方針)。
 export interface Stats {
   totalKeyCount: number;
-  totalActiveSeconds: number;
-  dailyCounts: Record<string, number>; // "YYYY-MM-DD" -> count
-  dailyActiveSeconds: Record<string, number>;
-  cheerHistory: CheerHistoryEntry[];
 }
 
 export const EMPTY_STATS: Stats = {
   totalKeyCount: 0,
-  totalActiveSeconds: 0,
-  dailyCounts: {},
-  dailyActiveSeconds: {},
-  cheerHistory: [],
 };
 
 // キャラクターデータ契約(docs/data-model.md「設定データ」)。

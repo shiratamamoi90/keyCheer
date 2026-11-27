@@ -29,7 +29,6 @@ const WAV_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46]); // "RIFF"
 // 2026-07-25 10:00:00 ローカル時刻(morning)。ローカル時で作るのは
 // timeOfDay がローカル時基準のため(UTC で作ると JST 以外で朝にならない)。
 const T0 = new Date(2026, 6, 25, 10, 0, 0).getTime();
-const DAY_KEY = "2026-07-25";
 
 // 再現可能な擬似乱数(mulberry32)。シードを固定しないと選ばれる文が毎回変わり、
 // 落ちたときに経路の問題か選択の揺れか切り分けられない(不変条件: 再現性)。
@@ -132,12 +131,8 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
         userDataDir: USER_DATA,
         popupDurationMs: POPUP_DURATION_MS,
         emitCheer: (payload) => emitted.push(payload),
-        recordHistory: (entry) => store.appendCheerHistory(entry),
         wavExists: (path) => fs.exists(path),
-        recordStats: ({ day, keys, activeSeconds }) => {
-          store.recordKeyCount(day, keys);
-          if (activeSeconds > 0) store.addActiveSeconds(day, activeSeconds);
-        },
+        recordKeyCount: (keys) => store.recordKeyCount(keys),
         random: seeded(42),
       },
       config,
@@ -169,13 +164,9 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
     expect(shown.playWavPath).toBe(wavPath);
     expect(tick(shown.state, T0 + POPUP_DURATION_MS).visible).toBe(false);
 
-    // --- 永続化。履歴には表示文言と集計値だけが載る(入力内容は持たない)。
+    // --- 永続化。保存されるのは累計カウントだけ(応援ごとの記録は残さない。論点 0080 / 0081)。
     runtime.flushStats();
-    const saved = store.loadStats();
-    expect(saved.totalKeyCount).toBe(config.regular);
-    expect(saved.dailyCounts[DAY_KEY]).toBe(config.regular);
-    expect(saved.cheerHistory).toHaveLength(1);
-    expect(saved.cheerHistory[0]?.messageId).toBe(payload.messageId);
+    expect(store.loadStats()).toEqual({ totalKeyCount: config.regular });
   });
 
   it("キャラ未作成でも発動し、baseline 定型文をテキストのみで出す", () => {
@@ -187,7 +178,6 @@ describe("総合: 生成 → 永続化 → 起動ロード → 打鍵 → ポッ
         userDataDir: USER_DATA,
         popupDurationMs: POPUP_DURATION_MS,
         emitCheer: (payload) => emitted.push(payload),
-        recordHistory: (entry) => store.appendCheerHistory(entry),
         wavExists: () => false,
         random: seeded(42),
       },
@@ -220,8 +210,8 @@ describe("総合: 発動経路は外部と通信しない", () => {
         userDataDir: USER_DATA,
         popupDurationMs: POPUP_DURATION_MS,
         emitCheer: () => {},
-        recordHistory: (entry) => store.appendCheerHistory(entry),
         wavExists: (path) => fs.exists(path),
+        recordKeyCount: (keys) => store.recordKeyCount(keys),
         random: seeded(42),
       },
       config,
@@ -240,7 +230,7 @@ describe("総合: 発動経路は外部と通信しない", () => {
     }
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(store.loadStats().cheerHistory.length).toBeGreaterThan(1);
+    expect(store.loadStats()).toEqual({ totalKeyCount: config.milestoneInterval });
   });
 });
 

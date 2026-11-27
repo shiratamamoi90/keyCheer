@@ -129,21 +129,17 @@ describe("characterSelection / 使用中のキャラクターが無ければ定�
 
 describe("characterSelection / 切り替えは統計とトリガー設定を変えない [否定]", () => {
   it("S0032_16 leaves stats and trigger settings unchanged", () => {
-    const stats = { totalKeyCount: 1234, dailyCounts: { "2026-10-31": 34 }, cheerHistory: [] };
-    const triggers = { regular: 70, milestones: [1000], activeThresholdSec: 30 };
+    const stats = { totalKeyCount: 1234 };
+    const triggers = { regular: 70, milestoneInterval: 1000, isMilestoneEnabled: true };
     const { backing, deps } = setup({ activeCharacterId: "char-c", extra: { stats, triggers } });
 
     activateCharacter(deps, "char-d");
 
-    expect(backing.raw.stats).toEqual({
-      totalKeyCount: 1234,
-      dailyCounts: { "2026-10-31": 34 },
-      cheerHistory: [],
-    });
+    expect(backing.raw.stats).toEqual({ totalKeyCount: 1234 });
     expect(backing.raw.triggers).toEqual({
       regular: 70,
-      milestones: [1000],
-      activeThresholdSec: 30,
+      milestoneInterval: 1000,
+      isMilestoneEnabled: true,
     });
   });
 });

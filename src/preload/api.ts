@@ -22,7 +22,6 @@ import type {
   SaveCharacterResult,
   StartGenerationOptions,
   StartGenerationResult,
-  StatsSnapshot,
   UpdateTriggerConfigRequest,
   SaveThemeResult,
   RegenerateImagesResult,
@@ -53,7 +52,6 @@ export interface KeyCheerApi {
   onConfigMigrated(listener: (payload: ConfigMigratedPayload) => void): () => void;
   getTriggerConfig(): Promise<TriggerConfig>;
   updateTriggerConfig(config: UpdateTriggerConfigRequest): Promise<UpdateTriggerConfigResult>;
-  getStats(): Promise<StatsSnapshot>;
   // キャラ作成フォーム(論点 0019)。生成は含まない。id 付きなら編集(論点 0032)。
   saveCharacter(profile: SaveCharacterRequest): Promise<SaveCharacterResult>;
   getSpeakers(): Promise<GetSpeakersResult>;
@@ -105,7 +103,6 @@ export function createKeyCheerApi(ipc: IpcLike): KeyCheerApi {
     getTriggerConfig: () => ipc.invoke(IpcChannel.GetTriggerConfig) as Promise<TriggerConfig>,
     updateTriggerConfig: (config) =>
       ipc.invoke(IpcChannel.UpdateTriggerConfig, config) as Promise<UpdateTriggerConfigResult>,
-    getStats: () => ipc.invoke(IpcChannel.GetStats) as Promise<StatsSnapshot>,
     saveCharacter: (profile) =>
       ipc.invoke(IpcChannel.SaveCharacter, profile) as Promise<SaveCharacterResult>,
     getSpeakers: () => ipc.invoke(IpcChannel.GetSpeakers) as Promise<GetSpeakersResult>,

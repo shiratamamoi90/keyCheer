@@ -90,6 +90,7 @@ function bootstrap(): void {
     hasPool: (characterId) => loadPool(characterFs, app.getPath("userData"), characterId) !== null,
   });
   const { config, migrated } = store.loadTriggerConfig();
+  // 前の版が残した応援に要らない記録もここで消す(論点 0080 / 0081)
   const stats = store.loadStats();
 
   registerAudioProtocol(app.getPath("userData"));
@@ -174,12 +175,8 @@ function bootstrap(): void {
           if (!popupWindow.isDestroyed()) popupWindow.hide();
         }, payload.popupDurationMs);
       },
-      recordHistory: (entry) => store.appendCheerHistory(entry),
-      // まとめ書き:キー数とアクティブ秒数を日付ごとに永続化する
-      recordStats: ({ day, keys, activeSeconds }) => {
-        store.recordKeyCount(day, keys);
-        if (activeSeconds > 0) store.addActiveSeconds(day, activeSeconds);
-      },
+      // まとめ書き:累計カウントだけを永続化する(論点 0080 / 0081)
+      recordKeyCount: (keys) => store.recordKeyCount(keys),
     },
     config,
     // 発動判定は累計カウント基準(docs/cheer-trigger.md)。前回までの累計から継続する。

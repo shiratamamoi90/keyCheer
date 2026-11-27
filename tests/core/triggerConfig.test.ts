@@ -10,16 +10,14 @@ import {
 
 const VALID = {
   regular: 50,
-  activeThresholdSec: 60,
   milestoneInterval: 250,
   isMilestoneEnabled: true,
 };
 
 describe("trigger-config / defaults", () => {
-  it("既定値: regular=50, activeThresholdSec=60, milestoneInterval=250, isMilestoneEnabled=true", () => {
+  it("既定値: regular=50, milestoneInterval=250, isMilestoneEnabled=true", () => {
     expect(DEFAULT_TRIGGER_CONFIG).toEqual({
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 250,
       isMilestoneEnabled: true,
     });
@@ -29,10 +27,9 @@ describe("trigger-config / defaults", () => {
 describe("trigger-config / `triggers` の値域の中の値だけを保存する [境界]", () => {
   it("S0071_07 accepts the documented ranges and rejects anything outside them", () => {
     for (const ok of [
-      { regular: 1, activeThresholdSec: 5, milestoneInterval: 2, isMilestoneEnabled: true },
+      { regular: 1, milestoneInterval: 2, isMilestoneEnabled: true },
       {
         regular: 10_000,
-        activeThresholdSec: 600,
         milestoneInterval: 100_000,
         isMilestoneEnabled: false,
       },
@@ -43,8 +40,6 @@ describe("trigger-config / `triggers` の値域の中の値だけを保存する
       { ...VALID, regular: 0 },
       { ...VALID, regular: 10_001 },
       { ...VALID, regular: 1.5 },
-      { ...VALID, activeThresholdSec: 4 },
-      { ...VALID, activeThresholdSec: 601 },
       { ...VALID, milestoneInterval: 100_001 },
       { ...VALID, milestoneInterval: 250.5 },
       { ...VALID, isMilestoneEnabled: "yes" },
@@ -120,9 +115,9 @@ describe("trigger-config / applyTriggerConfigRepair", () => {
     const { config, errors } = applyTriggerConfigRepair({
       ...VALID,
       regular: 0,
-      activeThresholdSec: 90,
+      milestoneInterval: 500,
     });
-    expect(config).toEqual({ ...VALID, regular: 50, activeThresholdSec: 90 });
+    expect(config).toEqual({ ...VALID, regular: 50, milestoneInterval: 500 });
     expect(errors.length).toBeGreaterThan(0);
   });
 

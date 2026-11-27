@@ -35,7 +35,6 @@ describe("store / 既存設定の読み込みと既定値補完", () => {
     const { config, migrated } = store.loadTriggerConfig();
     expect(config.regular).toBe(75);
     expect(config.milestoneInterval).toBe(250);
-    expect(config.activeThresholdSec).toBe(60);
     expect(migrated).toBe(false);
   });
 
@@ -87,7 +86,7 @@ function countingStore(initial: Record<string, unknown>) {
 
 describe("store / 節目の既定値 [境界]", () => {
   it("S0071_06 fills milestoneInterval = 250 and isMilestoneEnabled = true when neither is saved", () => {
-    const fake = fakeStore({ triggers: { regular: 50, activeThresholdSec: 60 } });
+    const fake = fakeStore({ triggers: { regular: 50 } });
     const { config } = createAppStore(fake).loadTriggerConfig();
     expect(config.milestoneInterval).toBe(250);
     expect(config.isMilestoneEnabled).toBe(true);
@@ -100,14 +99,12 @@ describe("store / 読み込んだ値が値域の外なら直す [異常系]", ()
     const fake = fakeStore({
       triggers: {
         regular: 0,
-        activeThresholdSec: 60,
         milestoneInterval: 250,
         isMilestoneEnabled: true,
       },
     });
     expect(createAppStore(fake).loadTriggerConfig().config).toEqual({
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 250,
       isMilestoneEnabled: true,
     });
@@ -115,7 +112,6 @@ describe("store / 読み込んだ値が値域の外なら直す [異常系]", ()
     const fake2 = fakeStore({
       triggers: {
         regular: 300,
-        activeThresholdSec: 60,
         milestoneInterval: 200,
         isMilestoneEnabled: true,
       },
@@ -123,7 +119,6 @@ describe("store / 読み込んだ値が値域の外なら直す [異常系]", ()
     createAppStore(fake2).loadTriggerConfig();
     expect(fake2.raw.triggers).toEqual({
       regular: 300,
-      activeThresholdSec: 60,
       milestoneInterval: 1500,
       isMilestoneEnabled: true,
     });
@@ -138,13 +133,11 @@ describe("store / 前の版の節目の一覧を移す", () => {
       triggers: {
         regular: 50,
         milestones: [1000, 5000, 10000, 50000, 100000],
-        activeThresholdSec: 60,
       },
     });
     const { config, migrated } = createAppStore(fake).loadTriggerConfig();
     expect(config).toEqual({
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 250,
       isMilestoneEnabled: true,
     });
@@ -155,11 +148,10 @@ describe("store / 前の版の節目の一覧を移す", () => {
 
 describe("store / 前の版の空の一覧は節目を出さない設定に移す [境界]", () => {
   it("S0071_11 moves an empty list to disabled with interval 250", () => {
-    const fake = fakeStore({ triggers: { regular: 50, milestones: [], activeThresholdSec: 60 } });
+    const fake = fakeStore({ triggers: { regular: 50, milestones: [] } });
     createAppStore(fake).loadTriggerConfig();
     expect(fake.raw.triggers).toEqual({
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 250,
       isMilestoneEnabled: false,
     });
@@ -169,7 +161,7 @@ describe("store / 前の版の空の一覧は節目を出さない設定に移�
 describe("store / 前の版で回数が 250 以上なら節目を回数の 5 倍にする [境界]", () => {
   it("S0071_12 sets milestoneInterval to 1500 for regular = 300", () => {
     const fake = fakeStore({
-      triggers: { regular: 300, milestones: [1000], activeThresholdSec: 60 },
+      triggers: { regular: 300, milestones: [1000] },
     });
     const { config } = createAppStore(fake).loadTriggerConfig();
     expect(config.milestoneInterval).toBe(1500);
@@ -178,13 +170,12 @@ describe("store / 前の版で回数が 250 以上なら節目を回数の 5 倍
 });
 
 describe("store / 節目の移行は他の設定項目に波及しない [否定]", () => {
-  it("S0071_13 keeps regular and activeThresholdSec while moving the list", () => {
+  it("S0071_13 keeps regular while moving the list", () => {
     const fake = fakeStore({
-      triggers: { regular: 30, milestones: [1000, 5000], activeThresholdSec: 90 },
+      triggers: { regular: 30, milestones: [1000, 5000] },
     });
     const { config } = createAppStore(fake).loadTriggerConfig();
     expect(config.regular).toBe(30);
-    expect(config.activeThresholdSec).toBe(90);
   });
 });
 
@@ -192,7 +183,6 @@ describe("store / 移行済みの値は保存し直さない [境界]", () => {
   it("S0071_14 leaves a valid new-format value as it is without saving it again", () => {
     const triggers = {
       regular: 50,
-      activeThresholdSec: 60,
       milestoneInterval: 500,
       isMilestoneEnabled: false,
     };
@@ -222,51 +212,6 @@ describe("store / 応援の欄の変更は他の設定と保存データを変�
     const { triggers: _initial, ...initialRest } = initial;
     expect(rest).toMatchObject(initialRest);
     expect(fake.raw.triggers).toEqual({ ...DEFAULT_TRIGGER_CONFIG, regular: 80 });
-  });
-});
-
-describe("store / 統計の追記", () => {
-  it("recordKeyCount accumulates total and per-day counts", () => {
-    const fake = fakeStore({ stats: EMPTY_STATS });
-    const store = createAppStore(fake);
-    store.recordKeyCount("2026-07-25", 12);
-    store.recordKeyCount("2026-07-25", 3);
-    store.recordKeyCount("2026-07-26", 5);
-    const stats = store.loadStats();
-    expect(stats.totalKeyCount).toBe(20);
-    expect(stats.dailyCounts).toEqual({ "2026-07-25": 15, "2026-07-26": 5 });
-  });
-
-  it("アクティブ秒数の累積: addActiveSeconds accumulates total and per-day seconds", () => {
-    const fake = fakeStore({ stats: EMPTY_STATS });
-    const store = createAppStore(fake);
-    store.addActiveSeconds("2026-07-25", 30);
-    store.addActiveSeconds("2026-07-25", 12);
-    const stats = store.loadStats();
-    expect(stats.totalActiveSeconds).toBe(42);
-    expect(stats.dailyActiveSeconds).toEqual({ "2026-07-25": 42 });
-  });
-
-  it("履歴の記録: appendCheerHistory appends without dropping earlier entries", () => {
-    const fake = fakeStore({ stats: EMPTY_STATS });
-    const store = createAppStore(fake);
-    const entry = {
-      timestamp: "2026-07-25T10:00:00.000Z",
-      count: 50,
-      kpm: 120,
-      speedZone: "normal" as const,
-      type: "regular" as const,
-      timeOfDay: "morning" as const,
-      messageId: "normal_regular_morning-000",
-      message: "いいペースだね!",
-    };
-    store.appendCheerHistory(entry);
-    store.appendCheerHistory({ ...entry, count: 100 });
-    const stats = store.loadStats();
-    expect(stats.cheerHistory).toHaveLength(2);
-    expect(stats.cheerHistory[1]?.count).toBe(100);
-    // 入力内容は履歴に含めない(プライバシー方針)
-    expect(Object.keys(stats.cheerHistory[0]!)).not.toContain("keys");
   });
 });
 
@@ -859,7 +804,7 @@ describe("store / テーマの変更は他の設定と保存データを変え�
       characters: [
         { id: "c1", name: "チア", personality: "元気", imagePaths: {}, voicevoxSpeakerId: 3 },
       ],
-      triggers: { regular: 70, milestones: [1000], activeThresholdSec: 60 },
+      triggers: { regular: 70, milestones: [1000] },
       popup: { shouldAlwaysShow: false, shouldShowMessage: true, customPosition: { x: 1, y: 2 } },
       stats: { totalKeyCount: 12 },
     };
@@ -923,5 +868,152 @@ describe("store / 接続先の移行は他の設定項目に波及しない [否
     const system = createAppStore(fake).loadSystem();
     expect(system.ollamaModel).toBe("my-model");
     expect(system.excludedKeys).toEqual(["F1"]);
+  });
+});
+
+// 論点 0080 / 0081: 応援に要る累計カウントだけを記録し、前の版が残した記録は起動時に消す
+const LEGACY_STATS = {
+  totalKeyCount: 12345,
+  totalActiveSeconds: 3600,
+  dailyCounts: { "2026-11-26": 4000 },
+  dailyActiveSeconds: { "2026-11-26": 1800 },
+  cheerHistory: [
+    {
+      timestamp: "2026-11-26T10:00:00.000Z",
+      count: 50,
+      kpm: 120,
+      speedZone: "normal",
+      type: "regular",
+      timeOfDay: "morning",
+      messageId: "normal_regular_morning-000",
+      message: "いいペースだね!",
+    },
+  ],
+};
+
+describe("store / 起動時に、保存済みの応援履歴を消す", () => {
+  it("S0080_02 removes cheerHistory from the saved stats on launch", () => {
+    const fake = fakeStore({
+      stats: { totalKeyCount: 10, cheerHistory: LEGACY_STATS.cheerHistory },
+    });
+    createAppStore(fake).loadStats();
+    expect(fake.raw.stats).not.toHaveProperty("cheerHistory");
+  });
+});
+
+describe("store / 応援履歴が無くても起動は続く [境界]", () => {
+  it("S0080_03 keeps stats without cheerHistory as they are and creates no empty cheerHistory", () => {
+    const { fake, setKeys } = countingStore({ stats: { totalKeyCount: 10 } });
+    const stats = createAppStore(fake).loadStats();
+    expect(stats).toEqual({ totalKeyCount: 10 });
+    expect(fake.raw.stats).toEqual({ totalKeyCount: 10 });
+    expect(setKeys).not.toContain("stats");
+  });
+});
+
+describe("store / 応援履歴のほかの統計と設定には触らない [否定]", () => {
+  it("S0080_04 leaves totalKeyCount, settings and characters unchanged when removing cheerHistory", () => {
+    const initial = {
+      stats: { totalKeyCount: 10, cheerHistory: LEGACY_STATS.cheerHistory },
+      triggers: { regular: 30, milestoneInterval: 500, isMilestoneEnabled: true },
+      characters: [savedCharacter("char-1")],
+      activeCharacterId: "char-1",
+    };
+    const fake = fakeStore(structuredClone(initial));
+    createAppStore(fake).loadStats();
+    const { stats, ...rest } = fake.raw;
+    const { stats: _initialStats, ...initialRest } = initial;
+    expect(stats).toEqual({ totalKeyCount: 10 });
+    expect(rest).toMatchObject(initialRest);
+  });
+});
+
+describe("store / キーを打っても累計カウントのほかは保存しない [否定]", () => {
+  it("S0081_02 saves only totalKeyCount when recording key presses", () => {
+    const fake = fakeStore({ stats: { totalKeyCount: 0 } });
+    const store = createAppStore(fake);
+    store.recordKeyCount(12);
+    store.recordKeyCount(3);
+    expect(fake.raw.stats).toEqual({ totalKeyCount: 15 });
+  });
+});
+
+describe("store / 起動時に、保存済みの日ごとの押下数とアクティブ時間を消す", () => {
+  it("S0081_03 removes dailyCounts, totalActiveSeconds and dailyActiveSeconds on launch", () => {
+    const { cheerHistory: _history, ...legacy } = LEGACY_STATS;
+    const fake = fakeStore({ stats: structuredClone(legacy) });
+    createAppStore(fake).loadStats();
+    expect(fake.raw.stats).toEqual({ totalKeyCount: 12345 });
+  });
+});
+
+describe("store / 起動時に、止まったとみなす秒数の設定を消す", () => {
+  it("S0081_04 removes triggers.activeThresholdSec on launch, even when it is out of range, without logging", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fake = fakeStore({
+      triggers: {
+        regular: 30,
+        milestoneInterval: 500,
+        isMilestoneEnabled: true,
+        activeThresholdSec: 9999,
+      },
+    });
+    const { config } = createAppStore(fake).loadTriggerConfig();
+    expect(config).toEqual({ regular: 30, milestoneInterval: 500, isMilestoneEnabled: true });
+    expect(fake.raw.triggers).toEqual({
+      regular: 30,
+      milestoneInterval: 500,
+      isMilestoneEnabled: true,
+    });
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("store / 消すものが無ければ保存し直さない [境界]", () => {
+  it("S0081_05 saves neither stats nor triggers again when nothing is left to remove", () => {
+    const { fake, setKeys } = countingStore({
+      stats: { totalKeyCount: 7 },
+      triggers: { regular: 50, milestoneInterval: 250, isMilestoneEnabled: true },
+    });
+    const store = createAppStore(fake);
+    store.loadStats();
+    store.loadTriggerConfig();
+    expect(setKeys).toEqual([]);
+
+    const { fake: empty, setKeys: emptySetKeys } = countingStore({});
+    expect(createAppStore(empty).loadStats()).toEqual({ totalKeyCount: 0 });
+    expect(emptySetKeys).not.toContain("stats");
+  });
+});
+
+describe("store / 累計カウントとほかの設定には触らない [否定]", () => {
+  it("S0081_06 keeps totalKeyCount = 12345 and everything but the four removed keys", () => {
+    const initial = {
+      stats: structuredClone(LEGACY_STATS),
+      triggers: {
+        regular: 30,
+        milestoneInterval: 500,
+        isMilestoneEnabled: false,
+        activeThresholdSec: 90,
+      },
+      popup: { shouldAlwaysShow: false, shouldShowMessage: false },
+      characters: [savedCharacter("char-1")],
+      activeCharacterId: "char-1",
+    };
+    const fake = fakeStore(structuredClone(initial));
+    const store = createAppStore(fake);
+    store.loadStats();
+    store.loadTriggerConfig();
+
+    expect(fake.raw.stats).toEqual({ totalKeyCount: 12345 });
+    expect(fake.raw.triggers).toEqual({
+      regular: 30,
+      milestoneInterval: 500,
+      isMilestoneEnabled: false,
+    });
+    expect(fake.raw.popup).toEqual(initial.popup);
+    expect(fake.raw.characters).toEqual(initial.characters);
+    expect(fake.raw.activeCharacterId).toBe("char-1");
   });
 });
