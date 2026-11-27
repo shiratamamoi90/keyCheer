@@ -228,7 +228,10 @@ describe("characterImage / 応援種別の画像にほかの応援種別のポ�
     // GIVEN 待機画像の画像タグと、regular / milestone の画像の画像タグ(表情)
     // WHEN regular と milestone の画像のプロンプトを組み立てる
     const regular = buildLocalImagePrompt("1girl, long hair", { kind: "regular", tags: "smile" });
-    const milestone = buildLocalImagePrompt("1girl, long hair", { kind: "milestone", tags: "grin" });
+    const milestone = buildLocalImagePrompt("1girl, long hair", {
+      kind: "milestone",
+      tags: "grin",
+    });
 
     // THEN ほかの応援種別のポーズの語と、演出の語を含まない
     expect(regular).not.toContain("arms up");

@@ -199,7 +199,13 @@ export function buildLocalImagePrompt(
 ): string {
   const person = PERSON_TAG_PATTERN.test(idleTags) ? "" : FALLBACK_PERSON_TAG;
   const kindTags = derived === undefined ? [] : [derived.tags, LOCAL_POSE_TAGS[derived.kind]];
-  return [LOCAL_IMAGE_FIXED_TAGS, person, idleTags, ...kindTags, `<lora:${LOCAL_IMAGE_LORA_NAME}:1>`]
+  return [
+    LOCAL_IMAGE_FIXED_TAGS,
+    person,
+    idleTags,
+    ...kindTags,
+    `<lora:${LOCAL_IMAGE_LORA_NAME}:1>`,
+  ]
     .filter((part) => part.length > 0)
     .join(", ");
 }

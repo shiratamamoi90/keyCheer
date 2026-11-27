@@ -38,11 +38,14 @@ fi
 mkdir -p "$dest"
 # Windows 側でアプリが起動したままだと .exe / .dll が掴まれていてコピーに失敗する
 if ! cp -r "$SOURCE_DIR"/. "$dest"/; then
-  echo "deploy-windows: コピーに失敗した。Windows 側で KeyCheer が起動したままなら終了してから再実行する" >&2
+  echo "deploy-windows: コピーに失敗した。Windows 側でアプリが起動したままなら終了してから再実行する" >&2
   exit 1
 fi
 
 echo "deploy-windows: $dest に置いた"
 if command -v wslpath >/dev/null; then
-  echo "  Windows からは $(wslpath -w "$dest")\\keycheer.exe を実行する"
+  # exe の名前は electron-builder が package.json の productName から付ける(論点 0077 で TypeYell にした)。
+  # 名前を直書きすると、見える名前を変えたときに案内だけ古い名前のまま残る
+  product_name="$(node -p "require('$ROOT/package.json').productName")"
+  echo "  Windows からは $(wslpath -w "$dest")\\$product_name.exe を実行する"
 fi
